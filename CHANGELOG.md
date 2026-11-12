@@ -13,9 +13,11 @@
 - **Charts everywhere.**
   - Pie charts (findings by severity, module/server status) and bar/column charts (scores, filesystem usage) in HTML reports and the fleet dashboard.
   - ReportLab pie charts in PDFs, native Excel charts (Charts sheet), and a native PowerPoint "Health at a glance" slide.
+  - Polished design: donut charts with percentage labels, a centre total and a value/share legend; bar charts sorted worst first with value labels, warning/critical threshold lines, axis ticks and a colour key; line charts with shaded threshold bands and the latest value marked.
+  - PDF, Excel and PowerPoint use doughnut charts with percentage labels and bars with value labels, worst on top.
 - **Real-time graphical monitoring.**
   - The watcher keeps a rolling metric history.
-  - The Cockpit page and the new `healthcheck live` page show live line charts (CPU, memory, swap, load, problems), filesystem bars, a severity pie and module score bars, using a dependency-free SVG chart library under a strict CSP.
+  - The Cockpit page and the new `healthcheck live` page show live line charts (CPU, memory, swap, load, problems) with a hover crosshair and tooltip, filesystem bars, a severity pie and module score bars, using a dependency-free SVG chart library under a strict CSP.
 - **Cockpit page "LSHME Health"**: static package showing the score, issues, real-time problems and reports, with a run-now button. It updates by watching the result files. Installed automatically when Cockpit is present.
 - **Fleet web dashboard** (`healthcheck dashboard build | serve`): self-contained, auto-refreshing, with filters, search, stale/unreachable detection and per-server drill-down. Optional read-only web server.
 - **Uptime/SLA report** (`healthcheck sla`): availability, downtime and degraded time, per-component availability, incident log, mean time to recover, monitoring coverage and breaches against `[sla] target_percent`. The watcher now records confirmed incidents for this; it is attached to the monthly schedule.

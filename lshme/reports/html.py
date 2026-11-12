@@ -21,7 +21,8 @@ header h1{margin:0;font-size:26px}header p{margin:4px 0 0;opacity:.85}
 header img{max-height:60px;background:#fff;border-radius:8px;padding:6px 10px}
 header .logos{display:flex;gap:12px;align-items:center;margin-left:auto}
 .copyright{margin-top:6px;font-weight:600;color:#0b3d6e}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:16px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin:16px 0}
+.grid.wide{grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr))}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;overflow:auto}
 .card h2,.card h3{margin:0 0 10px;font-size:16px}
 .kv{width:100%;border-collapse:collapse}.kv td{padding:3px 6px;border-bottom:1px solid #eef1f4;vertical-align:top}.kv td:first-child{color:var(--muted);width:40%}
@@ -157,29 +158,29 @@ def render(doc, path, logo=""):
                  '<div class="chips">%s</div><p class="small muted">%s</p></div></div>'
                  '<div class="card"><h3>Report details</h3><table class="kv">%s</table></div></div>' % (
                      gauge(doc.score, doc.status), chips, E(doc.health.get("method", "")), meta))
-    charts = []
+    pies, wide = [], []
     sev_items = ch.severity_items(doc.counts)
     if any(v for _, v, _ in sev_items):
-        charts.append(ch.card("Findings by severity", '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">%s%s</div>' % (
-            ch.donut(sev_items, "findings", 170), ch.legend(sev_items))))
+        pies.append(ch.card("Findings by severity", ch.pie_block(sev_items, "findings")))
     if doc.module_rows and doc.kind in ("host", "fleet"):
         st = {}
         for r in doc.module_rows:
             st[r[2]] = st.get(r[2], 0) + 1
-        mod_items = [(k.title(), st.get(k, 0), SEV_COLORS.get(k, "#9e9e9e")) for k in ("OK", "HEALTHY", "WARNING", "CRITICAL", "UNREACHABLE", "SKIPPED")]
-        mod_items = [(l, v, c if l not in ("Unreachable",) else "#6a1b9a") for l, v, c in mod_items if v]
-        charts.append(ch.card("%s status" % ("Module" if doc.kind == "host" else "Server"),
-                              '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">%s%s</div>' % (
-                                  ch.donut(mod_items, "modules" if doc.kind == "host" else "servers", 170), ch.legend(mod_items))))
-    if doc.charts["modules"]:
-        charts.append('<div class="card"><h3>%s</h3>%s</div>' % (chart_title,
-                                                                hbars(doc.charts["modules"], 100, "", score_mode=True)))
-    if doc.charts["filesystems"]:
-        charts.append('<div class="card"><h3>Filesystem usage %%</h3>%s</div>' % ch.columns(doc.charts["filesystems"], 100, "%", score_mode=False))
+        palette = {"OK": SEV_COLORS["HEALTHY"], "HEALTHY": SEV_COLORS["HEALTHY"], "WARNING": SEV_COLORS["WARNING"],
+                   "CRITICAL": SEV_COLORS["CRITICAL"], "UNREACHABLE": "#6a1b9a", "SKIPPED": "#a8b0b9"}
+        mod_items = [(k.title(), st[k], palette[k]) for k in palette if st.get(k)]
+        pies.append(ch.card("%s status" % ("Module" if doc.kind == "host" else "Server"),
+                            ch.pie_block(mod_items, "modules" if doc.kind == "host" else "servers")))
     if doc.kind == "host":
-        charts.append('<div class="card"><h3>Health score history</h3>%s</div>' % spark(doc.charts["score_history"]))
-    if charts:
-        parts.append('<div class="grid">%s</div>' % "".join(charts))
+        wide.append(ch.card("Health score history", ch.line(doc.charts["score_history"], empty="Score history appears after a few runs.")))
+    if doc.charts["modules"]:
+        wide.insert(0, ch.card(chart_title + " (worst first)", ch.hbars(doc.charts["modules"], 100, "", score_mode=True)))
+    if doc.charts["filesystems"]:
+        wide.append(ch.card("Filesystem usage", ch.columns(doc.charts["filesystems"], 100, "%", score_mode=False, y_title="Used %")))
+    if pies:
+        parts.append('<div class="grid">%s</div>' % "".join(pies))
+    if wide:
+        parts.append('<div class="grid wide">%s</div>' % "".join(wide))
     parts.append('<div class="card"><h2>%s</h2>%s</div>' % (ov_title,
                                                             table_html(Table("", mod_hdr, doc.module_rows))))
     key = [f for f in doc.findings if f["severity"] in ("CRITICAL", "WARNING", "UNKNOWN")]

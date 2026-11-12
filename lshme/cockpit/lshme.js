@@ -121,11 +121,11 @@
         var col = function (k) { return pts.map(function (p) { return [p.t, p[k] === undefined ? null : p[k]]; }); };
         C.line($("g-usage"), [{ name: "CPU", color: "#0066cc", points: col("cpu") }, { name: "Memory", color: "#8476d1", points: col("mem") },
             { name: "Swap", color: "#ec7a08", points: col("swap") }],
-        { max: 100, unit: "%", label: "CPU, memory and swap", thresholds: [{ value: 85, color: C.COLORS.WARNING }, { value: 95, color: C.COLORS.CRITICAL }] });
+        { max: 100, unit: "%", label: "CPU, memory and swap", thresholds: [{ value: 85, color: C.COLORS.WARNING, label: "warning 85%" }, { value: 95, color: C.COLORS.CRITICAL, label: "critical 95%" }] });
         C.line($("g-load"), [{ name: "Load/CPU", color: "#009596", points: col("load") }],
-            { label: "Load per CPU", thresholds: [{ value: 1.5, color: C.COLORS.WARNING }, { value: 3, color: C.COLORS.CRITICAL }] });
+            { label: "Load per CPU", minMax: 0.5, thresholds: [{ value: 1.5, color: C.COLORS.WARNING, label: "warning 1.5" }, { value: 3, color: C.COLORS.CRITICAL, label: "critical 3" }] });
         C.line($("g-problems"), [{ name: "Critical", color: C.COLORS.CRITICAL, points: col("crit") }, { name: "Warning", color: C.COLORS.WARNING, points: col("warn") }],
-            { label: "Active problems" });
+            { label: "Active problems", minMax: 4 });
         var last = state.metrics[state.metrics.length - 1];
         C.bars($("g-disk"), last ? Object.keys(last.disk || {}).map(function (k) { return { label: k, value: last.disk[k] }; }) : [], { unit: "%", label: "Filesystem usage" });
     }

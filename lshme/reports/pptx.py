@@ -168,11 +168,16 @@ def _render_pptx(doc, slides, path):
                 pie.has_title, pie.has_legend = True, True
                 pie.chart_title.text_frame.text = "Findings by severity"
                 pie.plots[0].has_data_labels = True
+                dl = pie.plots[0].data_labels
+                dl.show_percentage, dl.show_value = True, False
+                dl.number_format, dl.number_format_is_linked = "0%", False
+                dl.font.size, dl.font.bold = Pt(14), True
+                dl.font.color.rgb = _rgb("#FFFFFF")
                 for i, (_, _, c) in enumerate(sev):
                     pt = pie.plots[0].series[0].points[i]
                     pt.format.fill.solid()
                     pt.format.fill.fore_color.rgb = _rgb(c)
-            items = doc.charts.get("modules", [])[:14]
+            items = sorted(doc.charts.get("modules", []), key=lambda kv: -float(kv[1] or 0))[-14:]  # worst at the top
             if items:
                 cd = CategoryChartData()
                 cd.categories = [str(k)[:26] for k, _ in items]
@@ -182,6 +187,11 @@ def _render_pptx(doc, slides, path):
                 bar.has_title = True
                 bar.chart_title.text_frame.text = doc.overview()[2]
                 bar.value_axis.maximum_scale, bar.value_axis.minimum_scale = 100, 0
+                bar.plots[0].has_data_labels = True
+                bar.plots[0].data_labels.font.size = Pt(10)
+                bar.plots[0].data_labels.number_format, bar.plots[0].data_labels.number_format_is_linked = "0", False
+                bar.plots[0].gap_width = 60
+                bar.category_axis.tick_labels.font.size = Pt(10)
                 for i, (_, v) in enumerate(items):
                     pt = bar.plots[0].series[0].points[i]
                     pt.format.fill.solid()

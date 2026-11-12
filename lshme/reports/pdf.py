@@ -96,7 +96,8 @@ def render(doc, path, logo=""):
         return t
 
     def bar_chart(items, title, score_mode=False):
-        items = items[:20]
+        # ReportLab draws the first category at the bottom: sort so the worst ends up on top
+        items = sorted(items, key=lambda kv: -float(kv[1] or 0) if score_mode else float(kv[1] or 0))[-20:]
         h = 30 + 14 * len(items)
         dr = Drawing(W, h)
         bc = HorizontalBarChart()
@@ -115,6 +116,10 @@ def render(doc, path, logo=""):
                 c = SEV_COLORS["CRITICAL"] if v >= 90 else SEV_COLORS["WARNING"] if v >= 80 else SEV_COLORS["HEALTHY"]
             bc.bars[(0, i)].fillColor = colors.HexColor(c)
         bc.bars.strokeColor = None
+        bc.barLabelFormat = "%.0f"
+        bc.barLabels.nudge = 9
+        bc.barLabels.fontSize = 6.5
+        bc.barLabels.fontName = "Helvetica-Bold"
         dr.add(bc)
         dr.add(String(0, h - 10, title, fontSize=9, fontName="Helvetica-Bold", fillColor=colors.HexColor("#0b3d6e")))
         return dr
@@ -155,7 +160,14 @@ def render(doc, path, logo=""):
         pie = Pie()
         pie.x, pie.y, pie.width, pie.height = 10, 10, 105, 105
         pie.data = [v for _, v, _ in sev]
-        pie.labels = None
+        total = float(sum(v for _, v, _ in sev))
+        pie.labels = ["%.0f%%" % (100 * v / total) if v / total >= 0.05 else "" for _, v, _ in sev]
+        pie.simpleLabels = 1
+        pie.slices.labelRadius = 0.72
+        pie.slices.fontColor = colors.white
+        pie.slices.fontName = "Helvetica-Bold"
+        pie.slices.fontSize = 8
+        pie.innerRadiusFraction = 0.55
         pie.slices.strokeColor = colors.white
         pie.slices.strokeWidth = 1.5
         for i, (_, _, c) in enumerate(sev):
@@ -166,7 +178,7 @@ def render(doc, path, logo=""):
             y = 92 - i * 16
             from reportlab.graphics.shapes import Rect
             dr.add(Rect(140, y - 2, 9, 9, fillColor=colors.HexColor(c), strokeColor=None))
-            dr.add(String(154, y, "%s  %d" % (label, v), fontSize=8.5))
+            dr.add(String(154, y, "%s  %d  (%.0f%%)" % (label, v, 100 * v / total), fontSize=8.5))
         story.append(dr)
     if doc.charts["modules"]:
         story.append(bar_chart(doc.charts["modules"], doc.overview()[2], True))
