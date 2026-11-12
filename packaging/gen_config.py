@@ -35,6 +35,9 @@ HEADERS = {
     "certificates": "TLS certificate expiry checks. files / scan_dirs / endpoints (host:port), comma-separated.",
     "custom": "Custom checks using the Nagios plugin convention (exit 0 OK, 1 WARNING, 2 CRITICAL, 3 UNKNOWN).\n"
               "Scripts must be owned by root and not writable by group/others.",
+    "exclusions": "Exclusions: accepted findings that should not affect the score or raise alerts.\n"
+                  "Excluded findings are still listed in reports with the rule and reason. Expired rules stop applying.\n"
+                  "Manage with: healthcheck exclude list | add | remove   (or menu option 21)",
     "credentials": "SECRETS - keep this file mode 600, owned by root. Section names match the other files.",
 }
 
@@ -58,6 +61,12 @@ EXAMPLES = {
     "backup": ("\n# [job:oracle-export]\n# type = directory\n# path = /backup/exports\n# pattern = *.dmp*\n# max_age_hours = 26\n# min_size_mb = 100\n#\n"
                "# [job:rsync-nightly]\n# type = logfile\n# path = /var/log/rsync-backup.log\n# success_pattern = (?i)backup completed\n# max_age_hours = 26\n"),
     "custom": "\n# [check:app-health]\n# command = /usr/local/lib/lshme-checks/check_app.sh --warn 80\n# timeout = 30\n# recommendation = Restart the app via the runbook\n",
+    "exclusions": ("\n# Cockpit uses its self-signed certificate on purpose:\n# [exclude:cockpit-self-signed]\n# code = COCKPIT_SELF_SIGNED\n"
+                   "# module = cockpit\n# reason = Internal admin console; CA-signed certificate not required\n# owner = infra-team\n#\n"
+                   "# A planned temporary condition with an expiry date:\n# [exclude:archive-full-until-migration]\n# code = DISK_USAGE\n"
+                   "# component = /archive\n# reason = Archive migration in progress (CHG-1234)\n# until = 2026-12-31\n#\n"
+                   "# Wildcards: every INFO-level Oracle invalid-object note on a dev host\n# [exclude:dev-invalid-objects]\n"
+                   "# code = ORACLE_INVALID_*\n# hosts = dev-*\n# reason = Development databases\n"),
     "credentials": "\n# [smtp]\n# password =\n#\n# [oracle:PROD]\n# password =\n#\n# [mongodb:main]\n# password =\n",
     "main": "",
 }

@@ -130,6 +130,11 @@ def build(run, cfg, report_type="technical"):
         d.sections.append(Section(m.name, m.title, m.status, m.score, m.summary, fl, tables, notes))
         if m.name in ("system", "cpu_memory", "storage"):
             d.key_tables.extend(t for t in tables if t.kind == "summary")
+    if getattr(run, "excluded", None):
+        rows = [[x["severity"], x["component"], x["message"], x["rule"], x["reason"], x.get("owner", ""), x["until"]] for x in run.excluded]
+        d.sections.append(Section("excluded", "Excluded findings (accepted exceptions)", "OK", None,
+                                  "%d finding(s) excluded by rules in exclusions.conf; they do not affect the score or alerts." % len(rows), [],
+                                  [Table("Excluded findings", ["Severity", "Component", "Finding", "Rule", "Reason", "Owner", "Until"], rows, kind="summary")]))
     seen = set()
     for f in d.findings:
         if SEV_RANK[f["severity"]] >= 2 and f["recommendation"] and f["recommendation"] not in seen:

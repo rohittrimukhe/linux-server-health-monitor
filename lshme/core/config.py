@@ -13,7 +13,7 @@ import tarfile
 import time
 
 CONFIG_FILES = ("main", "thresholds", "services", "database", "smtp", "reports", "schedule",
-                "retention", "servers", "backup", "certificates", "custom", "credentials")
+                "retention", "servers", "backup", "certificates", "custom", "exclusions", "credentials")
 
 DEFAULTS = {
     "main": {
@@ -117,6 +117,7 @@ DEFAULTS = {
                "backupexec": {"enabled": "auto"}, "veeam": {"enabled": "auto", "max_age_hours": "26"}},
     "certificates": {"certificates": {"files": "", "endpoints": "", "scan_dirs": ""}},
     "custom": {"general": {"checks_dir": "", "default_timeout": "60"}},
+    "exclusions": {},
     "credentials": {},
 }
 

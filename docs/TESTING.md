@@ -2,7 +2,7 @@
 
 ## Automated test suite
 
-`cd tests && python3 -m unittest discover -p 'test_*.py'` runs 91 tests:
+`cd tests && python3 -m unittest discover -p 'test_*.py'` runs 96 tests:
 
 | Test file | Covers |
 |---|---|
@@ -33,6 +33,7 @@
 | PostgreSQL | PostgreSQL 16 server | Lock waits, idle-in-transaction session, long queries, inactive replication slot |
 | Cockpit | cockpit-ws 314 with its self-signed certificate | HTTPS probe 200, unencrypted access flagged, self-signed certificate noted |
 | Storage | Real ext4 filesystems on loop devices, and LVM PVs/VGs | 97% full, inodes at 100%, read-only mount, fstab entry not mounted (all CRITICAL) |
+| Exclusions | Real cockpit-ws and read-only mounts | Self-signed certificate and `/opt/*` read-only findings excluded and listed in the report; expired rule raised a warning; the watcher ignored excluded problems |
 | Real-time monitoring | Continuous `watch run` with a local SMTP server | Alert email after 2 checks, recovery email when the missing process started; nice 19, idle I/O, 170 ms CPU over 52 s, 30 MB memory |
 
 LVM logical volumes and snapshots, and md RAID, could not be created because

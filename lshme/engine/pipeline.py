@@ -9,7 +9,7 @@ from lshme import APP_NAME, VERSION
 from lshme.core import logs
 from lshme.core.model import ModuleResult, RunResult
 from lshme.core.util import primary_ip
-from lshme.engine import baseline, maintenance, scoring
+from lshme.engine import baseline, exclusions, maintenance, scoring
 from lshme.engine.history import History, analyse
 
 
@@ -75,6 +75,10 @@ def execute(ctx, modules, paths=None, save_history=True, progress=None, drift=Tr
     if paths:
         run.maintenance = maintenance.active(paths)
     run.finished_at = time.time()
+    try:
+        exclusions.apply(run, exclusions.load(ctx.cfg))
+    except Exception as e:  # a bad rule file must never break a health check
+        logs.get().error("exclusions not applied: %s", e)
     scoring.score_run(run)
     sh = run.trends.get("score_history") if run.trends else None
     if sh:

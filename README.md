@@ -90,6 +90,16 @@ every minute on hosts without systemd:
   every 60 minutes, and once on recovery. Alerts are suppressed during
   maintenance windows.
 
+## Exclusions
+
+Accepted findings, such as Cockpit's self-signed certificate, can be excluded
+so they no longer affect the score or trigger alerts. They stay visible in
+reports with the reason and an optional expiry date:
+
+```bash
+healthcheck exclude add cockpit-self-signed --code COCKPIT_SELF_SIGNED --module cockpit --reason "Internal console"
+```
+
 ## Resource use
 
 LSHME is built to stay out of the way on production servers:

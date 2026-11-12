@@ -128,6 +128,17 @@ def build_parser():
     w.add_argument("action", nargs="?", default="status", choices=("run", "once", "install", "remove", "status"))
     w.add_argument("--interval", type=int, help="seconds between checks (default from main.conf [watch])")
 
+    x = sub.add_parser("exclude", help="exclusions: accept known findings so they stop affecting score and alerts")
+    x.add_argument("action", nargs="?", default="list", choices=("list", "add", "remove"))
+    x.add_argument("name", nargs="?", help="rule name (add/remove)")
+    x.add_argument("--code", help="finding code, wildcards allowed (e.g. COCKPIT_SELF_SIGNED, ORACLE_INVALID_*)")
+    x.add_argument("--component", default="*", help="component glob (e.g. /mnt/backup*, oracle:ORCL*)")
+    x.add_argument("--module", default="", help="limit to a module (see 'healthcheck modules')")
+    x.add_argument("--hosts", default="*", help="host glob(s) for fleet use, comma-separated")
+    x.add_argument("--reason", help="why this is accepted (shown in reports)")
+    x.add_argument("--owner", default="", help="who approved it")
+    x.add_argument("--until", default="", help="expiry date YYYY-MM-DD (blank = no expiry)")
+
     s = sub.add_parser("schedule", help="manage scheduled runs")
     s.add_argument("action", choices=("status", "install", "remove", "show"))
 
@@ -313,6 +324,38 @@ def dispatch(app, cmd, args):
             C.table(["Severity", "Component", "Problem", "Since", "Alerted"],
                     [[p["severity"], p.get("component", ""), p.get("message", ""), time.strftime("%m-%d %H:%M", time.localtime(p["since"])),
                       p.get("alerted") or "pending"] for p in sorted(probs.values(), key=lambda x: x["since"])] or [["OK", "", "no active problems", "", ""]])
+    elif cmd == "exclude":
+        from lshme.engine import exclusions
+        if args.action == "list":
+            now = time.time()
+            rows = []
+            for r in exclusions.load(app.cfg):
+                st = "disabled" if not r.enabled else ("INVALID: " + "; ".join(r.validate())) if r.validate() else "EXPIRED" if r.expired(now) else "active"
+                rows.append([r.name, r.code, r.component, r.module or "*", ",".join(r.hosts), r.until or "never", st, r.reason])
+            C.table(["Rule", "Code", "Component", "Module", "Hosts", "Until", "Status", "Reason"], rows or [["(none)", "", "", "", "", "", "", ""]])
+        elif args.action == "add":
+            import re as _re
+            if not args.name or not _re.match(r"^[\w.-]+$", args.name):
+                raise ValueError("exclude add NAME --code CODE --reason TEXT  (NAME: letters, digits, . _ -)")
+            sec = "exclude:" + args.name
+            fields = {"code": args.code or "", "component": args.component, "module": args.module, "hosts": args.hosts,
+                      "reason": args.reason or "", "owner": args.owner, "until": args.until}
+            problems = exclusions.Rule(args.name, fields).validate()
+            if problems:
+                raise ValueError("; ".join(problems))
+            for k, v in fields.items():
+                if v:
+                    app.cfg.set("exclusions", sec, k, v)
+            app.save_config("exclusions")
+            app.audit("exclusion-add", rule=args.name, **fields)
+            C.out(C.c("Exclusion '%s' added: %s on %s (%s)" % (args.name, args.code, args.component, args.until or "no expiry"), "green"))
+        else:
+            if not args.name or ("exclude:" + args.name) not in app.cfg.parsers["exclusions"].sections():
+                raise ValueError("no exclusion named %s" % args.name)
+            app.cfg.remove_section("exclusions", "exclude:" + args.name)
+            app.save_config("exclusions")
+            app.audit("exclusion-remove", rule=args.name)
+            C.out("Exclusion '%s' removed" % args.name)
     elif cmd == "schedule":
         if args.action in ("status", "show"):
             be, rows = scheduler.status(app.cfg, app.runner)
@@ -439,6 +482,9 @@ def dispatch(app, cmd, args):
             problems = list(app.cfg.load_errors) + app.cfg.permission_problems()
             for s in scheduler.schedules(app.cfg):
                 problems += ["schedule %s: %s" % (s.name, e) for e in s.validate()]
+            from lshme.engine import exclusions
+            for r in exclusions.load(app.cfg):
+                problems += ["exclusion %s: %s" % (r.name, e) for e in r.validate()]
             try:
                 modreg.resolve(app.cfg)
             except ValueError as e:
