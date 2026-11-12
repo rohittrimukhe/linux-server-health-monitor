@@ -1,8 +1,10 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Interactive DOS-style menu."""
 import os
 import time
 
-from lshme import APP_NAME, VERSION
+from lshme import APP_NAME, COPYRIGHT, VERSION
 from lshme import modules as modreg
 from lshme import reports
 from lshme.ui import console as C
@@ -40,7 +42,7 @@ class Menu(object):
         C.out(C.c(" " * w, "title"))
         C.out(C.c(("  %s  v%s" % (APP_NAME, VERSION)).ljust(w), "title"))
         C.out(C.c(("  Host: %s   %s" % (os.uname()[1], time.strftime("%Y-%m-%d %H:%M"))).ljust(w), "title"))
-        C.out(C.c(" " * w, "title"))
+        C.out(C.c(("  " + COPYRIGHT).ljust(w), "title"))
         style = lambda v, wv, cv: "red" if v >= cv else "yellow" if v >= wv else "green"
         C.out("  Load %s   Memory %s   Fullest filesystem %s" % (
             " / ".join(load), C.c("%.0f%%" % mem, style(mem, 85, 95)), C.c("%.0f%%" % disk, style(disk, 80, 90))))
@@ -56,7 +58,8 @@ class Menu(object):
         ("9", "Generate reports (choose formats / period)"), ("10", "SMTP & email settings"),
         ("11", "Scheduling & automation"), ("12", "Report & log retention"), ("13", "History & trends"),
         ("14", "Baseline & configuration drift"), ("15", "Maintenance mode"), ("16", "Multi-server (fleet)"),
-        ("17", "Configuration & setup wizard"), ("18", "Self-diagnostics"), ("19", "View logs"), ("0", "Exit"),
+        ("17", "Configuration & setup wizard"), ("18", "Self-diagnostics"), ("19", "View logs"),
+        ("20", "Real-time monitoring & alerts"), ("0", "Exit"),
     ]
 
     def loop(self):
@@ -264,6 +267,15 @@ class Menu(object):
     def opt_18(self):
         from lshme.ops import doctor
         C.table(["Area", "Check", "Status", "Detail"], doctor.run(self.app.cfg, self.app.paths, self.app.runner))
+
+    def opt_20(self):
+        from lshme.ui.cli import main as cli_main
+        args = ["--home", self.app.home] if self.app.home else ["--config-dir", self.app.paths.config_dir]
+        cli_main(args + ["watch", "status"])
+        C.out("\n  [1] Run one check now   [2] Install/start continuous monitoring   [3] Stop and remove   [0] Back")
+        v = C.ask("Choice", "0", choices=["0", "1", "2", "3"])
+        if v in ("1", "2", "3"):
+            cli_main(args + ["watch", {"1": "once", "2": "install", "3": "remove"}[v]])
 
     def opt_19(self):
         files = sorted(f for f in os.listdir(self.app.paths.log_dir) if f.endswith(".log"))

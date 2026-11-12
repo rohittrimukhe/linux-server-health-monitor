@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 # Linux Server Health Monitor Enterprise - launcher
 # Finds a Python 3.6+ interpreter (RHEL/OL 7 ship python3.6) and starts the app.
 set -e

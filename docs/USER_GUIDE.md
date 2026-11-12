@@ -234,7 +234,45 @@ reach can write their results to a drop directory instead (`main.conf
 - **Prometheus/Grafana**: set `[integrations] prometheus_textfile = /var/lib/node_exporter/textfile_collector/lshme.prom`, or run `healthcheck export prometheus --output FILE`.
 - **JSON**: `healthcheck agent` or `healthcheck export json`.
 
-## 12. Troubleshooting
+## 12. Real-time monitoring and alerts
+
+```bash
+healthcheck watch install      # start continuous monitoring (systemd service, or cron every minute)
+healthcheck watch status       # active problems, last check, CPU/memory used by the watcher
+healthcheck watch once         # run one check now
+healthcheck watch remove       # stop and remove
+```
+
+Settings are in `main.conf [watch]`:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `interval` | 60 | Seconds between checks |
+| `confirm` | 2 | Consecutive bad checks before alerting (prevents flapping alerts) |
+| `repeat_minutes` | 60 | Reminder interval while a problem continues (0 = never) |
+| `recovery_alerts` | yes | Send a message when a problem clears |
+| `rotation_modules` | services, database, kvm, cockpit, network, backup, cluster, certificates | Heavier modules run one per check, in turn |
+| `rotation_minutes` | 15 | How often each rotated module repeats |
+| `alert_min_severity` | WARNING | `WARNING` or `CRITICAL` |
+| `alert_email` / `alert_to` | yes / (smtp.conf) | Email alerts and their recipients |
+| `syslog` | yes | Also write alerts to syslog (for SIEM forwarding) |
+| `webhook_url` | | POST JSON `{"text": ...}` to Teams/Slack-style webhooks |
+| `max_rss_mb` | 100 | The watcher restarts cleanly if it ever uses more memory |
+
+The watcher runs at nice 19 with the idle I/O class. Its systemd unit limits
+it to 5% CPU and 128 MB of memory. Thresholds come from `thresholds.conf`,
+critical services, ports and processes from `services.conf`, and email
+settings from `smtp.conf`.
+
+## 13. Branding
+
+Reports carry the LRS Services logo and "© 2026 LRS Services Pvt Ltd,
+Mumbai. All rights reserved." A customer logo set in `main.conf [general]
+logo` appears alongside it. The built-in PDF and PPTX writers, used when
+ReportLab or python-pptx are not installed, show the copyright as text
+without the logo image.
+
+## 14. Troubleshooting
 
 | Symptom | What to do |
 |---|---|

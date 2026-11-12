@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0
+
+- **Real-time monitoring** (`healthcheck watch`).
+  - Probes every minute read `/proc` and `statvfs` directly; heavier modules run one at a time in rotation.
+  - Alerts go out by email, syslog and webhook, with confirmation (no flapping), escalation, reminders and recovery messages.
+  - Runs as a systemd service limited to 5% CPU and 128 MB, or from cron.
+- **Lower resource impact.**
+  - Every run lowers its own CPU and I/O priority.
+  - Scheduled units cap CPU and memory.
+  - The watcher restarts itself if its memory grows.
+- **LRS Services branding.**
+  - The logo appears in HTML, PDF, XLSX and PPTX reports.
+  - "© 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved." appears in every report, email, the console, and every source file; a LICENSE file is added.
+- **Fixes found by testing against real software.**
+  - MariaDB/MySQL replication status was not read (the `-N` option dropped the column names), so stopped replication went unreported.
+  - The KVM module raised CRITICAL on hosts with only the `virsh` client and no libvirt daemon; it now skips.
+  - PostgreSQL now raises a finding for waiting lock requests.
+  - The Cockpit summary now shows its state on hosts without systemd.
+
 ## 1.1.0
 
 A complete re-implementation of the v1.0.0 prototype package, which was a

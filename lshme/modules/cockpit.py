@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Cockpit web console: packages, socket/service, listener, HTTPS reachability,
 TLS certificate and security-relevant configuration."""
 import re
@@ -134,4 +136,5 @@ def run(ctx, res):
     if "root" not in disallowed.split() and listening:
         res.add("INFO", "COCKPIT_ROOT_ALLOWED", "disallowed-users", "root may log in to Cockpit",
                 recommendation="Add root to /etc/cockpit/disallowed-users if policy requires named admin accounts.")
-    res.summary = "Cockpit %s on port %d" % ("active" if sock.get("ActiveState") == "active" else sock.get("ActiveState", "?"), port)
+    state = sock.get("ActiveState") or ("listening" if listening else "not listening")
+    res.summary = "Cockpit %s on port %d%s" % (state, port, (", HTTPS %s" % code) if code else "")

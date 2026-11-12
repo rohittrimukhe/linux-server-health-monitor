@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Static guards for RHEL/Oracle Linux 7 (Python 3.6) compatibility and read-only safety."""
 import ast
 import os

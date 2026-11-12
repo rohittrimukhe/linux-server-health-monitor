@@ -2,7 +2,7 @@
 
 ## Automated test suite
 
-`cd tests && python3 -m unittest discover -p 'test_*.py'` runs 82 tests:
+`cd tests && python3 -m unittest discover -p 'test_*.py'` runs 91 tests:
 
 | Test file | Covers |
 |---|---|
@@ -24,6 +24,24 @@
 - The PostgreSQL adapter ran against a real PostgreSQL 16 server with planted problems.
 - PDF, XLSX and PPTX output from the built-in writers was converted with LibreOffice and checked visually. ReportLab PDFs and the HTML report were checked as rendered images, including at phone width.
 
+## Verified against real software in the test container
+
+| Area | Real software | Problems planted and detected |
+|---|---|---|
+| KVM | libvirt 10.0 with a custom `test:///` hypervisor | Crashed VM (CRITICAL), paused VM, storage pool 95% full (CRITICAL), libvirt unreachable |
+| MySQL/MariaDB | MariaDB 10.11 server | Connections at 18 of 20 (CRITICAL), replication broken (CRITICAL; this found and fixed a parsing bug) |
+| PostgreSQL | PostgreSQL 16 server | Lock waits, idle-in-transaction session, long queries, inactive replication slot |
+| Cockpit | cockpit-ws 314 with its self-signed certificate | HTTPS probe 200, unencrypted access flagged, self-signed certificate noted |
+| Storage | Real ext4 filesystems on loop devices, and LVM PVs/VGs | 97% full, inodes at 100%, read-only mount, fstab entry not mounted (all CRITICAL) |
+| Real-time monitoring | Continuous `watch run` with a local SMTP server | Alert email after 2 checks, recovery email when the missing process started; nice 19, idle I/O, 170 ms CPU over 52 s, 30 MB memory |
+
+LVM logical volumes and snapshots, and md RAID, could not be created because
+the container's kernel lacks device-mapper targets and md support. Those
+checks are covered by unit tests with captured output.
+
+During development, `test_watch` failed once and then passed 75 times in a
+row. The cause was not found. If it fails in your CI, please report the output.
+
 ## Not yet verified (needs your environment)
 
 These need real infrastructure that a development container does not have.
@@ -33,7 +51,7 @@ but must be confirmed on site:
 - **Python 3.6 itself** (RHEL/OL 7). The code passes static 3.6 checks and runs on 3.8, but has not been run on a 3.6 interpreter.
 - **Oracle Database** 11g R2 and 19c against a live instance, including Data Guard and RMAN catalogs.
 - **MySQL/MariaDB, MongoDB and SQL Server** against live servers.
-- **KVM/libvirt, Cockpit, multipath/SAN, hardware RAID CLIs, IPMI, Pacemaker, NetBackup, Backup Exec, Veeam**.
+- **Production KVM hosts, multipath/SAN, hardware RAID CLIs, IPMI, Pacemaker, NetBackup, Backup Exec, Veeam**.
 - **systemd timers** on a real systemd host. Unit files were generated and checked, but never run by systemd in development.
 - **Your SMTP relay** (TLS and authentication).
 

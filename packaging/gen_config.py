@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Regenerate config/*.conf templates from the built-in defaults (keeps them in sync).
 
 Usage: python3 packaging/gen_config.py

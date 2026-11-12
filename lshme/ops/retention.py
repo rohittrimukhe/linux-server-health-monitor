@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Retention: per-category report expiry, compression, optional archiving, log
 and history pruning, config-backup rotation. Always previewable (dry run);
 every deletion is written to the audit log. The newest report of each

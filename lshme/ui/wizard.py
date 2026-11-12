@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """First-run / reconfiguration wizard.
 
 Discovers the system, then walks through identity, modules, thresholds,

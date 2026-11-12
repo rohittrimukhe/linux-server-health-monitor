@@ -1,5 +1,9 @@
 # Linux Server Health Monitor Enterprise (LSHME)
 
+![LRS Services](lshme/reports/lrs_logo.png)
+
+**© 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.** See [LICENSE](LICENSE).
+
 Read-only health monitoring, reporting and alerting for Linux servers. LSHME is
 a menu-driven application with a full command-line interface. It checks the
 operating system, storage, services, network, hardware, KVM, Cockpit,
@@ -13,7 +17,8 @@ whole fleet of servers from one central host.
 
 ```
  ==========================================================================
-   Linux Server Health Monitor Enterprise  v1.1.0
+   Linux Server Health Monitor Enterprise  v1.2.0
+   © 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
    Host: db01   2026-11-12 09:00
  ==========================================================================
   Load 0.42 / 0.51 / 0.48   Memory 63%   Fullest filesystem 81%
@@ -27,7 +32,8 @@ whole fleet of servers from one central host.
   [ 7] Cockpit web console               [17] Configuration & setup wizard
   [ 8] Network & connectivity            [18] Self-diagnostics
   [ 9] Generate reports (choose forma... [19] View logs
-  [10] SMTP & email settings             [ 0] Exit
+  [10] SMTP & email settings             [20] Real-time monitoring & alerts
+                                         [ 0] Exit
 ```
 
 ## Quick start
@@ -38,6 +44,7 @@ sudo healthcheck setup         # guided setup: identity, thresholds, services, d
 sudo healthcheck               # interactive menu
 sudo healthcheck run --formats all --email
 sudo healthcheck schedule install
+sudo healthcheck watch install   # real-time monitoring with alerts
 ```
 
 Requirements: Python 3.6 or newer, which RHEL/Oracle Linux 7 provide through
@@ -65,7 +72,39 @@ built-in PDF, XLSX and PPTX writers are used, so every format still works.
 | Security | SELinux, firewall, effective SSH policy, extra UID 0 accounts, empty passwords, auditd, pending security updates, last patch date, NOPASSWD sudo |
 | Also | TLS certificates (files and endpoints), Docker/Podman, Pacemaker/Corosync, HTTP endpoints, postfix queue, custom Nagios-style checks, configuration drift against a baseline, trend comparison, filesystem fill forecast |
 
-See [docs/MODULES.md](docs/MODULES.md) for every module and all 214 finding codes.
+See [docs/MODULES.md](docs/MODULES.md) for every module and all finding codes.
+
+## Real-time monitoring
+
+`healthcheck watch install` starts a lightweight watcher, using systemd or cron
+every minute on hosts without systemd:
+
+- **Every minute:** checks CPU, load, memory, swap, every filesystem (space,
+  inodes, read-only), hung NFS mounts, critical services, expected ports and
+  required processes. These read `/proc` directly, with no subprocesses apart
+  from one `systemctl` call.
+- **Rotation:** heavier modules (database, KVM, services, Cockpit, network,
+  backup, cluster, certificates) run one at a time, each every 15 minutes.
+- **Alerts:** sent by email, syslog and/or a webhook after 2 consecutive bad
+  checks (so short spikes don't trigger), again on escalation, as a reminder
+  every 60 minutes, and once on recovery. Alerts are suppressed during
+  maintenance windows.
+
+## Resource use
+
+LSHME is built to stay out of the way on production servers:
+
+| Run | Typical cost (measured) |
+|---|---|
+| Real-time check (one tick) | about 2 ms of CPU inside the running watcher; about 30 MB resident; 170 ms of CPU per minute of checks including startup |
+| Full check with HTML and JSON reports | about 2.5 s; 0.4 s of CPU |
+| Full check with all 7 formats | about 3.3 s; 1.5 s of CPU; under 80 MB of memory |
+
+How it keeps the cost down:
+- Every run lowers its own priority (nice 10, and 19 for the watcher) and uses the idle I/O class.
+- systemd units cap CPU and memory: the watcher at 5% CPU and 128 MB, scheduled reports at 50% CPU and 512 MB.
+- Every command has a timeout, and hung network mounts are probed in a helper thread.
+- Runs are locked so they never overlap, and the watcher restarts itself if its memory grows past 100 MB.
 
 ## Safety
 

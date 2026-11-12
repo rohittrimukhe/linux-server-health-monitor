@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """TLS certificate expiry for configured files, directories and network endpoints."""
 import re
 import ssl

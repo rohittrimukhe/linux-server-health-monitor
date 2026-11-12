@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Management presentation (PPTX).
 
 With python-pptx: title, executive summary, module health table, key issues,
@@ -102,7 +104,16 @@ def _render_pptx(doc, slides, path):
         p.runs[0].font.size, p.runs[0].font.bold = Pt(26), True
         p.runs[0].font.color.rgb = _rgb("#FFFFFF")
         foot = slide.shapes.add_textbox(Inches(0.4), Inches(7.05), Inches(12.5), Inches(0.3)).text_frame
-        foot.text = "%s · %s" % (doc.subtitle, time.strftime("%Y-%m-%d", time.localtime(doc.generated)))
+        foot.text = "%s · %s · %s" % (doc.subtitle, time.strftime("%Y-%m-%d", time.localtime(doc.generated)), doc.copyright)
+        if doc.brand_logo:
+            try:
+                plate = slide.shapes.add_shape(1, Inches(11.0), Inches(0.12), Inches(2.15), Inches(0.66))
+                plate.fill.solid()
+                plate.fill.fore_color.rgb = _rgb("#FFFFFF")
+                plate.line.fill.background()
+                slide.shapes.add_picture(doc.brand_logo, Inches(11.05), Inches(0.15), height=Inches(0.6))
+            except Exception:
+                pass
         foot.paragraphs[0].runs[0].font.size = Pt(10)
         foot.paragraphs[0].runs[0].font.color.rgb = _rgb("#5B6876")
 
@@ -123,6 +134,19 @@ def _render_pptx(doc, slides, path):
                 p.text = b
                 p.runs[0].font.size = Pt(20 if i == 0 else 14)
                 p.runs[0].font.color.rgb = _rgb("#DCE6F1")
+            if doc.brand_logo:
+                try:
+                    plate = s.shapes.add_shape(1, Inches(0.8), Inches(0.6), Inches(4.4), Inches(1.4))
+                    plate.fill.solid()
+                    plate.fill.fore_color.rgb = _rgb("#FFFFFF")
+                    plate.line.fill.background()
+                    s.shapes.add_picture(doc.brand_logo, Inches(0.95), Inches(0.7), height=Inches(1.2))
+                except Exception:
+                    pass
+            cr = s.shapes.add_textbox(Inches(0.8), Inches(6.8), Inches(9), Inches(0.4)).text_frame
+            cr.text = doc.copyright
+            cr.paragraphs[0].runs[0].font.size = Pt(12)
+            cr.paragraphs[0].runs[0].font.color.rgb = _rgb("#DCE6F1")
             badge = s.shapes.add_shape(1, Inches(10.3), Inches(5.6), Inches(2.4), Inches(1.1))
             badge.fill.solid()
             badge.fill.fore_color.rgb = _rgb(SEV_COLORS.get(doc.status, "#555555"))
@@ -232,7 +256,7 @@ def _render_builtin(doc, slides, path):
         if title == "__title__":
             shapes.append(_box(2, "bg", 0, 0, W, H, [], "0B3D6E"))
             shapes.append(_box(3, "title", 700000, 1800000, W - 1400000, 1000000, [(doc.title, 40, True, "FFFFFF")]))
-            shapes.append(_box(4, "sub", 700000, 2900000, W - 1400000, 3000000, [(b, 18 if i == 0 else 14, False, "DCE6F1") for i, b in enumerate(bullets)]))
+            shapes.append(_box(4, "sub", 700000, 2900000, W - 1400000, 3000000, [(b, 18 if i == 0 else 14, False, "DCE6F1") for i, b in enumerate(bullets)] + [(doc.copyright, 12, False, "DCE6F1")]))
             shapes.append(_box(5, "score", W - 3200000, H - 1500000, 2500000, 900000, [("%s  %s" % (doc.score, doc.status), 22, True, "FFFFFF")],
                                SEV_COLORS.get(doc.status, "#555555").lstrip("#")))
         else:
@@ -248,7 +272,7 @@ def _render_builtin(doc, slides, path):
                     sev = str(r[0]) if r else ""
                     lines.append((" | ".join(str(c) for c in r), 11, False, SEV_COLORS.get(sev, "#1D2733").lstrip("#") if sev in ("CRITICAL", "WARNING") else "1D2733"))
             shapes.append(_box(3, "body", 500000, 1000000, W - 1000000, H - 1500000, lines))
-            shapes.append(_box(4, "footer", 400000, H - 420000, W - 800000, 300000, [(doc.subtitle, 10, False, "5B6876")]))
+            shapes.append(_box(4, "footer", 400000, H - 420000, W - 800000, 300000, [("%s · %s" % (doc.subtitle, doc.copyright), 10, False, "5B6876")]))
         xml_slides.append('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld %s><p:cSld><p:spTree>%s%s</p:spTree></p:cSld>'
                           '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>' % (NS, EMPTY_TREE, "".join(shapes)))
     n = len(xml_slides)

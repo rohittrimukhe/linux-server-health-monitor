@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Dependency-free PDF writer used when ReportLab is not installed.
 
 Produces a clean multi-page A4 document with headings, wrapped paragraphs and
@@ -130,7 +132,7 @@ SEV_RGB = {"CRITICAL": (0.78, 0.16, 0.16), "WARNING": (0.85, 0.5, 0.0), "UNKNOWN
 
 
 def render(doc, path):
-    p = MiniPDF(doc.title, "%s - %s" % (doc.subtitle, time.strftime("%Y-%m-%d %H:%M", time.localtime(doc.generated))))
+    p = MiniPDF(doc.title, "%s - %s - %s" % (doc.subtitle, time.strftime("%Y-%m-%d %H:%M", time.localtime(doc.generated)), doc.copyright))
     p.rect(0, PAGE_H - 110, PAGE_W, 110, (0.04, 0.24, 0.43))
     p.y = PAGE_H - 50
     p.text(doc.title, 22, "F2", color=(1, 1, 1))

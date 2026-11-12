@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Result data model shared by modules, the engine, reports and the fleet collector."""
 import datetime
 import time

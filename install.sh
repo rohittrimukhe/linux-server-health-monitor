@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 # Linux Server Health Monitor Enterprise - installer / upgrader
 #
 #   sudo ./install.sh                     install or upgrade to /opt/lshme

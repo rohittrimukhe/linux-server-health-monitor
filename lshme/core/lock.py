@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Exclusive run lock so scheduled and manual runs never overlap."""
 import fcntl
 import os
