@@ -59,7 +59,8 @@ class Menu(object):
         ("11", "Scheduling & automation"), ("12", "Report & log retention"), ("13", "History & trends"),
         ("14", "Baseline & configuration drift"), ("15", "Maintenance mode"), ("16", "Multi-server (fleet)"),
         ("17", "Configuration & setup wizard"), ("18", "Self-diagnostics"), ("19", "View logs"),
-        ("20", "Real-time monitoring & alerts"), ("21", "Exclusions (accepted findings)"), ("0", "Exit"),
+        ("20", "Real-time monitoring & alerts"), ("21", "Exclusions (accepted findings)"),
+        ("22", "Dashboard, SLA & inventory"), ("0", "Exit"),
     ]
 
     def loop(self):
@@ -317,6 +318,23 @@ class Menu(object):
             extra = ["--component", f.component] if scope == "exact" else []
             cli_main(args + ["exclude", "add", name, "--code", f.code, "--module", f.module, "--reason", reason,
                              "--owner", owner, "--until", until] + extra)
+
+    def opt_22(self):
+        from lshme.ui.cli import main as cli_main
+        args = ["--home", self.app.home] if self.app.home else ["--config-dir", self.app.paths.config_dir]
+        C.out("  [1] Build fleet dashboard        [2] SLA report (this month)   [3] SLA report (choose month)\n"
+              "  [4] Asset inventory (this host)  [5] Asset inventory (fleet)   [6] Install Cockpit page   [0] Back")
+        v = C.ask("Choice", "0", choices=[str(i) for i in range(7)])
+        if v == "1":
+            cli_main(args + ["dashboard", "build"])
+        elif v == "2":
+            cli_main(args + ["sla"])
+        elif v == "3":
+            cli_main(args + ["sla", "--month", C.ask("Month (YYYY-MM)", time.strftime("%Y-%m"))])
+        elif v in ("4", "5"):
+            cli_main(args + ["inventory"] + (["--fleet"] if v == "5" else []))
+        elif v == "6":
+            cli_main(args + ["cockpit-page", "install"])
 
     def opt_19(self):
         files = sorted(f for f in os.listdir(self.app.paths.log_dir) if f.endswith(".log"))

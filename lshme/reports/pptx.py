@@ -39,10 +39,10 @@ def slides_for(doc):
     else:
         bullets.append("No critical issues detected.")
     out.append(("Executive summary", bullets, None))
-    hdr = ["Module" if doc.kind == "host" else "Server", "Score", "Status", "Crit", "Warn"]
+    hdr = doc.overview()[1][:5]
     rows = [r[:5] for r in doc.module_rows]
     for i in range(0, max(1, len(rows)), 14):
-        out.append(("Health by %s%s" % ("module" if doc.kind == "host" else "server", "" if i == 0 else " (cont.)"), [], (hdr, rows[i:i + 14])))
+        out.append(("%s%s" % (doc.overview()[0], "" if i == 0 else " (cont.)"), [], (hdr, rows[i:i + 14])))
     key = [f for f in doc.findings if f["severity"] in ("CRITICAL", "WARNING")]
     for i in range(0, len(key), 8):
         out.append(("Key issues%s" % ("" if i == 0 else " (cont.)"), [], (["Severity", "Component", "Issue"],

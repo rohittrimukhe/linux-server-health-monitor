@@ -88,7 +88,7 @@ def render(doc, path, logo=""):
                 style.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#f7f9fb")))
         for i, r in enumerate(rows[:max_rows], 1):
             for j, c in enumerate(r):
-                if str(c) in ("CRITICAL", "WARNING", "UNKNOWN", "READ-ONLY", "STALE", "MISSING", "NOT LISTENING", "EXPIRED", "FAILED"):
+                if str(c) in ("CRITICAL", "WARNING", "UNKNOWN", "READ-ONLY", "STALE", "MISSING", "NOT LISTENING", "EXPIRED", "FAILED", "BREACH", "UNREACHABLE"):
                     col = SEV_COLORS.get(str(c), SEV_COLORS["CRITICAL"])
                     style.append(("BACKGROUND", (j, i), (j, i), colors.HexColor(col)))
                     style.append(("TEXTCOLOR", (j, i), (j, i), colors.white))
@@ -149,7 +149,7 @@ def render(doc, path, logo=""):
                                  ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
     story += [Spacer(1, 10), summary, Spacer(1, 10)]
     if doc.charts["modules"]:
-        story.append(bar_chart(doc.charts["modules"], "Module scores" if doc.kind == "host" else "Server scores", True))
+        story.append(bar_chart(doc.charts["modules"], doc.overview()[2], True))
     if doc.charts["filesystems"]:
         story.append(bar_chart(doc.charts["filesystems"], "Filesystem usage %"))
     sh = [(t, s) for t, s in doc.charts["score_history"] if s is not None]
@@ -167,8 +167,8 @@ def render(doc, path, logo=""):
         dr.add(String(0, 98, "Health score history (days since %s)" % time.strftime("%Y-%m-%d", time.localtime(t0)),
                       fontSize=9, fontName="Helvetica-Bold", fillColor=colors.HexColor("#0b3d6e")))
         story.append(dr)
-    story.append(Paragraph("Module health" if doc.kind == "host" else "Servers", st["h1"]))
-    story.append(table(["Module" if doc.kind == "host" else "Server", "Score", "Status", "Critical", "Warning", "Summary"],
+    story.append(Paragraph(doc.overview()[0], st["h1"]))
+    story.append(table(doc.overview()[1],
                        doc.module_rows, [22, 7, 10, 7, 7, 47]))
     key = [f for f in doc.findings if f["severity"] in ("CRITICAL", "WARNING", "UNKNOWN")]
     story.append(Paragraph("Issues requiring attention (%d)" % len(key), st["h1"]))

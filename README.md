@@ -33,6 +33,8 @@ whole fleet of servers from one central host.
   [ 8] Network & connectivity            [18] Self-diagnostics
   [ 9] Generate reports (choose forma... [19] View logs
   [10] SMTP & email settings             [20] Real-time monitoring & alerts
+                                         [21] Exclusions (accepted findings)
+                                         [22] Dashboard, SLA & inventory
                                          [ 0] Exit
 ```
 
@@ -89,6 +91,15 @@ every minute on hosts without systemd:
   checks (so short spikes don't trigger), again on escalation, as a reminder
   every 60 minutes, and once on recovery. Alerts are suppressed during
   maintenance windows.
+
+## Dashboards, SLA and inventory
+
+| Feature | Command | What you get |
+|---|---|---|
+| Cockpit page | `healthcheck cockpit-page install` (done automatically by `install.sh` when Cockpit is present) | An **LSHME Health** entry in Cockpit's menu showing the score, issues, real-time problems and the latest reports, with a *Run health check now* button. Static files only; the page updates itself when new results are written |
+| Fleet dashboard | `healthcheck dashboard build` (rebuilt after every `fleet run`), `healthcheck dashboard serve` | One self-contained HTML page with every server's status, filters, search, stale and unreachable detection, and a drill-down report per server. Optional minimal read-only web server (localhost by default) |
+| Uptime/SLA report | `healthcheck sla --month 2026-10` (attached automatically to the monthly schedule) | Availability % per server and component, downtime vs degraded time, incident log, mean time to recover, monitoring coverage and SLA breaches, from the real-time incident history |
+| Asset inventory | `healthcheck inventory` / `healthcheck inventory --fleet` | Servers, disks, filesystems, network, packages, databases, VMs and listening services as XLSX/CSV/JSON for CMDB updates and audits, for one server or the whole fleet |
 
 ## Exclusions
 

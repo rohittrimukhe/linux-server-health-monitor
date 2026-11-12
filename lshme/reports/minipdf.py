@@ -146,8 +146,8 @@ def render(doc, path):
     p.y -= 6
     p.text("Overall health: %s   Score: %s/100" % (doc.status, doc.score), 16, "F2", color=SEV_RGB.get(doc.status, (0, 0, 0)))
     p.text("Critical %d   Warning %d   Unknown %d   Info %d" % (c.get("CRITICAL", 0), c.get("WARNING", 0), c.get("UNKNOWN", 0), c.get("INFO", 0)), 10)
-    p.heading("Module health" if doc.kind == "host" else "Servers")
-    p.table(["Module" if doc.kind == "host" else "Server", "Score", "Status", "Crit", "Warn", "Summary"], doc.module_rows)
+    p.heading(doc.overview()[0])
+    p.table(doc.overview()[1], doc.module_rows)
     key = [f for f in doc.findings if f["severity"] in ("CRITICAL", "WARNING", "UNKNOWN")]
     p.heading("Issues requiring attention (%d)" % len(key))
     for f in key:

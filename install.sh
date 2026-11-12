@@ -142,6 +142,11 @@ if [ $UPGRADE -eq 1 ]; then
   fi
 fi
 
+# Cockpit page (static files only) when Cockpit is present
+if [ -d /usr/share/cockpit ]; then
+  if "$BIN" --config-dir "$CONFIG" cockpit-page install >/dev/null 2>&1; then ok "Cockpit page installed (menu: LSHME Health)"; else warn "Cockpit page not installed"; fi
+fi
+
 "$BIN" --config-dir "$CONFIG" doctor >/dev/null 2>&1 && ok "self-diagnostics passed" || warn "self-diagnostics reported problems: run 'healthcheck doctor'"
 
 say ""

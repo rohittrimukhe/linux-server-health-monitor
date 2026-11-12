@@ -293,7 +293,79 @@ Menu option 21 runs a fresh check and lets you pick findings by number to
 exclude. Rules are stored in `exclusions.conf`, and every change is backed up
 and recorded in the audit log. See `docs/MODULES.md` for all finding codes.
 
-## 14. Branding
+## 14. Cockpit page
+
+`install.sh` adds an **LSHME Health** page to Cockpit whenever Cockpit is
+installed. You can also run `healthcheck cockpit-page install`, or add
+`--user` to install for your own account only.
+
+The page shows:
+- the latest score and status, issues with recommended actions, and module health;
+- the real-time watcher's active problems and its own CPU and memory use;
+- buttons to open the latest HTML, PDF or JSON report.
+
+**Run health check now** runs a low-priority check and needs administrative
+access in Cockpit. The page watches the result files and refreshes itself; it
+does no polling and runs no background service. To remove it, run
+`healthcheck cockpit-page remove`.
+
+## 15. Fleet web dashboard
+
+Every `healthcheck fleet run` saves each server's latest result and rebuilds
+`reports/_dashboard/index.html`, a single self-contained page that refreshes
+every 5 minutes. It shows each server's status, score, top issues, group and
+environment. Servers whose last result is older than `stale_hours` are marked
+STALE, and failed collections UNREACHABLE. Each server has a full drill-down
+report.
+
+```bash
+healthcheck dashboard build                       # rebuild from the latest results
+healthcheck dashboard serve --port 8088           # read-only web server on 127.0.0.1
+healthcheck dashboard serve --bind 0.0.0.0        # serve to the network (no login: restrict with a firewall/proxy)
+```
+
+The settings are in `main.conf [dashboard]`: `title`, `stale_hours` (default
+26), `refresh_seconds` (default 300) and `auto_build` (default yes).
+
+## 16. Uptime / SLA report
+
+The real-time watcher records every confirmed incident: when it opened,
+escalated and closed. `healthcheck sla` turns that history into an
+availability report:
+
+- **Availability**: time without a confirmed CRITICAL problem, divided by the period. Overlapping incidents are counted once.
+- **Degraded time**: time with WARNING-only problems.
+- **Per-component availability**: for services, filesystems, ports, processes, VMs, databases and so on.
+- **Incident log**: with duration, mean time to recover and the longest incident.
+- **Monitoring coverage**: if the watcher was stopped for part of the month, the report says so.
+- **Breaches**: anything below `main.conf [sla] target_percent` (default 99.9) is a finding.
+
+```bash
+healthcheck sla                         # current month to date
+healthcheck sla --month 2026-10 --formats html,pdf,xlsx,json
+```
+
+The monthly schedule attaches the previous month's SLA report automatically
+(`sla_report = yes` in `[schedule:monthly]`).
+
+## 17. Asset inventory
+
+```bash
+healthcheck inventory                          # this server: XLSX + CSV + JSON
+healthcheck inventory --fleet                  # every server in servers.conf over SSH
+healthcheck inventory --formats xlsx,html,pdf
+```
+
+The inventory has eight sheets:
+- **Servers**: manufacturer, model, serial, BIOS, CPU, memory, OS, kernel, virtualization and counts.
+- **Disks**, **Filesystems** and **Network** (MAC, speed, addresses).
+- **Packages**: name, version, architecture, vendor and install date.
+- **Databases**: engine, instance, version and owner.
+- **VMs** and **Services** (listening ports).
+
+The monthly schedule attaches it as XLSX (`inventory_report = yes`).
+
+## 18. Branding
 
 Reports carry the LRS Services logo and "© 2026 LRS Services Pvt Ltd,
 Mumbai. All rights reserved." A customer logo set in `main.conf [general]
@@ -301,7 +373,7 @@ logo` appears alongside it. The built-in PDF and PPTX writers, used when
 ReportLab or python-pptx are not installed, show the copyright as text
 without the logo image.
 
-## 15. Troubleshooting
+## 19. Troubleshooting
 
 | Symptom | What to do |
 |---|---|

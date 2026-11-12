@@ -278,6 +278,7 @@ def evaluate(state, current, now, confirm, repeat_seconds, min_sev, recovery):
     """Update per-problem state; return (new_or_repeat_alerts, recoveries)."""
     alerts, recovered = [], []
     problems = state.setdefault("problems", {})
+    events = state.setdefault("pending_events", [])
     floor = SEV_RANK[min_sev]
     for key, (sev, comp, msg, rec) in current.items():
         p = problems.get(key)
@@ -286,6 +287,13 @@ def evaluate(state, current, now, confirm, repeat_seconds, min_sev, recovery):
         p.update(count=p["count"] + 1, component=comp, message=msg, recommendation=rec)
         escalated = p["alerted"] and SEV_RANK[sev] > SEV_RANK[p["alerted"]]
         p["severity"] = sev
+        if p["count"] >= confirm and SEV_RANK[sev] >= SEV_RANK["WARNING"]:  # incident log (for SLA reports)
+            if not p.get("logged"):
+                events.append({"ts": p["since"], "event": "open", "key": key, "severity": sev, "component": comp, "message": msg})
+                p["logged"] = sev
+            elif SEV_RANK[sev] > SEV_RANK[p["logged"]]:
+                events.append({"ts": now, "event": "escalate", "key": key, "severity": sev, "component": comp, "message": msg})
+                p["logged"] = sev
         if SEV_RANK[sev] < floor or p["count"] < confirm:
             continue
         if not p["alerted"] or escalated or (repeat_seconds and now - p["last_alert"] >= repeat_seconds):
@@ -295,6 +303,9 @@ def evaluate(state, current, now, confirm, repeat_seconds, min_sev, recovery):
     for key in list(problems):
         if key not in current:
             p = problems.pop(key)
+            if p.get("logged"):
+                events.append({"ts": now, "event": "close", "key": key, "severity": p["logged"],
+                               "component": p.get("component", ""), "message": p.get("message", "")})
             if p["alerted"] and recovery:
                 recovered.append(dict(p, key=key, kind="RECOVERED", duration=now - p["since"]))
     return alerts, recovered
@@ -394,6 +405,24 @@ class Watcher(object):
             json.dump(self.state, f)
         os.replace(tmp, self.state_path)
 
+    @property
+    def events_path(self):
+        return os.path.join(self.app.paths.data_dir, "watch_events.jsonl")
+
+    def flush_events(self, now):
+        """Append confirmed incident events and keep a per-day check count (monitoring coverage)."""
+        events = self.state.pop("pending_events", [])
+        if events:
+            with open(self.events_path, "a", encoding="utf-8") as f:
+                for e in events:
+                    f.write(json.dumps(e, sort_keys=True) + "\n")
+        cov = self.state.setdefault("coverage", {})
+        day = time.strftime("%Y-%m-%d", time.localtime(now))
+        cov[day] = cov.get(day, 0) + 1
+        self.state["interval"] = max(10, int(float(setting(self.app.cfg, "interval"))))
+        for old in sorted(cov)[:-400]:
+            del cov[old]
+
     def tick(self, now=None):
         now = now or time.time()
         cpu0 = time.process_time()
@@ -415,6 +444,7 @@ class Watcher(object):
         if alerts or recovered:
             subject, body, status = format_alert(os.uname()[1], alerts, recovered)
             delivery = deliver(self.app, subject, body, status)
+        self.flush_events(now)
         self.state["last_tick"] = now
         self.state["last_tick_cpu_ms"] = round((time.process_time() - cpu0) * 1000, 1)
         self.state["rss_mb"] = round(rss_mb(), 1)

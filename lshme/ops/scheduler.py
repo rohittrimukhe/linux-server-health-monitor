@@ -31,6 +31,8 @@ class Schedule(object):
         self.send_policy = s.get("send_policy", "")
         self.to = as_list(s.get("to"))
         self.cc = as_list(s.get("cc"))
+        self.sla_report = as_bool(s.get("sla_report", "no"), False)          # attach last month's SLA report
+        self.inventory_report = as_bool(s.get("inventory_report", "no"), False)  # attach the asset inventory
 
     def validate(self):
         errors = []
