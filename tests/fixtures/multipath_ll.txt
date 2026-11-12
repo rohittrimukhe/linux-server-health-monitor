@@ -1,0 +1,13 @@
+mpatha (3600508b4000156d700012000000b0000) dm-0 HP,HSV210
+size=10G features='1 queue_if_no_path' hwhandler='0' wp=rw
+|-+- policy='round-robin 0' prio=1 status=active
+| |- 0:0:0:1 sda 8:0   active ready running
+| `- 1:0:0:1 sdc 8:32  active ready running
+`-+- policy='round-robin 0' prio=1 status=enabled
+  |- 0:0:1:1 sdb 8:16  failed faulty running
+  `- 1:0:1:1 sdd 8:48  active ready running
+mpathb (3600508b4000156d700012000000c0000) dm-1 HP,HSV210
+size=20G features='1 queue_if_no_path' hwhandler='0' wp=rw
+`-+- policy='round-robin 0' prio=0 status=enabled
+  |- 0:0:0:2 sde 8:64  failed faulty offline
+  `- 1:0:0:2 sdf 8:80  failed faulty offline

@@ -1,0 +1,35 @@
+Domain: 'oradb01'
+  state.state=1
+  state.reason=1
+  cpu.time=1000000000000
+  balloon.current=16777216
+  balloon.maximum=16777216
+  balloon.available=16000000
+  balloon.unused=4000000
+  vcpu.current=4
+  block.count=1
+  block.0.name=vda
+  block.0.path=/var/lib/libvirt/images/oradb01.qcow2
+  block.0.rd.bytes=1000
+  block.0.wr.bytes=2000
+  block.0.capacity=107374182400
+  block.0.allocation=53687091200
+  net.count=1
+  net.0.name=vnet0
+  net.0.rx.bytes=5000
+  net.0.tx.bytes=6000
+
+Domain: 'app01'
+  state.state=6
+  cpu.time=5
+  balloon.current=4194304
+  vcpu.current=2
+  block.count=0
+  net.count=0
+
+Domain: 'web01'
+  state.state=5
+  balloon.current=2097152
+  vcpu.current=2
+  block.count=0
+  net.count=0
