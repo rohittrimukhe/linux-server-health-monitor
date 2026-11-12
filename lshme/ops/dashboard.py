@@ -168,7 +168,7 @@ def build(cfg, paths, outdir=None, stale_hours=None):
     if items:
         charts_html = ('<div class="charts"><div class="cardc"><h3>Server status</h3><div class="pie">%s%s</div></div>'
                        '<div class="cardc"><h3>Health score by server (lowest first)</h3>%s</div></div>') % (
-            ch.donut(pie_items, "servers", 170), ch.legend(pie_items), ch.columns(scores[:30], 100, "", height=230))
+            ch.pie_block(pie_items, "servers"), "", ch.columns(scores[:30], 100, "", height=250, y_title="Health score"))
     opts = "".join('<option value="%s">%s</option>' % (E(g), E(g)) for g in sorted(x for x in groups if x))
     title = cfg.get("main", "dashboard", "title", "") or "Infrastructure Health Dashboard"
     page = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'

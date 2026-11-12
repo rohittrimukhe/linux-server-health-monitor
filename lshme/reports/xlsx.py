@@ -113,7 +113,7 @@ def chart_data(doc):
 
 
 def _add_charts(wb, data):
-    from openpyxl.chart import BarChart, PieChart, Reference
+    from openpyxl.chart import BarChart, Reference
     from openpyxl.chart.series import DataPoint
     if not (data["severity"] or data["scores"] or data["filesystems"]):
         return
@@ -134,9 +134,14 @@ def _add_charts(wb, data):
         cats = Reference(ws, min_col=1, min_row=start + 1, max_row=start + n)
         vals = Reference(ws, min_col=2, min_row=start + 1, max_row=start + n)
         if key == "severity":
-            c = PieChart()
+            from openpyxl.chart import DoughnutChart
+            from openpyxl.chart.label import DataLabelList
+            c = DoughnutChart(holeSize=55)
             c.add_data(vals)
             c.set_categories(cats)
+            c.dataLabels = DataLabelList()
+            c.dataLabels.showPercent = True
+            c.dataLabels.showVal = False
             for i, color in enumerate(("C62828", "EF8F00", "6D6D6D", "1565C0")[:n]):
                 pt = DataPoint(idx=i)
                 pt.graphicalProperties.solidFill = color
@@ -149,6 +154,10 @@ def _add_charts(wb, data):
             c.legend = None
             c.y_axis.scaling.min, c.y_axis.scaling.max = 0, 100
             c.series[0].graphicalProperties.solidFill = "0B5CAD"
+            from openpyxl.chart.label import DataLabelList
+            c.dataLabels = DataLabelList()
+            c.dataLabels.showVal = True
+            c.gapWidth = 60
         c.title = title
         c.height, c.width = 9, 16
         ws.add_chart(c, "%s%d" % ("D", 1 + idx * 20))

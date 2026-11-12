@@ -19,7 +19,7 @@ class SvgChartTest(unittest.TestCase):
         for svg in (charts.donut([("A", 3, "#f00"), ("B", 1, "#0f0"), ("C", 0, "#00f")], "t"),
                     charts.donut([("Only", 5, "#f00")], "single"), charts.donut([], "empty"),
                     charts.columns([("/", 23.4), ("/u01", 95), ("/archive<x>", 81)], 100, "%", score_mode=False)):
-            xml.dom.minidom.parseString(svg)  # raises on malformed markup
+            xml.dom.minidom.parseString(svg[:svg.rindex("</svg>") + 6])  # raises on malformed markup (columns() appends an HTML colour key)
         two = charts.donut([("A", 1, "#f00"), ("B", 1, "#0f0")], "t")
         self.assertEqual(two.count("<path"), 2)
         self.assertIn("&lt;x&gt;", charts.columns([("/archive<x>", 81)]))   # labels are escaped
@@ -35,7 +35,8 @@ class SvgChartTest(unittest.TestCase):
         page = slurp(path)
         self.assertIn("Findings by severity", page)
         self.assertIn("Module status", page)
-        self.assertIn("Filesystem usage %", page)
+        self.assertIn("Filesystem usage", page)
+        self.assertIn("worst first", page)
         home.cleanup()
 
 
@@ -57,7 +58,7 @@ class NativeChartTest(unittest.TestCase):
         wb = openpyxl.load_workbook([f for f in self.files if f.endswith(".xlsx")][0])
         self.assertIn("Charts", wb.sheetnames)
         kinds = sorted(type(c).__name__ for c in wb["Charts"]._charts)
-        self.assertIn("PieChart", kinds)
+        self.assertIn("DoughnutChart", kinds)
         self.assertIn("BarChart", kinds)
 
     def test_pptx_has_chart_slide(self):
