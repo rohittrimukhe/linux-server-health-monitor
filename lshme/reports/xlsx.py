@@ -48,7 +48,7 @@ def sheets_for(doc, run=None):
         summary.append(["Note", doc.banner])
     summary.append([])
     hdr_idx = [len(summary)]
-    summary.append(["Module" if doc.kind == "host" else "Server", "Score", "Status", "Critical", "Warning", "Summary"])
+    summary.append(list(doc.overview()[1]))
     summary += [list(r) for r in doc.module_rows]
     out.append((sheet_name("Summary", used), summary, hdr_idx))
     f_rows = [["Severity", "Module", "Code", "Component", "Message", "Recommendation", "Evidence"]]

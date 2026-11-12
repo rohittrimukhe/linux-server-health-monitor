@@ -139,6 +139,25 @@ def build_parser():
     x.add_argument("--owner", default="", help="who approved it")
     x.add_argument("--until", default="", help="expiry date YYYY-MM-DD (blank = no expiry)")
 
+    iv = sub.add_parser("inventory", help="asset inventory (hardware, OS, packages, databases, VMs, network) for CMDB/audits")
+    iv.add_argument("--json", action="store_true", help="print this server's inventory as JSON (used by fleet collection)")
+    iv.add_argument("--fleet", action="store_true", help="collect from every server in servers.conf over SSH")
+    iv.add_argument("--servers", help="with --fleet: limit to these server names")
+    iv.add_argument("--formats", default="xlsx,csv,json", help="xlsx,csv,json,html,pdf,txt")
+
+    db = sub.add_parser("dashboard", help="fleet web dashboard (self-contained HTML, optional read-only web server)")
+    db.add_argument("action", nargs="?", default="build", choices=("build", "serve"))
+    db.add_argument("--bind", default="127.0.0.1", help="serve: address to listen on (default 127.0.0.1)")
+    db.add_argument("--port", type=int, default=8088)
+
+    cp = sub.add_parser("cockpit-page", help="install/remove the 'LSHME Health' page in Cockpit")
+    cp.add_argument("action", choices=("install", "remove"))
+    cp.add_argument("--user", action="store_true", help="install for the current user only (~/.local/share/cockpit)")
+
+    sl = sub.add_parser("sla", help="availability/SLA report from the real-time monitoring incident log")
+    sl.add_argument("--month", help="YYYY-MM (default: current month to date)")
+    sl.add_argument("--formats", default="html,pdf,xlsx")
+
     s = sub.add_parser("schedule", help="manage scheduled runs")
     s.add_argument("action", choices=("status", "install", "remove", "show"))
 
@@ -356,6 +375,63 @@ def dispatch(app, cmd, args):
             app.save_config("exclusions")
             app.audit("exclusion-remove", rule=args.name)
             C.out("Exclusion '%s' removed" % args.name)
+    elif cmd == "inventory":
+        from lshme.ops import inventory
+        if args.json:
+            sys.stdout.write(json.dumps(inventory.collect(app.runner)) + "\n")
+            return 0
+        fm = [f.strip() for f in args.formats.split(",") if f.strip()]
+        bad = [f for f in fm if f not in ("xlsx", "csv", "json", "html", "pdf", "txt")]
+        if bad:
+            raise ValueError("unknown inventory format(s): %s" % ", ".join(bad))
+        inv, files, errors = inventory.export(app, fm, args.fleet, args.servers.split(",") if args.servers else None)
+        C.table(["Sheet", "Records"], [[s, len(inv.get(s, []))] for s in inventory.SHEETS])
+        for host, err in errors.items():
+            C.out(C.c("  %s: %s" % (host, err), "red"))
+        for f in files:
+            C.out("  " + f)
+    elif cmd == "dashboard":
+        from lshme.ops import dashboard
+        path, n, counts = dashboard.build(app.cfg, app.paths)
+        C.out("Dashboard: %s (%d servers: %s)" % (path, n, ", ".join("%s %d" % kv for kv in sorted(counts.items())) or "none"))
+        if args.action == "serve":
+            from lshme.core.priority import set_priority
+            set_priority(19, True)
+            httpd = dashboard.serve(os.path.dirname(path), args.bind, args.port)
+            C.out("Serving read-only on http://%s:%d/  (Ctrl+C to stop)" % (args.bind, args.port))
+            if args.bind not in ("127.0.0.1", "localhost", "::1"):
+                C.out(C.c("Note: the dashboard has no login; restrict access with a firewall or a reverse proxy.", "yellow"))
+            try:
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                pass
+            finally:
+                httpd.server_close()
+    elif cmd == "cockpit-page":
+        from lshme.ops import cockpit_page
+        if args.action == "install":
+            dest = cockpit_page.install(app, args.user)
+            app.audit("cockpit-page-install", path=dest)
+            C.out(C.c("Cockpit page installed in %s. Open Cockpit and choose 'LSHME Health' in the menu." % dest, "green"))
+        else:
+            dest = cockpit_page.remove(args.user)
+            app.audit("cockpit-page-remove", path=dest)
+            C.out("Removed %s" % dest if dest else "Cockpit page was not installed")
+    elif cmd == "sla":
+        from lshme import reports
+        from lshme.core.util import fmt_duration
+        from lshme.ops import sla
+        result, doc, outdir, files, notes = sla.generate(app, args.month or sla.current_month(), reports.parse_formats(args.formats))
+        C.out(C.c(" %s " % doc.subtitle, "title"))
+        C.out("Availability %.3f%%  downtime %s  degraded %s  incidents %d (critical %d)  MTTR %s  coverage %s" % (
+            result["availability"], fmt_duration(result["downtime"]), fmt_duration(result["degraded"]), len(result["incidents"]),
+            result["critical_incidents"], fmt_duration(result["mttr"]) if result["mttr"] else "n/a",
+            "%.1f%%" % result["coverage"] if result["coverage"] is not None else "unknown"))
+        C.table(doc.overview()[1], doc.module_rows[:20])
+        for f in files:
+            C.out("  " + f)
+        for n in notes:
+            C.out(C.c("  note: " + n, "yellow"))
     elif cmd == "schedule":
         if args.action in ("status", "show"):
             be, rows = scheduler.status(app.cfg, app.runner)

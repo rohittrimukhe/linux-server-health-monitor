@@ -10,6 +10,10 @@
   - Accepted findings (for example `COCKPIT_SELF_SIGNED`) are removed from the score, status and alerts, but still listed in reports with the rule, reason, owner and expiry.
   - Rules support code wildcards, component and host globs, and a module filter.
   - A reason is required, and expired or invalid rules raise a warning.
+- **Cockpit page "LSHME Health"**: static package showing the score, issues, real-time problems and reports, with a run-now button. It updates by watching the result files. Installed automatically when Cockpit is present.
+- **Fleet web dashboard** (`healthcheck dashboard build | serve`): self-contained, auto-refreshing, with filters, search, stale/unreachable detection and per-server drill-down. Optional read-only web server.
+- **Uptime/SLA report** (`healthcheck sla`): availability, downtime and degraded time, per-component availability, incident log, mean time to recover, monitoring coverage and breaches against `[sla] target_percent`. The watcher now records confirmed incidents for this; it is attached to the monthly schedule.
+- **Asset inventory** (`healthcheck inventory [--fleet]`): servers, disks, filesystems, network, packages, databases, VMs and services in XLSX/CSV/JSON.
 - **Lower resource impact.**
   - Every run lowers its own CPU and I/O priority.
   - Scheduled units cap CPU and memory.

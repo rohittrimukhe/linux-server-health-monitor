@@ -86,12 +86,17 @@ class App(object):
                     elif a.get("result") == "ok":
                         result["notes"].append("space cleanup removed %s (%s)" % (a["path"], a["reason"]))
             run = self.check(module_names, days, category, progress=progress)
+            if module_names in (None, "", "all", ["all"]):
+                self.save_latest(run)
             free = retention.free_space_warning(self.cfg, self.paths)
             if free:
                 result["notes"].append(free)
             if write_reports and formats:
                 document, outdir, files, notes = reports.generate(run, self.cfg, self.paths, formats, report_type, category)
                 result.update(files=files, report_dir=outdir)
+                if module_names in (None, "", "all", ["all"]):
+                    run.meta["report_files"] = files
+                    self.save_latest(run)  # lets the Cockpit page open the latest reports
                 result["notes"] += notes
                 for a in retention.space_check(self.cfg, self.paths):  # enforce the cap including the new reports
                     if a.get("result") == "ok":
@@ -104,6 +109,8 @@ class App(object):
                     h.close()
             else:
                 document = docmod.build(run, self.cfg, report_type)
+            if sched and write_reports:
+                result["files"] += self.schedule_extras(sched, result["notes"])
             if email or force_email:
                 result["email"] = self.email_report(run, document, result["files"], force_email, to, cc, policy)
             prom = self.cfg.get("main", "integrations", "prometheus_textfile", "")
@@ -125,6 +132,38 @@ class App(object):
                 retention.apply(self.cfg, self.paths, acts)
             self.log.info("run end status=%s score=%s files=%d", run.health["status"], run.health["score"], len(result["files"]))
         return run, result
+
+    def save_latest(self, run):
+        """Latest full result for the Cockpit page and the dashboard (secrets masked, readable by root only)."""
+        from lshme.core.util import redact_obj
+        path = os.path.join(self.paths.data_dir, "latest.json")
+        try:
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(redact_obj(run.to_dict()), f, default=str)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+        except OSError as e:
+            self.log.warning("could not write latest.json: %s", e)
+
+    def schedule_extras(self, sched, notes):
+        """Extra reports a schedule asks for (monthly SLA, asset inventory). Failures are noted, never fatal."""
+        files = []
+        if sched.sla_report:
+            try:
+                from lshme.ops import sla
+                files += sla.generate(self, None, ("html", "pdf"))[3]
+            except Exception as e:
+                self.log.exception("SLA report failed")
+                notes.append("SLA report failed: %s" % e)
+        if sched.inventory_report:
+            try:
+                from lshme.ops import inventory
+                files += inventory.export(self, ("xlsx",))[1]
+            except Exception as e:
+                self.log.exception("inventory export failed")
+                notes.append("Inventory export failed: %s" % e)
+        return files
 
     def email_report(self, run, document, files, force=False, to=None, cc=None, policy=None):
         ms = mailer.MailSettings(self.cfg)
@@ -171,6 +210,13 @@ class App(object):
             if r.host != os.uname()[1]:
                 h.save(r)
         h.close()
+        from lshme.ops import dashboard
+        dashboard.save_results(self.paths, runs, errors)
+        if self.cfg.getbool("main", "dashboard", "auto_build", True):
+            try:
+                dashboard.build(self.cfg, self.paths)
+            except Exception:
+                self.log.exception("dashboard build failed")
         formats = reports.parse_formats(formats or self.cfg.get("reports", "reports", "formats", "html,pdf,json"))
         document, outdir, files, notes = reports.generate_fleet(runs, self.cfg, self.paths, formats, report_type, errors)
         mail = None

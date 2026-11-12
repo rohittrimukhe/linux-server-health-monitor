@@ -30,8 +30,10 @@ if [ -z "${YES:-}" ]; then
 fi
 if [ -x "$PREFIX/healthcheck" ]; then
   "$PREFIX/healthcheck" --config-dir "$CONFIG" schedule remove || true
+  "$PREFIX/healthcheck" --config-dir "$CONFIG" watch remove || true
 fi
-rm -f /etc/cron.d/lshme /etc/systemd/system/lshme-*.service /etc/systemd/system/lshme-*.timer
+rm -f /etc/cron.d/lshme /etc/cron.d/lshme-watch /etc/systemd/system/lshme-*.service /etc/systemd/system/lshme-*.timer
+[ -f /usr/share/cockpit/lshme/lshme.js ] && rm -rf /usr/share/cockpit/lshme
 command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload 2>/dev/null || true
 if [ "$(readlink -f "$BIN" 2>/dev/null)" = "$(readlink -f "$PREFIX/healthcheck" 2>/dev/null)" ]; then
   rm -f "$BIN"

@@ -2,7 +2,7 @@
 
 ## Automated test suite
 
-`cd tests && python3 -m unittest discover -p 'test_*.py'` runs 96 tests:
+`cd tests && python3 -m unittest discover -p 'test_*.py'` runs 104 tests:
 
 | Test file | Covers |
 |---|---|
@@ -34,6 +34,9 @@
 | Cockpit | cockpit-ws 314 with its self-signed certificate | HTTPS probe 200, unencrypted access flagged, self-signed certificate noted |
 | Storage | Real ext4 filesystems on loop devices, and LVM PVs/VGs | 97% full, inodes at 100%, read-only mount, fstab entry not mounted (all CRITICAL) |
 | Exclusions | Real cockpit-ws and read-only mounts | Self-signed certificate and `/opt/*` read-only findings excluded and listed in the report; expired rule raised a warning; the watcher ignored excluded problems |
+| Cockpit page | cockpit-ws 314 with a local session | Page loaded with no browser errors and showed live results, real-time problems and report buttons; *Run health check now* ran a check and the page refreshed itself |
+| Fleet dashboard | Built from 7 server results + 1 unreachable, served over HTTP | Status counts, filters and phone layout correct; path traversal (404) and directory listing (403) refused |
+| Inventory | MariaDB 10.11 running | Hardware/OS/877 packages/disks/network collected in 1.8 s; MariaDB server version 10.11.14 and owner `mysql` detected |
 | Real-time monitoring | Continuous `watch run` with a local SMTP server | Alert email after 2 checks, recovery email when the missing process started; nice 19, idle I/O, 170 ms CPU over 52 s, 30 MB memory |
 
 LVM logical volumes and snapshots, and md RAID, could not be created because

@@ -37,11 +37,11 @@ def render_txt(doc, path):
     if doc.banner:
         L += ["", "*** %s ***" % doc.banner]
     c = doc.counts
-    L += ["", "OVERALL HEALTH: %s   SCORE: %s/100   critical=%d warning=%d unknown=%d info=%d" % (
-        doc.status, doc.score, c.get("CRITICAL", 0), c.get("WARNING", 0), c.get("UNKNOWN", 0), c.get("INFO", 0)), ""]
-    L.append("MODULE HEALTH")
+    L += ["", "OVERALL HEALTH: %s   %s: %s%s   critical=%d warning=%d unknown=%d info=%d" % (
+        doc.status, doc.score_label, doc.score, doc.score_suffix, c.get("CRITICAL", 0), c.get("WARNING", 0), c.get("UNKNOWN", 0), c.get("INFO", 0)), ""]
+    L.append(doc.overview()[0].upper())
     from lshme.core.model import Table
-    hdr = ["Module", "Score", "Status", "Critical", "Warning", "Summary"] if doc.kind == "host" else ["Server", "Score", "Status", "Critical", "Warning", "Top issue"]
+    hdr = doc.overview()[1]
     L.append(_fmt_table(Table("", hdr, doc.module_rows)))
     L += ["", "FINDINGS (%d)" % len(doc.findings), "-" * 100]
     for f in doc.findings:

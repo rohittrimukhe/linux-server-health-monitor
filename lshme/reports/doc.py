@@ -54,6 +54,20 @@ class ReportDoc(object):
         self.brand_logo = BRAND_LOGO if os.path.isfile(BRAND_LOGO) else ""
         self.customer_logo = ""
 
+    # Summary table/chart labels; host and fleet defaults, other report kinds override them.
+    overview_title = None
+    overview_headers = None
+    chart_title = None
+    score_label = "SCORE"
+    score_suffix = "/100"
+
+    def overview(self):
+        title = self.overview_title or ("Module health" if self.kind == "host" else "Servers")
+        headers = self.overview_headers or (["Module", "Score", "Status", "Critical", "Warning", "Summary"] if self.kind == "host"
+                                            else ["Server", "Score", "Status", "Critical", "Warning", "Top issue"])
+        chart = self.chart_title or ("Module scores" if self.kind == "host" else "Server scores")
+        return title, headers, chart
+
     @property
     def status(self):
         return self.health.get("status", "UNKNOWN")
