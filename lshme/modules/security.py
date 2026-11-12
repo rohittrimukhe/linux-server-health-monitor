@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Security posture: SELinux, firewall, SSH policy, privileged accounts, audit,
 pending (security) updates and last patch date."""
 import re

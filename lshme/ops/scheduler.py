@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Scheduling: daily / weekly / monthly / hourly / custom runs via systemd timers
 (preferred) or /etc/cron.d. Each schedule has its own modules, lookback days,
 report formats, report type and recipients."""
@@ -114,8 +116,8 @@ def command_line(launcher, global_args, sched, retries):
 
 def render_systemd(sched, cmdline):
     service = ("[Unit]\nDescription=LSHME health check (%s)\nAfter=network-online.target\nWants=network-online.target\n\n"
-               "[Service]\nType=oneshot\nExecStart=%s\nNice=10\nIOSchedulingClass=idle\nTimeoutStartSec=3h\n"
-               "PrivateTmp=true\nNoNewPrivileges=false\n# LSHME_MANAGED\n" % (sched.name, cmdline))
+               "[Service]\nType=oneshot\nExecStart=%s\nNice=10\nIOSchedulingClass=idle\nCPUQuota=50%%\nMemoryMax=512M\n"
+               "TimeoutStartSec=3h\nPrivateTmp=true\n# LSHME_MANAGED\n" % (sched.name, cmdline))
     timer = ("[Unit]\nDescription=LSHME schedule %s (%s)\n\n[Timer]\nOnCalendar=%s\nPersistent=true\nRandomizedDelaySec=120\n"
              "Unit=lshme-%s.service\n\n[Install]\nWantedBy=timers.target\n# LSHME_MANAGED\n" % (
                  sched.name, sched.describe(), sched.on_calendar(), sched.name))

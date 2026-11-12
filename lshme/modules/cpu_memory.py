@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """CPU utilisation, load, memory, swap and top resource consumers."""
 from lshme.core.util import fmt_bytes, pct, severity_for, to_float
 

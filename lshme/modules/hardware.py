@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Hardware inventory, sensors, ECC memory errors, IPMI and hardware RAID controllers."""
 import re
 

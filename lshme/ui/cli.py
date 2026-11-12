@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Command-line interface. Run without a command on a terminal to open the menu."""
 import argparse
 import json
@@ -5,7 +7,7 @@ import os
 import sys
 import time
 
-from lshme import APP_NAME, VERSION
+from lshme import APP_NAME, COPYRIGHT, VERSION
 from lshme.core.lock import LockBusy
 from lshme.ui import console as C
 
@@ -67,8 +69,23 @@ def print_run(run, result=None, show_info=False):
                 C.out(C.c("  Email FAILED: %s" % e.get("error"), "red"))
 
 
+class RunLockWatch(object):
+    """Keep overlapping 'watch once' runs (cron every minute) from piling up."""
+
+    def __init__(self, app):
+        from lshme.core.lock import RunLock
+        self.lock = RunLock(os.path.join(app.paths.data_dir, "watch.lock"))
+
+    def __enter__(self):
+        return self.lock.__enter__()
+
+    def __exit__(self, *a):
+        return self.lock.__exit__(*a)
+
+
 def build_parser():
-    p = argparse.ArgumentParser(prog="healthcheck", description="%s v%s — read-only Linux health monitoring, reporting and alerting." % (APP_NAME, VERSION))
+    p = argparse.ArgumentParser(prog="healthcheck", description="%s v%s — read-only Linux health monitoring, reporting and alerting." % (APP_NAME, VERSION),
+                                epilog=COPYRIGHT)
     p.add_argument("--config-dir", help="configuration directory (default /etc/lshme or ./config)")
     p.add_argument("--home", help="portable mode: keep config, data, reports and logs under this directory")
     p.add_argument("--verbose", "-v", action="store_true")
@@ -106,6 +123,10 @@ def build_parser():
     sub.add_parser("doctor", help="self-diagnostics: dependencies, permissions, config")
     sub.add_parser("version")
     sub.add_parser("email-test", help="send a test email using smtp.conf")
+
+    w = sub.add_parser("watch", help="real-time monitoring with alerts (lightweight, runs continuously)")
+    w.add_argument("action", nargs="?", default="status", choices=("run", "once", "install", "remove", "status"))
+    w.add_argument("--interval", type=int, help="seconds between checks (default from main.conf [watch])")
 
     s = sub.add_parser("schedule", help="manage scheduled runs")
     s.add_argument("action", choices=("status", "install", "remove", "show"))
@@ -197,6 +218,7 @@ def dispatch(app, cmd, args):
 
     if cmd == "version":
         C.out("%s %s" % (APP_NAME, VERSION))
+        C.out(COPYRIGHT)
     elif cmd == "menu":
         from lshme.ui.menu import Menu
         Menu(app).loop()
@@ -254,6 +276,43 @@ def dispatch(app, cmd, args):
         else:
             C.out(C.c("Test email failed: %s" % res["error"], "red"))
             return 1
+    elif cmd == "watch":
+        from lshme.ops import watch
+        if args.interval:
+            app.cfg.set("main", "watch", "interval", str(args.interval))
+        if args.action == "run":
+            return watch.Watcher(app).run_forever()
+        if args.action == "once":
+            watch.lower_priority()
+            with RunLockWatch(app):
+                alerts, recovered, delivery = watch.Watcher(app).tick()
+            for a in alerts:
+                C.out("%s %s: %s" % (C.c("%-8s" % a["severity"], a["severity"]), a["component"], a["message"]))
+            for r in recovered:
+                C.out("%s %s: %s" % (C.c("RECOVERED", "green"), r["component"], r["message"]))
+            if delivery:
+                C.out("alert delivery: %s" % delivery)
+        elif args.action == "install":
+            mode, path, ok, err = watch.install(app)
+            app.audit("watch-install", mode=mode, path=path)
+            C.out(C.c("Real-time monitoring installed (%s): %s" % (mode, path), "green") if ok else C.c("Install failed: %s" % err, "red"))
+            return 0 if ok else 1
+        elif args.action == "remove":
+            removed = watch.uninstall(app)
+            app.audit("watch-remove", removed=removed)
+            C.out("Removed: %s" % (", ".join(removed) or "nothing"))
+        else:
+            w = watch.Watcher(app)
+            st = w.state
+            if not st.get("last_tick"):
+                C.out("Real-time monitoring has not run yet. Start it with: healthcheck watch install")
+                return 0
+            C.out("Last check: %s   checks: %s   last tick CPU: %s ms   memory: %s MB" % (
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(st["last_tick"])), st.get("ticks"), st.get("last_tick_cpu_ms"), st.get("rss_mb")))
+            probs = st.get("problems", {})
+            C.table(["Severity", "Component", "Problem", "Since", "Alerted"],
+                    [[p["severity"], p.get("component", ""), p.get("message", ""), time.strftime("%m-%d %H:%M", time.localtime(p["since"])),
+                      p.get("alerted") or "pending"] for p in sorted(probs.values(), key=lambda x: x["since"])] or [["OK", "", "no active problems", "", ""]])
     elif cmd == "schedule":
         if args.action in ("status", "show"):
             be, rows = scheduler.status(app.cfg, app.runner)

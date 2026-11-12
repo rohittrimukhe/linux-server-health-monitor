@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """XLSX workbook: Summary, Findings, one sheet per module, Metrics.
 
 Uses openpyxl when installed; otherwise writes a valid minimal OOXML workbook
@@ -37,7 +39,7 @@ def sheets_for(doc, run=None):
     """Return [(name, [rows...], header_row_indexes, severity_col_rows)] in a format-neutral way."""
     used = set()
     out = []
-    summary = [[doc.title], [doc.subtitle], []]
+    summary = [[doc.title], [doc.subtitle], [doc.copyright], []]
     summary += [[k, v] for k, v in doc.meta]
     summary += [[], ["Overall status", doc.status], ["Health score", doc.score]]
     for s in ("CRITICAL", "WARNING", "UNKNOWN", "INFO"):
@@ -95,13 +97,13 @@ def _cell_value(v):
 def render(doc, path, run=None):
     sheets = sheets_for(doc, run)
     if available():
-        _render_openpyxl(sheets, path)
+        _render_openpyxl(sheets, path, doc.brand_logo)
         return path, "openpyxl"
     _render_builtin(sheets, path)
     return path, "builtin"
 
 
-def _render_openpyxl(sheets, path):
+def _render_openpyxl(sheets, path, logo=""):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
@@ -133,6 +135,14 @@ def _render_openpyxl(sheets, path):
         if hdrs and hdrs[0] == 0:
             ws.freeze_panes = "A2"
             ws.auto_filter.ref = ws.dimensions
+    if logo:
+        try:  # needs Pillow; the report is complete without the image
+            from openpyxl.drawing.image import Image as XLImage
+            img = XLImage(logo)
+            img.width, img.height = 240, 72
+            wb[sheets[0][0]].add_image(img, "E1")
+        except Exception:
+            pass
     wb.save(path)
 
 

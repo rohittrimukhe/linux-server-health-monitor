@@ -1,6 +1,6 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """MySQL / MariaDB adapter: availability, connections, replication, sizes, InnoDB."""
-import re
-
 from lshme.core.util import fmt_bytes, pct, severity_for, to_float, to_int
 
 
@@ -20,9 +20,26 @@ def base_cmd(ctx, inst):
     return cmd, env
 
 
-def q(ctx, inst, sql, timeout=60):
+def q(ctx, inst, sql, timeout=60, headers=False):
     cmd, env = base_cmd(ctx, inst)
+    if headers:
+        cmd = [c for c in cmd if c != "-N"]
     return ctx.run(cmd + ["-e", sql], timeout=timeout, env=env)
+
+
+def replica_status(ctx, inst):
+    """SHOW REPLICA/SLAVE STATUS as a dict (header row + value row, tab separated).
+
+    -N cannot be used here: it also strips the field names, so the result would be unlabelled.
+    """
+    for sql in ("SHOW REPLICA STATUS", "SHOW SLAVE STATUS"):
+        r = q(ctx, inst, sql, headers=True)
+        if r.ok:
+            lines = r.out.split("\n")
+            if len(lines) >= 2 and lines[0].strip():
+                return dict(zip(lines[0].split("\t"), lines[1].split("\t")))
+            return {}
+    return {}
 
 
 def check(ctx, res, inst):
@@ -42,14 +59,7 @@ def check(ctx, res, inst):
     uptime = to_int(status.get("Uptime"), 0)
     sizes = [l.split("\t") for l in q(ctx, inst, "SELECT table_schema, ROUND(SUM(data_length+index_length)), COUNT(*) FROM information_schema.tables "
                                                   "GROUP BY table_schema ORDER BY 2 DESC", timeout=120).lines()]
-    repl = q(ctx, inst, "SHOW REPLICA STATUS\\G")
-    if not repl.ok:
-        repl = q(ctx, inst, "SHOW SLAVE STATUS\\G")
-    rs = {}
-    for line in repl.out.splitlines():
-        m = re.match(r"\s*(\w+):\s*(.*)", line)
-        if m:
-            rs[m.group(1)] = m.group(2)
+    rs = replica_status(ctx, inst)
     reads = to_float(status.get("Innodb_buffer_pool_reads"), 0)
     reqs = to_float(status.get("Innodb_buffer_pool_read_requests"), 0)
     hit = round(100.0 * (1 - reads / reqs), 2) if reqs else None
@@ -78,9 +88,10 @@ def check(ctx, res, inst):
         io = rs.get("Replica_IO_Running", rs.get("Slave_IO_Running"))
         sql = rs.get("Replica_SQL_Running", rs.get("Slave_SQL_Running"))
         lag = to_int(rs.get("Seconds_Behind_Source", rs.get("Seconds_Behind_Master")))
+        err = rs.get("Last_IO_Error") or rs.get("Last_SQL_Error") or rs.get("Last_Error") or ""
         if io != "Yes" or sql != "Yes":
             res.add("CRITICAL", "MYSQL_REPLICATION_STOPPED", label, "Replication stopped (IO=%s, SQL=%s)" % (io, sql),
-                    evidence=rs.get("Last_Error", "") or rs.get("Last_IO_Error", "") or rs.get("Last_SQL_Error", ""),
+                    evidence=err,
                     recommendation="Inspect the replication error before restarting the replica threads.")
         elif lag is not None:
             res.metric("mysql.%s.replication_lag" % inst["name"], lag)

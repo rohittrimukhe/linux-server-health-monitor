@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Regenerate docs/MODULES.md (module list and finding codes) from the source.
 
 Usage: python3 packaging/gen_docs.py

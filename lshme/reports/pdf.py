@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """PDF report with ReportLab (charts, coloured tables); falls back to minipdf."""
 import os
 import time
@@ -55,6 +57,13 @@ def render(doc, path, logo=""):
         canvas.setFillColor(colors.HexColor("#5b6876"))
         canvas.drawString(15 * mm, 9 * mm, "%s — %s" % (doc.subtitle, time.strftime("%Y-%m-%d %H:%M", time.localtime(doc.generated))))
         canvas.drawRightString(page[0] - 15 * mm, 9 * mm, "Page %d" % d.page)
+        canvas.drawCentredString(page[0] / 2.0, 5 * mm, doc.copyright)
+        if doc.brand_logo:
+            try:
+                canvas.drawImage(doc.brand_logo, page[0] - 15 * mm - 30 * mm, page[1] - 9 * mm, width=30 * mm, height=7 * mm,
+                                 preserveAspectRatio=True, mask="auto", anchor="ne")
+            except Exception:
+                pass
         canvas.setStrokeColor(colors.HexColor("#0b5cad"))
         canvas.setLineWidth(2)
         canvas.line(15 * mm, page[1] - 10 * mm, page[0] - 15 * mm, page[1] - 10 * mm)
@@ -111,11 +120,17 @@ def render(doc, path, logo=""):
         return dr
 
     story = []
-    if logo and os.path.isfile(logo):
+    logos = [p for p in (doc.brand_logo, doc.customer_logo or logo) if p and os.path.isfile(p)]
+    cells = []
+    for p in logos:
         try:
-            story.append(Image(logo, width=40 * mm, height=15 * mm, kind="proportional"))
+            cells.append(Image(p, width=60 * mm, height=18 * mm, kind="proportional"))
         except Exception:
             pass
+    if cells:
+        lt = Table([cells], colWidths=[W / len(cells)] * len(cells))
+        lt.setStyle(TableStyle([("ALIGN", (0, 0), (0, 0), "LEFT"), ("ALIGN", (-1, 0), (-1, 0), "RIGHT"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        story += [lt, Spacer(1, 6)]
     story += [Paragraph(escape(doc.title), st["title"]), Paragraph(escape(doc.subtitle), st["sub"]), Spacer(1, 8)]
     meta_rows = [[P(k, "cellb"), P(v)] for k, v in doc.meta]
     mt = Table(meta_rows, colWidths=[35 * mm, W - 35 * mm])
@@ -187,7 +202,8 @@ def render(doc, path, logo=""):
                 story.extend(block[1:])
     for title, text in doc.appendix:
         story += [PageBreak(), Paragraph("Appendix — %s" % escape(title), st["h2"]), Preformatted(text[:60000], st["code"])]
-    sd = SimpleDocTemplate(path, pagesize=page, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=15 * mm, bottomMargin=15 * mm,
-                           title=doc.title, author="LSHME", subject=doc.subtitle)
+    story += [Spacer(1, 12), Paragraph(escape(doc.copyright), st["muted"])]
+    sd = SimpleDocTemplate(path, pagesize=page, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=15 * mm, bottomMargin=17 * mm,
+                           title=doc.title, author=doc.copyright, subject=doc.subtitle)
     sd.build(story, onFirstPage=footer, onLaterPages=footer)
     return path, "reportlab"

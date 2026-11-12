@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Application endpoints (HTTP/HTTPS checks) and mail queue health."""
 import re
 import ssl

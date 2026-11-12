@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Live PostgreSQL integration test (runs only as root where PostgreSQL server binaries exist)."""
 import glob
 import os

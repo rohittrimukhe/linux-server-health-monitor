@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """KVM / libvirt: hypervisor capacity, every VM's state and utilisation, snapshots,
 storage pools and virtual networks. Uses read-only virsh commands only."""
 import re
@@ -70,6 +72,12 @@ def run(ctx, res):
     uri = ctx.cfg.get("main", "kvm", "uri", "qemu:///system")
     v = lambda *a, **kw: ctx.run(["virsh", "-c", uri] + list(a), **kw)
     probe = v("uri", timeout=20)
+    daemon = any(ctx.runner.exists(p) for p in ("/usr/sbin/libvirtd", "/usr/sbin/virtqemud", "/run/libvirt", "/var/run/libvirt"))
+    if not probe.ok and uri.startswith("qemu") and not daemon:
+        res.status = "SKIPPED"
+        res.skip("libvirt client tools are installed but no libvirt daemon is present (not a KVM host)")
+        res.summary = "not a KVM host (virsh client only)"
+        return
     if not probe.ok:
         res.status = "ERROR"
         res.add("CRITICAL", "LIBVIRT_UNREACHABLE", "libvirtd", "Cannot connect to libvirt at %s" % uri,

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 # Linux Server Health Monitor Enterprise - uninstaller
 #   sudo ./uninstall.sh            remove program and schedules; keep config, history and reports
 #   sudo ./uninstall.sh --purge    also delete /etc/lshme, /var/lib/lshme and /var/log/lshme

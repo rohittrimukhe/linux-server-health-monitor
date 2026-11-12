@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Interfaces, routing, DNS, bonding, link state, errors, reachability and firewall."""
 import os
 import re

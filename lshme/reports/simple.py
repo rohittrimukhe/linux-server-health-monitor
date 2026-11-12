@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """TXT, JSON and CSV renderers."""
 import csv
 import json
@@ -29,7 +31,7 @@ def _fmt_table(t, width=160):
 def render_txt(doc, path):
     L = []
     bar = "=" * 100
-    L += [bar, doc.title.upper(), doc.subtitle, bar]
+    L += [bar, doc.title.upper(), doc.subtitle, doc.copyright, bar]
     for k, v in doc.meta:
         L.append("%-16s: %s" % (k, v))
     if doc.banner:
@@ -69,7 +71,7 @@ def render_txt(doc, path):
             L.append(_fmt_table(t))
     for title, text in doc.appendix:
         L += ["", bar, "APPENDIX: " + title, bar, text]
-    L += ["", "End of report — generated %s" % time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(doc.generated))]
+    L += ["", "End of report — generated %s" % time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(doc.generated)), doc.copyright]
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(L) + "\n")
     return path

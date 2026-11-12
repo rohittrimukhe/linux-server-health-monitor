@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Format-independent report document built from a run (or a fleet of runs).
 
 Report types:
@@ -5,9 +7,10 @@ Report types:
   technical  - everything above plus every detail table and evidence
   full       - technical plus appendix (module errors, skipped checks, raw evidence)
 """
+import os
 import time
 
-from lshme import APP_NAME, VERSION
+from lshme import APP_NAME, BRAND_LOGO, COPYRIGHT, VERSION
 from lshme.core.model import SEV_RANK, Table
 from lshme.core.util import redact
 
@@ -47,6 +50,9 @@ class ReportDoc(object):
         self.charts = {"filesystems": [], "score_history": [], "modules": []}
         self.banner = ""
         self.host = ""
+        self.copyright = COPYRIGHT
+        self.brand_logo = BRAND_LOGO if os.path.isfile(BRAND_LOGO) else ""
+        self.customer_logo = ""
 
     @property
     def status(self):
@@ -73,6 +79,7 @@ def build(run, cfg, report_type="technical"):
     d.report_type = report_type
     d.host = run.host
     meta = run.meta or {}
+    d.customer_logo = (cfg.get("main", "general", "logo", "") if cfg else "") or meta.get("logo", "")
     custom_title = cfg.get("reports", "reports", "title", "") if cfg else ""
     d.title = custom_title or "Linux Server Health Report"
     d.subtitle = "%s — %s report" % (run.fqdn or run.host, report_type.capitalize())
@@ -142,6 +149,7 @@ def build_fleet(runs, cfg, report_type="technical", errors=None):
     """Combined report for many servers (central/multi-server mode)."""
     d = ReportDoc()
     d.kind = "fleet"
+    d.customer_logo = cfg.get("main", "general", "logo", "") if cfg else ""
     d.report_type = report_type
     d.title = (cfg.get("reports", "reports", "title", "") if cfg else "") or "Infrastructure Health Report"
     d.subtitle = "%d servers — fleet summary" % len(runs)

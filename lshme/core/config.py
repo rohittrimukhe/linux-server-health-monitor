@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Configuration: a directory of INI files with built-in defaults.
 
 Every setting has a default here, so a missing or partial file never breaks a
@@ -31,6 +33,11 @@ DEFAULTS = {
         "applications": {"http_checks": "", "check_mail_queue": "yes"},
         "history": {"enabled": "yes"},
         "integrations": {"prometheus_textfile": "", "agent_dropdir": ""},
+        "watch": {"interval": "60", "confirm": "2", "repeat_minutes": "60", "recovery_alerts": "yes",
+                  "rotation_modules": "services,database,kvm,cockpit,network,backup,cluster,certificates",
+                  "rotation_minutes": "15", "alert_min_severity": "WARNING", "alert_email": "yes", "alert_to": "",
+                  "syslog": "yes", "webhook_url": "", "max_rss_mb": "100", "netfs_timeout": "5"},
+        "performance": {"nice": "10", "idle_io": "yes"},
     },
     "thresholds": {
         "cpu": {"warning": "85", "critical": "95", "iowait_warning": "20", "steal_warning": "10",

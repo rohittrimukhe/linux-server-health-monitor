@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Application services shared by the CLI and the interactive menu."""
 import json
 import os
@@ -74,6 +76,7 @@ class App(object):
         formats = reports.parse_formats(formats or self.cfg.get("reports", "reports", "formats", "html,pdf,json"))
         report_type = report_type or self.cfg.get("reports", "reports", "report_type", "technical")
         result = {"files": [], "notes": [], "email": None, "report_dir": ""}
+        self.lower_priority()
         with RunLock(self.paths.lock_file, wait_seconds=300 if schedule_name else 0):
             self.log.info("run start schedule=%s modules=%s days=%s", category, module_names or "all", days)
             if write_reports and formats:
@@ -178,6 +181,11 @@ class App(object):
             pseudo.health, pseudo.maintenance, pseudo.host, pseudo.fqdn, pseudo.run_id = document.health, None, "fleet", "fleet", None
             mail = self.email_report(pseudo, document, files)
         return runs, errors, files, notes, mail
+
+    def lower_priority(self):
+        """Run below normal priority so health checks never compete with production work."""
+        from lshme.core.priority import set_priority
+        set_priority(self.cfg.getint("main", "performance", "nice", 10), self.cfg.getbool("main", "performance", "idle_io", True))
 
     def version(self):
         return VERSION

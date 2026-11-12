@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Oracle Database adapter (11g R2, 12c, 18c, 19c, 21c, 23ai).
 
 Runs one read-only SQL*Plus session per instance. Every query emits tagged,
