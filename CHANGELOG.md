@@ -6,6 +6,10 @@
   - Probes every minute read `/proc` and `statvfs` directly; heavier modules run one at a time in rotation.
   - Alerts go out by email, syslog and webhook, with confirmation (no flapping), escalation, reminders and recovery messages.
   - Runs as a systemd service limited to 5% CPU and 128 MB, or from cron.
+- **Exclusions** (`healthcheck exclude`, menu option 21, `exclusions.conf`).
+  - Accepted findings (for example `COCKPIT_SELF_SIGNED`) are removed from the score, status and alerts, but still listed in reports with the rule, reason, owner and expiry.
+  - Rules support code wildcards, component and host globs, and a module filter.
+  - A reason is required, and expired or invalid rules raise a warning.
 - **Lower resource impact.**
   - Every run lowers its own CPU and I/O priority.
   - Scheduled units cap CPU and memory.

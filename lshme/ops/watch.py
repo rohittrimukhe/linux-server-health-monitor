@@ -244,6 +244,35 @@ def rotation_probe(app, state, now):
     return out
 
 
+# --- exclusions ---------------------------------------------------------------------
+PROBE_CODES = {"cpu": ("CPU_HIGH", "cpu_memory"), "load": ("LOAD_HIGH", "cpu_memory"), "memory": ("MEMORY_HIGH", "cpu_memory"),
+               "swap": ("SWAP_HIGH", "cpu_memory"), "disk": ("DISK_USAGE", "storage"), "inode": ("INODE_USAGE", "storage"),
+               "ro": ("FS_READ_ONLY", "storage"), "netfs": ("NETFS_UNRESPONSIVE", "storage"),
+               "svc": ("CRITICAL_SERVICE_DOWN", "services"), "port": ("PORT_NOT_LISTENING", "services"),
+               "proc": ("PROCESS_MISSING", "services")}
+
+
+def code_of(key):
+    """Map a watcher problem key to (finding code, module) so exclusion rules apply the same way."""
+    if key.startswith("mod:"):
+        _, module, code, _ = key.split(":", 3)
+        return code, module
+    return PROBE_CODES.get(key.split(":", 1)[0], ("WATCH", "watch"))
+
+
+def filter_excluded(cfg, current):
+    from lshme.engine import exclusions
+    rules = exclusions.active_rules(exclusions.load(cfg))
+    if not rules:
+        return current
+    out = {}
+    for key, val in current.items():
+        code, module = code_of(key)
+        if exclusions.match(rules, code, val[1], module) is None:
+            out[key] = val
+    return out
+
+
 # --- alert state machine ------------------------------------------------------------
 def evaluate(state, current, now, confirm, repeat_seconds, min_sev, recovery):
     """Update per-problem state; return (new_or_repeat_alerts, recoveries)."""
@@ -378,6 +407,7 @@ class Watcher(object):
             except Exception as e:
                 logs.get().exception("watch probe failed")
                 current["watch:probe-error"] = ("UNKNOWN", "watch", "Probe error: %s" % e, "")
+        current = filter_excluded(cfg, current)
         alerts, recovered = evaluate(self.state, current, now, max(1, int(setting(cfg, "confirm"))),
                                      float(setting(cfg, "repeat_minutes")) * 60, setting(cfg, "alert_min_severity").upper(),
                                      as_bool(setting(cfg, "recovery_alerts"), True))

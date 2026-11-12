@@ -264,7 +264,36 @@ it to 5% CPU and 128 MB of memory. Thresholds come from `thresholds.conf`,
 critical services, ports and processes from `services.conf`, and email
 settings from `smtp.conf`.
 
-## 13. Branding
+## 13. Exclusions (accepted findings)
+
+Some findings are known and accepted, for example Cockpit using its own
+self-signed certificate. An exclusion removes such a finding from the score,
+the status and all alerts, including real-time ones. The finding still
+appears in reports under **Excluded findings**, with the rule, reason, owner
+and expiry, so nothing is hidden.
+
+```bash
+healthcheck exclude add cockpit-self-signed --code COCKPIT_SELF_SIGNED --module cockpit \
+    --reason "Internal console; CA certificate not required" --owner infra-team
+healthcheck exclude add archive-migration --code DISK_USAGE --component "/archive*" \
+    --reason "Migration CHG-1234" --until 2026-12-31
+healthcheck exclude list
+healthcheck exclude remove archive-migration
+```
+
+How rules work:
+- `code` accepts wildcards (`ORACLE_INVALID_*`).
+- `component` is a glob on the component, such as a mount point, service or database.
+- `module` limits the rule to one module.
+- `hosts` limits it to certain hosts in fleet setups (`dev-*`).
+- A `reason` is required.
+- After the `until` date the rule stops applying and the report shows an `EXCLUSION_EXPIRED` warning, so exceptions are reviewed instead of forgotten.
+
+Menu option 21 runs a fresh check and lets you pick findings by number to
+exclude. Rules are stored in `exclusions.conf`, and every change is backed up
+and recorded in the audit log. See `docs/MODULES.md` for all finding codes.
+
+## 14. Branding
 
 Reports carry the LRS Services logo and "© 2026 LRS Services Pvt Ltd,
 Mumbai. All rights reserved." A customer logo set in `main.conf [general]
@@ -272,7 +301,7 @@ logo` appears alongside it. The built-in PDF and PPTX writers, used when
 ReportLab or python-pptx are not installed, show the copyright as text
 without the logo image.
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 | Symptom | What to do |
 |---|---|

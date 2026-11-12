@@ -59,7 +59,7 @@ class Menu(object):
         ("11", "Scheduling & automation"), ("12", "Report & log retention"), ("13", "History & trends"),
         ("14", "Baseline & configuration drift"), ("15", "Maintenance mode"), ("16", "Multi-server (fleet)"),
         ("17", "Configuration & setup wizard"), ("18", "Self-diagnostics"), ("19", "View logs"),
-        ("20", "Real-time monitoring & alerts"), ("0", "Exit"),
+        ("20", "Real-time monitoring & alerts"), ("21", "Exclusions (accepted findings)"), ("0", "Exit"),
     ]
 
     def loop(self):
@@ -276,6 +276,47 @@ class Menu(object):
         v = C.ask("Choice", "0", choices=["0", "1", "2", "3"])
         if v in ("1", "2", "3"):
             cli_main(args + ["watch", {"1": "once", "2": "install", "3": "remove"}[v]])
+
+    def opt_21(self):
+        from lshme.engine import exclusions
+        from lshme.ui.cli import main as cli_main
+        args = ["--home", self.app.home] if self.app.home else ["--config-dir", self.app.paths.config_dir]
+        cli_main(args + ["exclude", "list"])
+        C.out("\n  [1] Pick findings from a fresh check to exclude   [2] Remove a rule   [0] Back")
+        v = C.ask("Choice", "0", choices=["0", "1", "2"])
+        if v == "2":
+            name = C.ask("Rule name to remove", "")
+            if name:
+                cli_main(args + ["exclude", "remove", name])
+            return
+        if v != "1":
+            return
+        from lshme.ui.cli import progress_printer
+        run = self.app.check(None, 1, "adhoc", save_history=False, progress=progress_printer(False))
+        found = run.findings("INFO")
+        if not found:
+            C.out("No findings to exclude.")
+            return
+        for i, f in enumerate(found, 1):
+            C.out("  [%2d] %s %-28s %-30s %s" % (i, C.c("%-8s" % f.severity, f.severity), f.code, f.component[:30], f.message[:70]))
+        picks = C.ask("Numbers to exclude (comma-separated, blank to cancel)", "")
+        chosen = []
+        for part in picks.split(","):
+            if part.strip().isdigit() and 1 <= int(part) <= len(found):
+                chosen.append(found[int(part) - 1])
+        if not chosen:
+            return
+        scope = C.ask("Exclude for this exact component only, or every component with the same code", "exact", choices=["exact", "all"])
+        reason = C.ask("Reason (shown in reports)", "Accepted risk", validate=lambda x: None if x.strip() else "a reason is required")
+        owner = C.ask("Approved by (optional)", "")
+        until = C.ask("Expires on YYYY-MM-DD (blank = never)", "",
+                      validate=lambda x: None if not x or exclusions.Rule("t", {"code": "X", "reason": "r", "until": x}).expires_at() else "use YYYY-MM-DD")
+        for f in chosen:
+            name = ("%s-%s" % (f.code, f.component if scope == "exact" else "all")).lower()
+            name = "".join(ch if ch.isalnum() or ch in "._-" else "-" for ch in name).strip("-")[:60]
+            extra = ["--component", f.component] if scope == "exact" else []
+            cli_main(args + ["exclude", "add", name, "--code", f.code, "--module", f.module, "--reason", reason,
+                             "--owner", owner, "--until", until] + extra)
 
     def opt_19(self):
         files = sorted(f for f in os.listdir(self.app.paths.log_dir) if f.endswith(".log"))
