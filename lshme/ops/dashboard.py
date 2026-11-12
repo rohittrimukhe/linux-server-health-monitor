@@ -94,6 +94,10 @@ input{flex:1;min-width:160px}
 ul{margin:2px 0 0;padding-left:18px;font-size:12.5px}a{color:#0b5cad}@media (prefers-color-scheme:dark){a{color:#7fb3ff}}
 footer{color:var(--muted);text-align:center;font-size:12px;margin:24px 0 8px}
 .empty{color:var(--muted);padding:40px;text-align:center}
+.charts{display:grid;grid-template-columns:minmax(280px,1fr) minmax(300px,2fr);gap:12px;margin-bottom:14px}
+@media (max-width:760px){.charts{grid-template-columns:1fr}}
+.cardc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:hidden}.cardc h3{margin:0 0 8px;font-size:14px}
+.pie{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 """
 
 JS = """
@@ -156,6 +160,15 @@ def build(cfg, paths, outdir=None, stale_hours=None):
     for st in ("CRITICAL", "WARNING", "HEALTHY", "STALE", "UNREACHABLE"):
         if counts.get(st):
             chips += '<button class="chip" data-f="%s" style="background:%s">%s %d</button>' % (st, COLORS[st], st.title(), counts[st])
+    from lshme.reports import charts as ch
+    pie_items = [(st.title(), counts.get(st, 0), COLORS[st]) for st in ("CRITICAL", "WARNING", "HEALTHY", "STALE", "UNREACHABLE")]
+    scores = [(r.host.split(".")[0], r.health.get("score", 0)) for st, r in items if isinstance(r, RunResult)]
+    scores.sort(key=lambda x: x[1])
+    charts_html = ""
+    if items:
+        charts_html = ('<div class="charts"><div class="cardc"><h3>Server status</h3><div class="pie">%s%s</div></div>'
+                       '<div class="cardc"><h3>Health score by server (lowest first)</h3>%s</div></div>') % (
+            ch.donut(pie_items, "servers", 170), ch.legend(pie_items), ch.columns(scores[:30], 100, "", height=230))
     opts = "".join('<option value="%s">%s</option>' % (E(g), E(g)) for g in sorted(x for x in groups if x))
     title = cfg.get("main", "dashboard", "title", "") or "Infrastructure Health Dashboard"
     page = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -163,9 +176,9 @@ def build(cfg, paths, outdir=None, stale_hours=None):
             '<header><div class="inner"><div><h1>%s</h1><p>%d servers · updated %s · refreshes every %d min</p></div>%s</div></header>'
             '<div class="wrap"><div class="bar">%s<input id="q" placeholder="Search server, issue, group..." aria-label="Search">'
             '<select id="g" aria-label="Group"><option value="">All groups</option>%s</select></div>'
-            '<div class="grid">%s</div>%s<footer>%s v%s · read-only monitoring<br>%s</footer></div><script>%s</script></body></html>') % (
+            '%s<div class="grid">%s</div>%s<footer>%s v%s · read-only monitoring<br>%s</footer></div><script>%s</script></body></html>') % (
         refresh, E(title), CSS, E(title), len(items), time.strftime("%Y-%m-%d %H:%M"), max(1, refresh // 60), _logo(),
-        chips, opts, "".join(cards), '' if cards else '<div class="empty">No results yet. Run "healthcheck fleet run" or "healthcheck run".</div>',
+        chips, opts, charts_html, "".join(cards), '' if cards else '<div class="empty">No results yet. Run "healthcheck fleet run" or "healthcheck run".</div>',
         E(APP_NAME), E(VERSION), E(COPYRIGHT), JS)
     path = os.path.join(outdir, "index.html")
     tmp = path + ".tmp"

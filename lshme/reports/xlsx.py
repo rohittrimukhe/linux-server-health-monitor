@@ -97,13 +97,64 @@ def _cell_value(v):
 def render(doc, path, run=None):
     sheets = sheets_for(doc, run)
     if available():
-        _render_openpyxl(sheets, path, doc.brand_logo)
+        _render_openpyxl(sheets, path, doc.brand_logo, chart_data(doc))
         return path, "openpyxl"
     _render_builtin(sheets, path)
     return path, "builtin"
 
 
-def _render_openpyxl(sheets, path, logo=""):
+def chart_data(doc):
+    """Data for native Excel charts: severity counts, module/server scores, filesystem usage."""
+    sev = [(s.title(), doc.counts.get(s, 0)) for s in ("CRITICAL", "WARNING", "UNKNOWN", "INFO")]
+    return {"severity": sev if any(v for _, v in sev) else [],
+            "scores": [(str(k)[:30], float(v or 0)) for k, v in doc.charts.get("modules", [])],
+            "filesystems": [(str(k)[:30], float(v or 0)) for k, v in doc.charts.get("filesystems", [])],
+            "score_title": doc.overview()[2]}
+
+
+def _add_charts(wb, data):
+    from openpyxl.chart import BarChart, PieChart, Reference
+    from openpyxl.chart.series import DataPoint
+    if not (data["severity"] or data["scores"] or data["filesystems"]):
+        return
+    ws = wb.create_sheet("Charts", 1)
+    row = 1
+    anchors = []
+    for key, title in (("severity", "Findings by severity"), ("scores", data["score_title"]), ("filesystems", "Filesystem usage %")):
+        rows = data[key]
+        if not rows:
+            continue
+        ws.cell(row=row, column=1, value=title)
+        for i, (k, v) in enumerate(rows, 1):
+            ws.cell(row=row + i, column=1, value=k)
+            ws.cell(row=row + i, column=2, value=v)
+        anchors.append((key, title, row, len(rows)))
+        row += len(rows) + 2
+    for idx, (key, title, start, n) in enumerate(anchors):
+        cats = Reference(ws, min_col=1, min_row=start + 1, max_row=start + n)
+        vals = Reference(ws, min_col=2, min_row=start + 1, max_row=start + n)
+        if key == "severity":
+            c = PieChart()
+            c.add_data(vals)
+            c.set_categories(cats)
+            for i, color in enumerate(("C62828", "EF8F00", "6D6D6D", "1565C0")[:n]):
+                pt = DataPoint(idx=i)
+                pt.graphicalProperties.solidFill = color
+                c.series[0].dPt.append(pt)
+        else:
+            c = BarChart()
+            c.type = "bar" if key == "scores" else "col"
+            c.add_data(vals)
+            c.set_categories(cats)
+            c.legend = None
+            c.y_axis.scaling.min, c.y_axis.scaling.max = 0, 100
+            c.series[0].graphicalProperties.solidFill = "0B5CAD"
+        c.title = title
+        c.height, c.width = 9, 16
+        ws.add_chart(c, "%s%d" % ("D", 1 + idx * 20))
+
+
+def _render_openpyxl(sheets, path, logo="", charts=None):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
@@ -135,6 +186,11 @@ def _render_openpyxl(sheets, path, logo=""):
         if hdrs and hdrs[0] == 0:
             ws.freeze_panes = "A2"
             ws.auto_filter.ref = ws.dimensions
+    if charts:
+        try:
+            _add_charts(wb, charts)
+        except Exception:
+            pass
     if logo:
         try:  # needs Pillow; the report is complete without the image
             from openpyxl.drawing.image import Image as XLImage

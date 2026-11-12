@@ -6,6 +6,7 @@ import html
 import os
 import time
 
+from lshme.reports import charts as ch
 from lshme.reports.doc import SEV_COLORS
 
 E = lambda s: html.escape(str(s if s is not None else ""))
@@ -157,11 +158,24 @@ def render(doc, path, logo=""):
                  '<div class="card"><h3>Report details</h3><table class="kv">%s</table></div></div>' % (
                      gauge(doc.score, doc.status), chips, E(doc.health.get("method", "")), meta))
     charts = []
+    sev_items = ch.severity_items(doc.counts)
+    if any(v for _, v, _ in sev_items):
+        charts.append(ch.card("Findings by severity", '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">%s%s</div>' % (
+            ch.donut(sev_items, "findings", 170), ch.legend(sev_items))))
+    if doc.module_rows and doc.kind in ("host", "fleet"):
+        st = {}
+        for r in doc.module_rows:
+            st[r[2]] = st.get(r[2], 0) + 1
+        mod_items = [(k.title(), st.get(k, 0), SEV_COLORS.get(k, "#9e9e9e")) for k in ("OK", "HEALTHY", "WARNING", "CRITICAL", "UNREACHABLE", "SKIPPED")]
+        mod_items = [(l, v, c if l not in ("Unreachable",) else "#6a1b9a") for l, v, c in mod_items if v]
+        charts.append(ch.card("%s status" % ("Module" if doc.kind == "host" else "Server"),
+                              '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">%s%s</div>' % (
+                                  ch.donut(mod_items, "modules" if doc.kind == "host" else "servers", 170), ch.legend(mod_items))))
     if doc.charts["modules"]:
         charts.append('<div class="card"><h3>%s</h3>%s</div>' % (chart_title,
                                                                 hbars(doc.charts["modules"], 100, "", score_mode=True)))
     if doc.charts["filesystems"]:
-        charts.append('<div class="card"><h3>Filesystem usage</h3>%s</div>' % hbars(doc.charts["filesystems"]))
+        charts.append('<div class="card"><h3>Filesystem usage %%</h3>%s</div>' % ch.columns(doc.charts["filesystems"], 100, "%", score_mode=False))
     if doc.kind == "host":
         charts.append('<div class="card"><h3>Health score history</h3>%s</div>' % spark(doc.charts["score_history"]))
     if charts:

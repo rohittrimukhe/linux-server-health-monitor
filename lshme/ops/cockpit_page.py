@@ -8,7 +8,7 @@ import shutil
 from lshme import BRAND_LOGO
 
 SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cockpit")
-FILES = ("manifest.json", "index.html", "lshme.js", "lshme.css")
+FILES = ("manifest.json", "index.html", "lshme.js", "lshme.css", "charts.js")
 
 
 def target(user=False):

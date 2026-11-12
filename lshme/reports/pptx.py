@@ -39,6 +39,8 @@ def slides_for(doc):
     else:
         bullets.append("No critical issues detected.")
     out.append(("Executive summary", bullets, None))
+    if any(doc.counts.get(s, 0) for s in ("CRITICAL", "WARNING", "UNKNOWN", "INFO")) or doc.charts.get("modules"):
+        out.append(("__chart_overview__", [], None))
     hdr = doc.overview()[1][:5]
     rows = [r[:5] for r in doc.module_rows]
     for i in range(0, max(1, len(rows)), 14):
@@ -155,6 +157,37 @@ def _render_pptx(doc, slides, path):
             badge.text_frame.paragraphs[0].runs[0].font.size = Pt(22)
             badge.text_frame.paragraphs[0].runs[0].font.bold = True
             continue
+        if title == "__chart_overview__":
+            header(s, "Health at a glance")
+            sev = [(x.title(), doc.counts.get(x, 0), SEV_COLORS[x]) for x in ("CRITICAL", "WARNING", "UNKNOWN", "INFO") if doc.counts.get(x, 0)]
+            if sev:
+                cd = CategoryChartData()
+                cd.categories = [l for l, _, _ in sev]
+                cd.add_series("Findings", [v for _, v, _ in sev])
+                pie = s.shapes.add_chart(XL_CHART_TYPE.DOUGHNUT, Inches(0.4), Inches(1.15), Inches(5.6), Inches(5.6), cd).chart
+                pie.has_title, pie.has_legend = True, True
+                pie.chart_title.text_frame.text = "Findings by severity"
+                pie.plots[0].has_data_labels = True
+                for i, (_, _, c) in enumerate(sev):
+                    pt = pie.plots[0].series[0].points[i]
+                    pt.format.fill.solid()
+                    pt.format.fill.fore_color.rgb = _rgb(c)
+            items = doc.charts.get("modules", [])[:14]
+            if items:
+                cd = CategoryChartData()
+                cd.categories = [str(k)[:26] for k, _ in items]
+                cd.add_series(doc.overview()[2], [float(v or 0) for _, v in items])
+                bar = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(6.2), Inches(1.15), Inches(6.8), Inches(5.6), cd).chart
+                bar.has_legend = False
+                bar.has_title = True
+                bar.chart_title.text_frame.text = doc.overview()[2]
+                bar.value_axis.maximum_scale, bar.value_axis.minimum_scale = 100, 0
+                for i, (_, v) in enumerate(items):
+                    pt = bar.plots[0].series[0].points[i]
+                    pt.format.fill.solid()
+                    v = float(v or 0)
+                    pt.format.fill.fore_color.rgb = _rgb(SEV_COLORS["CRITICAL"] if v < 70 else SEV_COLORS["WARNING"] if v < 90 else SEV_COLORS["HEALTHY"])
+            continue
         if title == "__chart_fs__":
             header(s, "Filesystem utilisation")
             cd = CategoryChartData()
@@ -260,6 +293,10 @@ def _render_builtin(doc, slides, path):
             shapes.append(_box(5, "score", W - 3200000, H - 1500000, 2500000, 900000, [("%s  %s" % (doc.score, doc.status), 22, True, "FFFFFF")],
                                SEV_COLORS.get(doc.status, "#555555").lstrip("#")))
         else:
+            if title == "__chart_overview__":
+                title = "Health at a glance"
+                bullets = ["%s findings: %d" % (x.title(), doc.counts.get(x, 0)) for x in ("CRITICAL", "WARNING", "UNKNOWN", "INFO")] + \
+                          ["%s: %s" % (k, v) for k, v in doc.charts.get("modules", [])[:10]]
             if title == "__chart_fs__":
                 title = "Filesystem utilisation"
                 bullets = ["%s: %.0f%%" % (k, float(v or 0)) for k, v in doc.charts["filesystems"][:14]]

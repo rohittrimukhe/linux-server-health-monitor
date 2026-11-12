@@ -148,6 +148,26 @@ def render(doc, path, logo=""):
     summary.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor(col)), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                                  ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
     story += [Spacer(1, 10), summary, Spacer(1, 10)]
+    sev = [(s.title(), doc.counts.get(s, 0), SEV_COLORS[s]) for s in ("CRITICAL", "WARNING", "UNKNOWN", "INFO") if doc.counts.get(s, 0)]
+    if sev:
+        from reportlab.graphics.charts.piecharts import Pie
+        dr = Drawing(W, 130)
+        pie = Pie()
+        pie.x, pie.y, pie.width, pie.height = 10, 10, 105, 105
+        pie.data = [v for _, v, _ in sev]
+        pie.labels = None
+        pie.slices.strokeColor = colors.white
+        pie.slices.strokeWidth = 1.5
+        for i, (_, _, c) in enumerate(sev):
+            pie.slices[i].fillColor = colors.HexColor(c)
+        dr.add(pie)
+        dr.add(String(140, 112, "Findings by severity", fontSize=9, fontName="Helvetica-Bold", fillColor=colors.HexColor("#0b3d6e")))
+        for i, (label, v, c) in enumerate(sev):
+            y = 92 - i * 16
+            from reportlab.graphics.shapes import Rect
+            dr.add(Rect(140, y - 2, 9, 9, fillColor=colors.HexColor(c), strokeColor=None))
+            dr.add(String(154, y, "%s  %d" % (label, v), fontSize=8.5))
+        story.append(dr)
     if doc.charts["modules"]:
         story.append(bar_chart(doc.charts["modules"], doc.overview()[2], True))
     if doc.charts["filesystems"]:

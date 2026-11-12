@@ -28,7 +28,7 @@ from lshme.core.util import NETWORK_FS, PSEUDO_FS, listening_ports_from_proc, to
 DEFAULTS = {"interval": "60", "confirm": "2", "repeat_minutes": "60", "recovery_alerts": "yes",
             "rotation_modules": "services,database,kvm,cockpit,network,backup,cluster,certificates",
             "rotation_minutes": "15", "alert_min_severity": "WARNING", "alert_email": "yes", "alert_to": "",
-            "syslog": "yes", "webhook_url": "", "max_rss_mb": "100", "netfs_timeout": "5"}
+            "syslog": "yes", "webhook_url": "", "max_rss_mb": "100", "netfs_timeout": "5", "metrics_hours": "24"}
 
 
 def setting(cfg, key):
@@ -121,16 +121,20 @@ def fast_probes(cfg, state, prober):
     cur = cpu_sample()
     cpu = cpu_percent(state.get("cpu_prev"), cur)
     state["cpu_prev"] = cur
+    sample = state["sample"] = {"cpu": cpu, "disk": {}}
     check("cpu", cpu, t("cpu", "warning", 85), t("cpu", "critical", 95), "cpu", "CPU utilisation %.0f%%",
           "Check top CPU consumers.")
     try:
         ncpu = os.cpu_count() or 1
         load5 = float(_read("/proc/loadavg").split()[1])
+        sample["load"] = round(load5 / ncpu, 2)
         check("load", load5 / ncpu, t("load", "per_core_warning", 1.5), t("load", "per_core_critical", 3.0), "load",
               "Load %%.2f per CPU (5-min load %.2f on %d CPUs)" % (load5, ncpu))
     except (IndexError, ValueError):
         pass
     mem, swap = meminfo()
+    sample["mem"] = round(mem, 1) if mem is not None else None
+    sample["swap"] = round(swap, 1) if swap is not None else None
     check("memory", mem, t("memory", "warning", 85), t("memory", "critical", 95), "memory", "Memory used %.0f%%",
           "Check top memory consumers.")
     check("swap", swap, t("swap", "warning", 50), t("swap", "critical", 80), "swap", "Swap used %.0f%%")
@@ -165,6 +169,7 @@ def fast_probes(cfg, state, prober):
                 continue
         if st.f_blocks:
             used = 100.0 * (st.f_blocks - st.f_bfree) / (st.f_blocks - st.f_bfree + st.f_bavail or 1)
+            sample["disk"][mp] = round(used, 1)
             w, c = overrides.get(mp, (t("disk", "warning", 80), t("disk", "critical", 90)))
             check("disk:" + mp, used, w, c, mp, "Filesystem " + mp.replace("%", "%%") + " is %.0f%% full",
                   "Free space or extend the filesystem.")
@@ -423,6 +428,32 @@ class Watcher(object):
         for old in sorted(cov)[:-400]:
             del cov[old]
 
+    @property
+    def metrics_path(self):
+        return os.path.join(self.app.paths.data_dir, "watch_metrics.json")
+
+    def record_metrics(self, now):
+        """Rolling history for live graphs (default 24 h; about 200 KB)."""
+        s = self.state.pop("sample", None)
+        if not s:
+            return
+        probs = self.state.get("problems", {})
+        disks = sorted(s["disk"].items(), key=lambda kv: -kv[1])[:8]  # the fullest filesystems only
+        point = {"t": round(now), "cpu": s.get("cpu"), "mem": s.get("mem"), "swap": s.get("swap"), "load": s.get("load"),
+                 "disk": dict(disks), "crit": sum(1 for p in probs.values() if p.get("severity") == "CRITICAL"),
+                 "warn": sum(1 for p in probs.values() if p.get("severity") == "WARNING")}
+        keep = float(setting(self.app.cfg, "metrics_hours")) * 3600
+        try:
+            with open(self.metrics_path, encoding="utf-8") as f:
+                series = json.load(f)
+        except (IOError, OSError, ValueError):
+            series = []
+        series = [p for p in series if now - p.get("t", 0) < keep] + [point]
+        tmp = self.metrics_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(series, f, separators=(",", ":"))
+        os.replace(tmp, self.metrics_path)
+
     def tick(self, now=None):
         now = now or time.time()
         cpu0 = time.process_time()
@@ -445,6 +476,7 @@ class Watcher(object):
             subject, body, status = format_alert(os.uname()[1], alerts, recovered)
             delivery = deliver(self.app, subject, body, status)
         self.flush_events(now)
+        self.record_metrics(now)
         self.state["last_tick"] = now
         self.state["last_tick_cpu_ms"] = round((time.process_time() - cpu0) * 1000, 1)
         self.state["rss_mb"] = round(rss_mb(), 1)
