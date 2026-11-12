@@ -309,6 +309,27 @@ access in Cockpit. The page watches the result files and refreshes itself; it
 does no polling and runs no background service. To remove it, run
 `healthcheck cockpit-page remove`.
 
+## 14a. Live graphs (real-time graphical monitoring)
+
+While `healthcheck watch` runs, it keeps a rolling 24-hour history (about
+200 KB). `main.conf [watch] metrics_hours` changes the length. Each sample
+holds CPU, memory, swap, load per CPU, the eight fullest filesystems and the
+number of active problems. The live page draws:
+
+- line charts of CPU, memory and swap, with warning and critical lines; of load per CPU; and of active critical and warning problems, switchable between 1 h, 6 h and 24 h;
+- current filesystem usage bars;
+- a findings-by-severity pie and module score bars from the latest full check.
+
+There are two ways to open it:
+
+- **In Cockpit:** the *LSHME Health* page updates the instant new data is written.
+- **Without Cockpit:** `healthcheck live` starts a tiny read-only web server on `127.0.0.1:8089`. Open it from your PC through an SSH tunnel: `ssh -L 8089:127.0.0.1:8089 user@server`, then browse to http://localhost:8089. It refreshes every 15 seconds. It serves only the page and three read-only data endpoints, with a strict content-security policy. Use `--bind` only behind a firewall or reverse proxy; there is no login.
+
+Reports also contain charts: pie charts (findings by severity, module or
+server status) and bar charts (module scores, filesystem usage) in HTML, PDF,
+Excel (native charts on a *Charts* sheet) and PowerPoint (a native "Health at a
+glance" slide), and in the fleet dashboard.
+
 ## 15. Fleet web dashboard
 
 Every `healthcheck fleet run` saves each server's latest result and rebuilds

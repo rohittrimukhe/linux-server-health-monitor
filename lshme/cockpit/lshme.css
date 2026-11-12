@@ -26,3 +26,12 @@ th { font-weight: 600; color: var(--muted); }
 .rec { color: var(--muted); font-size: 12px; }
 footer { color: var(--muted); font-size: 12px; text-align: center; margin: 8px 0; }
 code { font-size: 12px; }
+
+.titlebar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.range { display: flex; gap: 4px; } .btn.small { padding: 2px 10px; font-size: 12px; } .btn.small.on { background: var(--accent); color: #fff; }
+.graphs { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 14px 20px; }
+h3 { margin: 6px 0 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; margin-top: 2px; }
+.legend.col { flex-direction: column; } .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+.donut { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.standalone #run { display: none; }

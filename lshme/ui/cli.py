@@ -150,6 +150,10 @@ def build_parser():
     db.add_argument("--bind", default="127.0.0.1", help="serve: address to listen on (default 127.0.0.1)")
     db.add_argument("--port", type=int, default=8088)
 
+    lv = sub.add_parser("live", help="live graphical monitoring page in a browser (for servers without Cockpit)")
+    lv.add_argument("--bind", default="127.0.0.1", help="address to listen on (default 127.0.0.1)")
+    lv.add_argument("--port", type=int, default=8089)
+
     cp = sub.add_parser("cockpit-page", help="install/remove the 'LSHME Health' page in Cockpit")
     cp.add_argument("action", choices=("install", "remove"))
     cp.add_argument("--user", action="store_true", help="install for the current user only (~/.local/share/cockpit)")
@@ -407,6 +411,22 @@ def dispatch(app, cmd, args):
                 pass
             finally:
                 httpd.server_close()
+    elif cmd == "live":
+        from lshme.core.priority import set_priority
+        from lshme.ops import live
+        set_priority(19, True)
+        httpd = live.make_server(app.paths.data_dir, args.bind, args.port)
+        C.out("Live monitoring page: http://%s:%d/   (Ctrl+C to stop)" % (args.bind, httpd.server_address[1]))
+        if not os.path.exists(os.path.join(app.paths.data_dir, "watch_metrics.json")):
+            C.out(C.c("Graphs fill in once real-time monitoring runs: healthcheck watch install", "yellow"))
+        if args.bind not in ("127.0.0.1", "localhost", "::1"):
+            C.out(C.c("Note: the page has no login; restrict access with a firewall, an SSH tunnel or a reverse proxy.", "yellow"))
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            httpd.server_close()
     elif cmd == "cockpit-page":
         from lshme.ops import cockpit_page
         if args.action == "install":
