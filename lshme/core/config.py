@@ -7,6 +7,7 @@ run. Files are written 0600 and the previous version is kept in the config
 backup area before every change.
 """
 import configparser
+import re
 import os
 import shutil
 import tarfile
@@ -207,6 +208,64 @@ class Paths(object):
         return os.path.join(self.data_dir, "config-backups")
 
 
+_SECTION_RE = re.compile(r"^\s*\[([^\]]+)\]\s*$")
+_KEY_RE = re.compile(r"^([^#;\s][^=:]*?)\s*[=:]")
+
+
+def merge_ini(lines, parser):
+    """Return the lines of an INI file updated to match parser, keeping every comment, blank line and
+    the order of what is already there: changed values are rewritten in place, new keys go under
+    their section, new sections at the end, and keys/sections no longer in parser are dropped."""
+    def render(key, value):
+        return "%s = %s" % (key, value.replace("\n", "\n    "))
+
+    out, section, keep, seen, last_key_at, drop_cont = [], None, False, {}, {}, False
+    for line in (l.rstrip("\n") for l in lines):
+        m = _SECTION_RE.match(line)
+        if m:
+            section = m.group(1).strip()
+            keep, drop_cont = parser.has_section(section), False
+            if keep:
+                seen.setdefault(section, set())
+                out.append(line)
+                last_key_at[section] = len(out)
+            continue
+        if not line.strip() or line.lstrip().startswith(("#", ";")) or section is None:
+            out.append(line)  # comments, blank lines and the file header are always kept
+            continue
+        if line[:1].isspace():  # continuation of a multi-line value
+            if keep and not drop_cont:
+                out.append(line)
+                last_key_at[section] = len(out)
+            continue
+        drop_cont = True
+        km = _KEY_RE.match(line)
+        if not keep or not km:
+            continue
+        key = km.group(1).strip()
+        if not parser.has_option(section, key) or key in seen[section]:
+            continue
+        seen[section].add(key)
+        value = parser.get(section, key)
+        old = line[km.end():].strip()
+        if old == value.split("\n")[0].strip():
+            out.append(line)
+            drop_cont = False  # unchanged: keep its original continuation lines too
+        else:
+            out.append(render(key, value))
+        last_key_at[section] = len(out)
+    inserts = []
+    for sec in parser.sections():
+        missing = [k for k in parser.options(sec) if k not in seen.get(sec, set())]
+        if sec not in seen:
+            inserts.append((len(out), [""] + ["[%s]" % sec] + [render(k, parser.get(sec, k)) for k in missing]))
+        elif missing:
+            inserts.append((last_key_at[sec], [render(k, parser.get(sec, k)) for k in missing]))
+    for at, new in sorted(inserts, key=lambda x: -x[0]):  # bottom first so earlier positions stay valid
+        out[at:at] = new
+    return [l + "\n" for l in out]
+
+
 class Config(object):
     def __init__(self, config_dir):
         self.config_dir = config_dir
@@ -306,8 +365,12 @@ class Config(object):
         tmp = path + ".tmp"
         old_umask = os.umask(0o077)
         try:
+            lines = []
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as f:
+                    lines = f.readlines()
             with open(tmp, "w", encoding="utf-8") as f:
-                self.parsers[name].write(f)
+                f.writelines(merge_ini(lines, self.parsers[name]))  # keeps the explanatory comments
             os.chmod(tmp, 0o600)
             os.replace(tmp, path)
         finally:

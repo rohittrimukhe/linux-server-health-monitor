@@ -43,6 +43,7 @@
   - The menu's two columns no longer run together when a label is long.
   - A second `healthcheck watch run` could start beside the service, so every alert was sent twice or more. Only one watcher runs per installation now; a second one exits with a clear message.
   - Long scores such as an availability of `99.948` no longer wrap inside the PDF summary box.
+  - `config set`, `exclude add|remove` and the setup wizard removed every comment from the file they changed, including the documented examples. Edits are now made in place and comments are kept.
 
 ## 1.1.0
 
