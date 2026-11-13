@@ -88,9 +88,20 @@ class CliTest(unittest.TestCase):
         self.assertEqual(rc, 2)
 
     def test_06b_config_set_accepts_conf_suffix_and_single_watcher(self):
+        before = slurp(os.path.join(self.home, "config", "reports.conf"))
         rc, out = hc(self.home, "config", "set", "reports.conf", "reports", "title", "Suffix Test")
         self.assertEqual(rc, 0, out)
-        self.assertIn("Suffix Test", slurp(os.path.join(self.home, "config", "reports.conf")))
+        after = slurp(os.path.join(self.home, "config", "reports.conf"))
+        self.assertIn("title = Suffix Test", after)
+        # the explanatory comments shipped in the file survive edits
+        self.assertEqual([l for l in before.splitlines() if l.startswith("#")], [l for l in after.splitlines() if l.startswith("#")])
+        rc, out = hc(self.home, "exclude", "add", "demo-rule", "--code", "X_*", "--reason", "test")
+        self.assertEqual(rc, 0, out)
+        ex = slurp(os.path.join(self.home, "config", "exclusions.conf"))
+        self.assertIn("# [exclude:cockpit-self-signed]", ex)   # commented examples kept
+        self.assertIn("[exclude:demo-rule]", ex)
+        self.assertEqual(hc(self.home, "exclude", "remove", "demo-rule")[0], 0)
+        self.assertNotIn("demo-rule", slurp(os.path.join(self.home, "config", "exclusions.conf")))
         from lshme.core.lock import RunLock
         with RunLock(os.path.join(self.home, "data", "watch.lock")):   # a watcher is already running
             rc, out = hc(self.home, "watch", "run")
