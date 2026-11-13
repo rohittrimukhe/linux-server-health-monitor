@@ -87,6 +87,17 @@ class CliTest(unittest.TestCase):
         rc, out = hc(self.home, "config", "set", "nosuch", "a", "b", "c")
         self.assertEqual(rc, 2)
 
+    def test_06b_config_set_accepts_conf_suffix_and_single_watcher(self):
+        rc, out = hc(self.home, "config", "set", "reports.conf", "reports", "title", "Suffix Test")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Suffix Test", slurp(os.path.join(self.home, "config", "reports.conf")))
+        from lshme.core.lock import RunLock
+        with RunLock(os.path.join(self.home, "data", "watch.lock")):   # a watcher is already running
+            rc, out = hc(self.home, "watch", "run")
+            self.assertEqual(rc, 1, out)
+            self.assertIn("already running", out)
+            self.assertEqual(hc(self.home, "watch", "once")[0], 0)        # cron tick: quiet no-op
+
     def test_07_schedule_show_and_retention(self):
         rc, out = hc(self.home, "schedule", "show")
         self.assertEqual(rc, 0, out)
