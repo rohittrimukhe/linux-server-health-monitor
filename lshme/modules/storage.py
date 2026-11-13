@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Disks, filesystems, mount points, inodes, LVM, multipath, RAID, NFS and disk I/O."""
 import re
 

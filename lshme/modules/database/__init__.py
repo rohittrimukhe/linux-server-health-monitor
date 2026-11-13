@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Database intelligence: discovers database engines on the host and runs the
 read-only adapter for each configured or auto-discovered instance."""
 import re

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<!-- Linux Server Health Monitor Enterprise - Cockpit page
+     Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved. -->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>LSHME Health</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="lshme.css">
+    <script src="../base1/cockpit.js"></script>
+    <script src="charts.js"></script>
+    <script src="lshme.js"></script>
+</head>
+<body>
+    <header class="hdr">
+        <div>
+            <h1>Server health</h1>
+            <p id="sub">Loading…</p>
+        </div>
+        <img class="logo" src="lrs_logo.png" alt="LRS Services">
+    </header>
+    <main>
+        <section class="row">
+            <div class="card score-card">
+                <div id="score" class="score">–</div>
+                <div>
+                    <div id="status" class="status">–</div>
+                    <div id="counts" class="muted"></div>
+                    <div class="actions">
+                        <button id="run" class="btn primary" type="button">Run health check now</button>
+                        <span id="runmsg" class="muted"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>Real-time monitoring</h2>
+                <div id="watch" class="muted">No real-time data yet. Start it with <code>healthcheck watch install</code>.</div>
+            </div>
+        </section>
+        <section class="card">
+            <div class="titlebar">
+                <h2>Live system graphs</h2>
+                <div class="range" role="group" aria-label="Time range">
+                    <button type="button" class="btn small" data-h="1">1 h</button>
+                    <button type="button" class="btn small on" data-h="6">6 h</button>
+                    <button type="button" class="btn small" data-h="24">24 h</button>
+                </div>
+            </div>
+            <div class="graphs">
+                <div><h3>CPU, memory and swap</h3><div id="g-usage"></div></div>
+                <div><h3>Load per CPU (5 min)</h3><div id="g-load"></div></div>
+                <div><h3>Filesystem usage now</h3><div id="g-disk"></div></div>
+                <div><h3>Active real-time problems</h3><div id="g-problems"></div></div>
+            </div>
+        </section>
+        <section class="row">
+            <div class="card"><h2>Findings by severity</h2><div id="g-sev"></div></div>
+            <div class="card"><h2>Module scores</h2><div id="g-mod"></div></div>
+        </section>
+        <section class="card">
+            <h2>Issues requiring attention</h2>
+            <div id="issues" class="muted">–</div>
+        </section>
+        <section class="card">
+            <h2>Module health</h2>
+            <div id="modules"></div>
+        </section>
+        <section class="card">
+            <h2>Reports</h2>
+            <div id="reports" class="muted">–</div>
+        </section>
+    </main>
+    <footer id="footer">© 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.</footer>
+</body>
+</html>

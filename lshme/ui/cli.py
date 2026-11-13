@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Command-line interface. Run without a command on a terminal to open the menu."""
 import argparse
 import json
@@ -5,7 +7,7 @@ import os
 import sys
 import time
 
-from lshme import APP_NAME, VERSION
+from lshme import APP_NAME, COPYRIGHT, VERSION
 from lshme.core.lock import LockBusy
 from lshme.ui import console as C
 
@@ -67,8 +69,23 @@ def print_run(run, result=None, show_info=False):
                 C.out(C.c("  Email FAILED: %s" % e.get("error"), "red"))
 
 
+class RunLockWatch(object):
+    """Keep overlapping 'watch once' runs (cron every minute) from piling up."""
+
+    def __init__(self, app):
+        from lshme.core.lock import RunLock
+        self.lock = RunLock(os.path.join(app.paths.data_dir, "watch.lock"))
+
+    def __enter__(self):
+        return self.lock.__enter__()
+
+    def __exit__(self, *a):
+        return self.lock.__exit__(*a)
+
+
 def build_parser():
-    p = argparse.ArgumentParser(prog="healthcheck", description="%s v%s — read-only Linux health monitoring, reporting and alerting." % (APP_NAME, VERSION))
+    p = argparse.ArgumentParser(prog="healthcheck", description="%s v%s — read-only Linux health monitoring, reporting and alerting." % (APP_NAME, VERSION),
+                                epilog=COPYRIGHT)
     p.add_argument("--config-dir", help="configuration directory (default /etc/lshme or ./config)")
     p.add_argument("--home", help="portable mode: keep config, data, reports and logs under this directory")
     p.add_argument("--verbose", "-v", action="store_true")
@@ -106,6 +123,44 @@ def build_parser():
     sub.add_parser("doctor", help="self-diagnostics: dependencies, permissions, config")
     sub.add_parser("version")
     sub.add_parser("email-test", help="send a test email using smtp.conf")
+
+    w = sub.add_parser("watch", help="real-time monitoring with alerts (lightweight, runs continuously)")
+    w.add_argument("action", nargs="?", default="status", choices=("run", "once", "install", "remove", "status"))
+    w.add_argument("--interval", type=int, help="seconds between checks (default from main.conf [watch])")
+
+    x = sub.add_parser("exclude", help="exclusions: accept known findings so they stop affecting score and alerts")
+    x.add_argument("action", nargs="?", default="list", choices=("list", "add", "remove"))
+    x.add_argument("name", nargs="?", help="rule name (add/remove)")
+    x.add_argument("--code", help="finding code, wildcards allowed (e.g. COCKPIT_SELF_SIGNED, ORACLE_INVALID_*)")
+    x.add_argument("--component", default="*", help="component glob(s), comma-separated (e.g. /mnt/backup*, oracle:ORCL*)")
+    x.add_argument("--module", default="", help="limit to a module (see 'healthcheck modules')")
+    x.add_argument("--hosts", default="*", help="host glob(s) for fleet use, comma-separated")
+    x.add_argument("--reason", help="why this is accepted (shown in reports)")
+    x.add_argument("--owner", default="", help="who approved it")
+    x.add_argument("--until", default="", help="expiry date YYYY-MM-DD (blank = no expiry)")
+
+    iv = sub.add_parser("inventory", help="asset inventory (hardware, OS, packages, databases, VMs, network) for CMDB/audits")
+    iv.add_argument("--json", action="store_true", help="print this server's inventory as JSON (used by fleet collection)")
+    iv.add_argument("--fleet", action="store_true", help="collect from every server in servers.conf over SSH")
+    iv.add_argument("--servers", help="with --fleet: limit to these server names")
+    iv.add_argument("--formats", default="xlsx,csv,json", help="xlsx,csv,json,html,pdf,txt")
+
+    db = sub.add_parser("dashboard", help="fleet web dashboard (self-contained HTML, optional read-only web server)")
+    db.add_argument("action", nargs="?", default="build", choices=("build", "serve"))
+    db.add_argument("--bind", default="127.0.0.1", help="serve: address to listen on (default 127.0.0.1)")
+    db.add_argument("--port", type=int, default=8088)
+
+    lv = sub.add_parser("live", help="live graphical monitoring page in a browser (for servers without Cockpit)")
+    lv.add_argument("--bind", default="127.0.0.1", help="address to listen on (default 127.0.0.1)")
+    lv.add_argument("--port", type=int, default=8089)
+
+    cp = sub.add_parser("cockpit-page", help="install/remove the 'LSHME Health' page in Cockpit")
+    cp.add_argument("action", choices=("install", "remove"))
+    cp.add_argument("--user", action="store_true", help="install for the current user only (~/.local/share/cockpit)")
+
+    sl = sub.add_parser("sla", help="availability/SLA report from the real-time monitoring incident log")
+    sl.add_argument("--month", help="YYYY-MM (default: current month to date)")
+    sl.add_argument("--formats", default="html,pdf,xlsx")
 
     s = sub.add_parser("schedule", help="manage scheduled runs")
     s.add_argument("action", choices=("status", "install", "remove", "show"))
@@ -197,6 +252,7 @@ def dispatch(app, cmd, args):
 
     if cmd == "version":
         C.out("%s %s" % (APP_NAME, VERSION))
+        C.out(COPYRIGHT)
     elif cmd == "menu":
         from lshme.ui.menu import Menu
         Menu(app).loop()
@@ -254,6 +310,163 @@ def dispatch(app, cmd, args):
         else:
             C.out(C.c("Test email failed: %s" % res["error"], "red"))
             return 1
+    elif cmd == "watch":
+        from lshme.ops import watch
+        if args.interval:
+            app.cfg.set("main", "watch", "interval", str(args.interval))
+        if args.action in ("run", "once"):
+            # one watcher per installation: a second one would send every alert twice
+            try:
+                lock = RunLockWatch(app).__enter__()
+            except LockBusy as e:
+                holder = str(e).split("(", 1)[-1].rstrip(")")
+                if args.action == "once":
+                    return 0  # cron tick while the previous one (or the service) is still running
+                C.out(C.c("Real-time monitoring is already running (%s); not starting a second watcher." % holder, "yellow"))
+                return 1
+        if args.action == "run":
+            try:
+                return watch.Watcher(app).run_forever()
+            finally:
+                lock.__exit__(None, None, None)
+        if args.action == "once":
+            watch.lower_priority()
+            try:
+                alerts, recovered, delivery = watch.Watcher(app).tick()
+            finally:
+                lock.__exit__(None, None, None)
+            for a in alerts:
+                C.out("%s %s: %s" % (C.c("%-8s" % a["severity"], a["severity"]), a["component"], a["message"]))
+            for r in recovered:
+                C.out("%s %s: %s" % (C.c(r["kind"], "green"), r["component"], r["message"]))
+            if delivery:
+                C.out("alert delivery: %s" % delivery)
+        elif args.action == "install":
+            mode, path, ok, err = watch.install(app)
+            app.audit("watch-install", mode=mode, path=path)
+            C.out(C.c("Real-time monitoring installed (%s): %s" % (mode, path), "green") if ok else C.c("Install failed: %s" % err, "red"))
+            return 0 if ok else 1
+        elif args.action == "remove":
+            removed = watch.uninstall(app)
+            app.audit("watch-remove", removed=removed)
+            C.out("Removed: %s" % (", ".join(removed) or "nothing"))
+        else:
+            w = watch.Watcher(app)
+            st = w.state
+            if not st.get("last_tick"):
+                C.out("Real-time monitoring has not run yet. Start it with: healthcheck watch install")
+                return 0
+            C.out("Last check: %s   checks: %s   last tick CPU: %s ms   memory: %s MB" % (
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(st["last_tick"])), st.get("ticks"), st.get("last_tick_cpu_ms"), st.get("rss_mb")))
+            probs = st.get("problems", {})
+            C.table(["Severity", "Component", "Problem", "Since", "Alerted"],
+                    [[p["severity"], p.get("component", ""), p.get("message", ""), time.strftime("%m-%d %H:%M", time.localtime(p["since"])),
+                      p.get("alerted") or "pending"] for p in sorted(probs.values(), key=lambda x: x["since"])] or [["OK", "", "no active problems", "", ""]])
+    elif cmd == "exclude":
+        from lshme.engine import exclusions
+        if args.action == "list":
+            now = time.time()
+            rows = []
+            for r in exclusions.load(app.cfg):
+                st = "disabled" if not r.enabled else ("INVALID: " + "; ".join(r.validate())) if r.validate() else "EXPIRED" if r.expired(now) else "active"
+                rows.append([r.name, r.code, r.component, r.module or "*", ",".join(r.hosts), r.until or "never", st, r.reason])
+            C.table(["Rule", "Code", "Component", "Module", "Hosts", "Until", "Status", "Reason"], rows or [["(none)", "", "", "", "", "", "", ""]])
+        elif args.action == "add":
+            import re as _re
+            if not args.name or not _re.match(r"^[\w.-]+$", args.name):
+                raise ValueError("exclude add NAME --code CODE --reason TEXT  (NAME: letters, digits, . _ -)")
+            sec = "exclude:" + args.name
+            fields = {"code": args.code or "", "component": args.component, "module": args.module, "hosts": args.hosts,
+                      "reason": args.reason or "", "owner": args.owner, "until": args.until}
+            problems = exclusions.Rule(args.name, fields).validate()
+            if problems:
+                raise ValueError("; ".join(problems))
+            for k, v in fields.items():
+                if v:
+                    app.cfg.set("exclusions", sec, k, v)
+            app.save_config("exclusions")
+            app.audit("exclusion-add", rule=args.name, **fields)
+            C.out(C.c("Exclusion '%s' added: %s on %s (%s)" % (args.name, args.code, args.component, args.until or "no expiry"), "green"))
+        else:
+            if not args.name or ("exclude:" + args.name) not in app.cfg.parsers["exclusions"].sections():
+                raise ValueError("no exclusion named %s" % args.name)
+            app.cfg.remove_section("exclusions", "exclude:" + args.name)
+            app.save_config("exclusions")
+            app.audit("exclusion-remove", rule=args.name)
+            C.out("Exclusion '%s' removed" % args.name)
+    elif cmd == "inventory":
+        from lshme.ops import inventory
+        if args.json:
+            sys.stdout.write(json.dumps(inventory.collect(app.runner)) + "\n")
+            return 0
+        fm = [f.strip() for f in args.formats.split(",") if f.strip()]
+        bad = [f for f in fm if f not in ("xlsx", "csv", "json", "html", "pdf", "txt")]
+        if bad:
+            raise ValueError("unknown inventory format(s): %s" % ", ".join(bad))
+        inv, files, errors = inventory.export(app, fm, args.fleet, args.servers.split(",") if args.servers else None)
+        C.table(["Sheet", "Records"], [[s, len(inv.get(s, []))] for s in inventory.SHEETS])
+        for host, err in errors.items():
+            C.out(C.c("  %s: %s" % (host, err), "red"))
+        for f in files:
+            C.out("  " + f)
+    elif cmd == "dashboard":
+        from lshme.ops import dashboard
+        path, n, counts = dashboard.build(app.cfg, app.paths)
+        C.out("Dashboard: %s (%d servers: %s)" % (path, n, ", ".join("%s %d" % kv for kv in sorted(counts.items())) or "none"))
+        if args.action == "serve":
+            from lshme.core.priority import set_priority
+            set_priority(19, True)
+            httpd = dashboard.serve(os.path.dirname(path), args.bind, args.port)
+            C.out("Serving read-only on http://%s:%d/  (Ctrl+C to stop)" % (args.bind, args.port))
+            if args.bind not in ("127.0.0.1", "localhost", "::1"):
+                C.out(C.c("Note: the dashboard has no login; restrict access with a firewall or a reverse proxy.", "yellow"))
+            try:
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                pass
+            finally:
+                httpd.server_close()
+    elif cmd == "live":
+        from lshme.core.priority import set_priority
+        from lshme.ops import live
+        set_priority(19, True)
+        httpd = live.make_server(app.paths.data_dir, args.bind, args.port)
+        C.out("Live monitoring page: http://%s:%d/   (Ctrl+C to stop)" % (args.bind, httpd.server_address[1]))
+        if not os.path.exists(os.path.join(app.paths.data_dir, "watch_metrics.json")):
+            C.out(C.c("Graphs fill in once real-time monitoring runs: healthcheck watch install", "yellow"))
+        if args.bind not in ("127.0.0.1", "localhost", "::1"):
+            C.out(C.c("Note: the page has no login; restrict access with a firewall, an SSH tunnel or a reverse proxy.", "yellow"))
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            httpd.server_close()
+    elif cmd == "cockpit-page":
+        from lshme.ops import cockpit_page
+        if args.action == "install":
+            dest = cockpit_page.install(app, args.user)
+            app.audit("cockpit-page-install", path=dest)
+            C.out(C.c("Cockpit page installed in %s. Open Cockpit and choose 'LSHME Health' in the menu." % dest, "green"))
+        else:
+            dest = cockpit_page.remove(args.user, owner_args=app.global_args())
+            app.audit("cockpit-page-remove", path=dest)
+            C.out("Removed %s" % dest if dest else "Cockpit page was not installed")
+    elif cmd == "sla":
+        from lshme import reports
+        from lshme.core.util import fmt_duration
+        from lshme.ops import sla
+        result, doc, outdir, files, notes = sla.generate(app, args.month or sla.current_month(), reports.parse_formats(args.formats))
+        C.out(C.c(" %s " % doc.subtitle, "title"))
+        C.out("Availability %.3f%%  downtime %s  degraded %s  incidents %d (critical %d)  MTTR %s  coverage %s" % (
+            result["availability"], fmt_duration(result["downtime"]), fmt_duration(result["degraded"]), len(result["incidents"]),
+            result["critical_incidents"], fmt_duration(result["mttr"]) if result["mttr"] else "n/a",
+            "%.1f%%" % result["coverage"] if result["coverage"] is not None else "unknown"))
+        C.table(doc.overview()[1], doc.module_rows[:20])
+        for f in files:
+            C.out("  " + f)
+        for n in notes:
+            C.out(C.c("  note: " + n, "yellow"))
     elif cmd == "schedule":
         if args.action in ("status", "show"):
             be, rows = scheduler.status(app.cfg, app.runner)
@@ -278,7 +491,7 @@ def dispatch(app, cmd, args):
                 C.out(C.c("  error: " + e, "red"))
             return 1 if rep["errors"] else 0
         else:
-            removed = scheduler.uninstall(app.cfg, app.runner)
+            removed = scheduler.uninstall(app.cfg, app.runner, app.global_args())
             app.audit("schedule-remove", removed=removed)
             C.out("Removed: %s" % (", ".join(removed) or "nothing"))
     elif cmd == "retention":
@@ -380,6 +593,9 @@ def dispatch(app, cmd, args):
             problems = list(app.cfg.load_errors) + app.cfg.permission_problems()
             for s in scheduler.schedules(app.cfg):
                 problems += ["schedule %s: %s" % (s.name, e) for e in s.validate()]
+            from lshme.engine import exclusions
+            for r in exclusions.load(app.cfg):
+                problems += ["exclusion %s: %s" % (r.name, e) for e in r.validate()]
             try:
                 modreg.resolve(app.cfg)
             except ValueError as e:
@@ -404,6 +620,8 @@ def dispatch(app, cmd, args):
             if len(args.args) != 4:
                 raise ValueError("config set FILE SECTION KEY VALUE")
             name, section, key, value = args.args
+            if name.endswith(".conf"):
+                name = name[:-5]  # accept "main.conf" as well as "main"
             if name not in app.cfg.parsers:
                 raise ValueError("unknown config file %s" % name)
             app.cfg.set(name, section, key, value)

@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Format-independent report document built from a run (or a fleet of runs).
 
 Report types:
@@ -5,9 +7,10 @@ Report types:
   technical  - everything above plus every detail table and evidence
   full       - technical plus appendix (module errors, skipped checks, raw evidence)
 """
+import os
 import time
 
-from lshme import APP_NAME, VERSION
+from lshme import APP_NAME, BRAND_LOGO, COPYRIGHT, VERSION
 from lshme.core.model import SEV_RANK, Table
 from lshme.core.util import redact
 
@@ -47,6 +50,23 @@ class ReportDoc(object):
         self.charts = {"filesystems": [], "score_history": [], "modules": []}
         self.banner = ""
         self.host = ""
+        self.copyright = COPYRIGHT
+        self.brand_logo = BRAND_LOGO if os.path.isfile(BRAND_LOGO) else ""
+        self.customer_logo = ""
+
+    # Summary table/chart labels; host and fleet defaults, other report kinds override them.
+    overview_title = None
+    overview_headers = None
+    chart_title = None
+    score_label = "SCORE"
+    score_suffix = "/100"
+
+    def overview(self):
+        title = self.overview_title or ("Module health" if self.kind == "host" else "Servers")
+        headers = self.overview_headers or (["Module", "Score", "Status", "Critical", "Warning", "Summary"] if self.kind == "host"
+                                            else ["Server", "Score", "Status", "Critical", "Warning", "Top issue"])
+        chart = self.chart_title or ("Module scores" if self.kind == "host" else "Server scores")
+        return title, headers, chart
 
     @property
     def status(self):
@@ -73,6 +93,7 @@ def build(run, cfg, report_type="technical"):
     d.report_type = report_type
     d.host = run.host
     meta = run.meta or {}
+    d.customer_logo = (cfg.get("main", "general", "logo", "") if cfg else "") or meta.get("logo", "")
     custom_title = cfg.get("reports", "reports", "title", "") if cfg else ""
     d.title = custom_title or "Linux Server Health Report"
     d.subtitle = "%s — %s report" % (run.fqdn or run.host, report_type.capitalize())
@@ -123,6 +144,11 @@ def build(run, cfg, report_type="technical"):
         d.sections.append(Section(m.name, m.title, m.status, m.score, m.summary, fl, tables, notes))
         if m.name in ("system", "cpu_memory", "storage"):
             d.key_tables.extend(t for t in tables if t.kind == "summary")
+    if getattr(run, "excluded", None):
+        rows = [[x["severity"], x["component"], x["message"], x["rule"], x["reason"], x.get("owner", ""), x["until"]] for x in run.excluded]
+        d.sections.append(Section("excluded", "Excluded findings (accepted exceptions)", "OK", None,
+                                  "%d finding(s) excluded by rules in exclusions.conf; they do not affect the score or alerts." % len(rows), [],
+                                  [Table("Excluded findings", ["Severity", "Component", "Finding", "Rule", "Reason", "Owner", "Until"], rows, kind="summary")]))
     seen = set()
     for f in d.findings:
         if SEV_RANK[f["severity"]] >= 2 and f["recommendation"] and f["recommendation"] not in seen:
@@ -142,6 +168,7 @@ def build_fleet(runs, cfg, report_type="technical", errors=None):
     """Combined report for many servers (central/multi-server mode)."""
     d = ReportDoc()
     d.kind = "fleet"
+    d.customer_logo = cfg.get("main", "general", "logo", "") if cfg else ""
     d.report_type = report_type
     d.title = (cfg.get("reports", "reports", "title", "") if cfg else "") or "Infrastructure Health Report"
     d.subtitle = "%d servers — fleet summary" % len(runs)

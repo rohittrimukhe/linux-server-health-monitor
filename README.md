@@ -1,5 +1,9 @@
 # Linux Server Health Monitor Enterprise (LSHME)
 
+![LRS Services](lshme/reports/lrs_logo.png)
+
+**© 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.** See [LICENSE](LICENSE).
+
 Read-only health monitoring, reporting and alerting for Linux servers. LSHME is
 a menu-driven application with a full command-line interface. It checks the
 operating system, storage, services, network, hardware, KVM, Cockpit,
@@ -13,7 +17,8 @@ whole fleet of servers from one central host.
 
 ```
  ==========================================================================
-   Linux Server Health Monitor Enterprise  v1.1.0
+   Linux Server Health Monitor Enterprise  v1.2.0
+   © 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
    Host: db01   2026-11-12 09:00
  ==========================================================================
   Load 0.42 / 0.51 / 0.48   Memory 63%   Fullest filesystem 81%
@@ -27,7 +32,10 @@ whole fleet of servers from one central host.
   [ 7] Cockpit web console               [17] Configuration & setup wizard
   [ 8] Network & connectivity            [18] Self-diagnostics
   [ 9] Generate reports (choose forma... [19] View logs
-  [10] SMTP & email settings             [ 0] Exit
+  [10] SMTP & email settings             [20] Real-time monitoring & alerts
+                                         [21] Exclusions (accepted findings)
+                                         [22] Dashboard, SLA & inventory
+                                         [ 0] Exit
 ```
 
 ## Quick start
@@ -38,6 +46,7 @@ sudo healthcheck setup         # guided setup: identity, thresholds, services, d
 sudo healthcheck               # interactive menu
 sudo healthcheck run --formats all --email
 sudo healthcheck schedule install
+sudo healthcheck watch install   # real-time monitoring with alerts
 ```
 
 Requirements: Python 3.6 or newer, which RHEL/Oracle Linux 7 provide through
@@ -65,7 +74,60 @@ built-in PDF, XLSX and PPTX writers are used, so every format still works.
 | Security | SELinux, firewall, effective SSH policy, extra UID 0 accounts, empty passwords, auditd, pending security updates, last patch date, NOPASSWD sudo |
 | Also | TLS certificates (files and endpoints), Docker/Podman, Pacemaker/Corosync, HTTP endpoints, postfix queue, custom Nagios-style checks, configuration drift against a baseline, trend comparison, filesystem fill forecast |
 
-See [docs/MODULES.md](docs/MODULES.md) for every module and all 214 finding codes.
+See [docs/MODULES.md](docs/MODULES.md) for every module and all finding codes.
+
+## Real-time monitoring
+
+`healthcheck watch install` starts a lightweight watcher, using systemd or cron
+every minute on hosts without systemd:
+
+- **Every minute:** checks CPU, load, memory, swap, every filesystem (space,
+  inodes, read-only), hung NFS mounts, critical services, expected ports and
+  required processes. These read `/proc` directly, with no subprocesses apart
+  from one `systemctl` call.
+- **Rotation:** heavier modules (database, KVM, services, Cockpit, network,
+  backup, cluster, certificates) run one at a time, each every 15 minutes.
+- **Alerts:** sent by email, syslog and/or a webhook after 2 consecutive bad
+  checks (so short spikes don't trigger), again on escalation, as a reminder
+  every 60 minutes, and once on recovery. Alerts are suppressed during
+  maintenance windows.
+
+## Dashboards, SLA and inventory
+
+| Feature | Command | What you get |
+|---|---|---|
+| Live graphs | `healthcheck watch install`, then the Cockpit page or `healthcheck live` | Real-time line charts of CPU, memory, swap, load and active problems (1 h / 6 h / 24 h), filesystem bars, a severity pie and module score bars. The graphs update by themselves; no extra software |
+| Charts in reports | automatic | Severity and module-status pie charts plus bar charts in HTML, PDF, Excel (native charts) and PowerPoint (native charts) reports and in the fleet dashboard |
+| Cockpit page | `healthcheck cockpit-page install` (done automatically by `install.sh` when Cockpit is present) | An **LSHME Health** entry in Cockpit's menu showing the score, issues, real-time problems and the latest reports, with a *Run health check now* button. Static files only; the page updates itself when new results are written |
+| Fleet dashboard | `healthcheck dashboard build` (rebuilt after every `fleet run`), `healthcheck dashboard serve` | One self-contained HTML page with every server's status, filters, search, stale and unreachable detection, and a drill-down report per server. Optional minimal read-only web server (localhost by default) |
+| Uptime/SLA report | `healthcheck sla --month 2026-10` (attached automatically to the monthly schedule) | Availability % per server and component, downtime vs degraded time, incident log, mean time to recover, monitoring coverage and SLA breaches, from the real-time incident history |
+| Asset inventory | `healthcheck inventory` / `healthcheck inventory --fleet` | Servers, disks, filesystems, network, packages, databases, VMs and listening services as XLSX/CSV/JSON for CMDB updates and audits, for one server or the whole fleet |
+
+## Exclusions
+
+Accepted findings, such as Cockpit's self-signed certificate, can be excluded
+so they no longer affect the score or trigger alerts. They stay visible in
+reports with the reason and an optional expiry date:
+
+```bash
+healthcheck exclude add cockpit-self-signed --code COCKPIT_SELF_SIGNED --module cockpit --reason "Internal console"
+```
+
+## Resource use
+
+LSHME is built to stay out of the way on production servers:
+
+| Run | Typical cost (measured) |
+|---|---|
+| Real-time check (one tick) | about 2 ms of CPU inside the running watcher; about 30 MB resident; 170 ms of CPU per minute of checks including startup |
+| Full check with HTML and JSON reports | about 2.5 s; 0.4 s of CPU |
+| Full check with all 7 formats | about 3.3 s; 1.5 s of CPU; under 80 MB of memory |
+
+How it keeps the cost down:
+- Every run lowers its own priority (nice 10, and 19 for the watcher) and uses the idle I/O class.
+- systemd units cap CPU and memory: the watcher at 5% CPU and 128 MB, scheduled reports at 50% CPU and 512 MB.
+- Every command has a timeout, and hung network mounts are probed in a helper thread.
+- Runs are locked so they never overlap, and the watcher restarts itself if its memory grows past 100 MB.
 
 ## Safety
 

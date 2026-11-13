@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Result data model shared by modules, the engine, reports and the fleet collector."""
 import datetime
 import time
@@ -141,6 +143,7 @@ class RunResult(object):
         self.maintenance = None
         self.trends = {}
         self.history = []
+        self.excluded = []
 
     def findings(self, min_severity="INFO"):
         floor = SEV_RANK[min_severity]
@@ -170,7 +173,7 @@ class RunResult(object):
                 "collected_at": self.collected_at, "collected_at_text": iso(self.collected_at),
                 "finished_at": self.finished_at, "days": self.days, "schedule": self.schedule,
                 "version": self.version, "meta": self.meta, "health": self.health,
-                "maintenance": self.maintenance, "trends": self.trends, "history": self.history,
+                "maintenance": self.maintenance, "trends": self.trends, "history": self.history, "excluded": self.excluded,
                 "modules": [m.to_dict() for m in self.modules]}
 
     @classmethod
@@ -186,5 +189,6 @@ class RunResult(object):
         r.maintenance = d.get("maintenance")
         r.trends = d.get("trends", {})
         r.history = d.get("history", [])
+        r.excluded = d.get("excluded", [])
         r.modules = [ModuleResult.from_dict(x) for x in d.get("modules", [])]
         return r

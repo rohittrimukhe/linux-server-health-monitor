@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Administrator-defined checks using the Nagios plugin convention.
 
 Exit code 0=OK, 1=WARNING, 2=CRITICAL, 3=UNKNOWN; the first output line is the

@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Management presentation (PPTX).
 
 With python-pptx: title, executive summary, module health table, key issues,
@@ -37,10 +39,12 @@ def slides_for(doc):
     else:
         bullets.append("No critical issues detected.")
     out.append(("Executive summary", bullets, None))
-    hdr = ["Module" if doc.kind == "host" else "Server", "Score", "Status", "Crit", "Warn"]
+    if any(doc.counts.get(s, 0) for s in ("CRITICAL", "WARNING", "UNKNOWN", "INFO")) or doc.charts.get("modules"):
+        out.append(("__chart_overview__", [], None))
+    hdr = doc.overview()[1][:5]
     rows = [r[:5] for r in doc.module_rows]
     for i in range(0, max(1, len(rows)), 14):
-        out.append(("Health by %s%s" % ("module" if doc.kind == "host" else "server", "" if i == 0 else " (cont.)"), [], (hdr, rows[i:i + 14])))
+        out.append(("%s%s" % (doc.overview()[0], "" if i == 0 else " (cont.)"), [], (hdr, rows[i:i + 14])))
     key = [f for f in doc.findings if f["severity"] in ("CRITICAL", "WARNING")]
     for i in range(0, len(key), 8):
         out.append(("Key issues%s" % ("" if i == 0 else " (cont.)"), [], (["Severity", "Component", "Issue"],
@@ -102,7 +106,16 @@ def _render_pptx(doc, slides, path):
         p.runs[0].font.size, p.runs[0].font.bold = Pt(26), True
         p.runs[0].font.color.rgb = _rgb("#FFFFFF")
         foot = slide.shapes.add_textbox(Inches(0.4), Inches(7.05), Inches(12.5), Inches(0.3)).text_frame
-        foot.text = "%s · %s" % (doc.subtitle, time.strftime("%Y-%m-%d", time.localtime(doc.generated)))
+        foot.text = "%s · %s · %s" % (doc.subtitle, time.strftime("%Y-%m-%d", time.localtime(doc.generated)), doc.copyright)
+        if doc.brand_logo:
+            try:
+                plate = slide.shapes.add_shape(1, Inches(11.0), Inches(0.12), Inches(2.15), Inches(0.66))
+                plate.fill.solid()
+                plate.fill.fore_color.rgb = _rgb("#FFFFFF")
+                plate.line.fill.background()
+                slide.shapes.add_picture(doc.brand_logo, Inches(11.05), Inches(0.15), height=Inches(0.6))
+            except Exception:
+                pass
         foot.paragraphs[0].runs[0].font.size = Pt(10)
         foot.paragraphs[0].runs[0].font.color.rgb = _rgb("#5B6876")
 
@@ -123,6 +136,19 @@ def _render_pptx(doc, slides, path):
                 p.text = b
                 p.runs[0].font.size = Pt(20 if i == 0 else 14)
                 p.runs[0].font.color.rgb = _rgb("#DCE6F1")
+            if doc.brand_logo:
+                try:
+                    plate = s.shapes.add_shape(1, Inches(0.8), Inches(0.6), Inches(4.4), Inches(1.4))
+                    plate.fill.solid()
+                    plate.fill.fore_color.rgb = _rgb("#FFFFFF")
+                    plate.line.fill.background()
+                    s.shapes.add_picture(doc.brand_logo, Inches(0.95), Inches(0.7), height=Inches(1.2))
+                except Exception:
+                    pass
+            cr = s.shapes.add_textbox(Inches(0.8), Inches(6.8), Inches(9), Inches(0.4)).text_frame
+            cr.text = doc.copyright
+            cr.paragraphs[0].runs[0].font.size = Pt(12)
+            cr.paragraphs[0].runs[0].font.color.rgb = _rgb("#DCE6F1")
             badge = s.shapes.add_shape(1, Inches(10.3), Inches(5.6), Inches(2.4), Inches(1.1))
             badge.fill.solid()
             badge.fill.fore_color.rgb = _rgb(SEV_COLORS.get(doc.status, "#555555"))
@@ -130,6 +156,47 @@ def _render_pptx(doc, slides, path):
             badge.text_frame.text = "%s  %s" % (doc.score, doc.status)
             badge.text_frame.paragraphs[0].runs[0].font.size = Pt(22)
             badge.text_frame.paragraphs[0].runs[0].font.bold = True
+            continue
+        if title == "__chart_overview__":
+            header(s, "Health at a glance")
+            sev = [(x.title(), doc.counts.get(x, 0), SEV_COLORS[x]) for x in ("CRITICAL", "WARNING", "UNKNOWN", "INFO") if doc.counts.get(x, 0)]
+            if sev:
+                cd = CategoryChartData()
+                cd.categories = [l for l, _, _ in sev]
+                cd.add_series("Findings", [v for _, v, _ in sev])
+                pie = s.shapes.add_chart(XL_CHART_TYPE.DOUGHNUT, Inches(0.4), Inches(1.15), Inches(5.6), Inches(5.6), cd).chart
+                pie.has_title, pie.has_legend = True, True
+                pie.chart_title.text_frame.text = "Findings by severity"
+                pie.plots[0].has_data_labels = True
+                dl = pie.plots[0].data_labels
+                dl.show_percentage, dl.show_value = True, False
+                dl.number_format, dl.number_format_is_linked = "0%", False
+                dl.font.size, dl.font.bold = Pt(14), True
+                dl.font.color.rgb = _rgb("#FFFFFF")
+                for i, (_, _, c) in enumerate(sev):
+                    pt = pie.plots[0].series[0].points[i]
+                    pt.format.fill.solid()
+                    pt.format.fill.fore_color.rgb = _rgb(c)
+            items = sorted(doc.charts.get("modules", []), key=lambda kv: -float(kv[1] or 0))[-14:]  # worst at the top
+            if items:
+                cd = CategoryChartData()
+                cd.categories = [str(k)[:26] for k, _ in items]
+                cd.add_series(doc.overview()[2], [float(v or 0) for _, v in items])
+                bar = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(6.2), Inches(1.15), Inches(6.8), Inches(5.6), cd).chart
+                bar.has_legend = False
+                bar.has_title = True
+                bar.chart_title.text_frame.text = doc.overview()[2]
+                bar.value_axis.maximum_scale, bar.value_axis.minimum_scale = 100, 0
+                bar.plots[0].has_data_labels = True
+                bar.plots[0].data_labels.font.size = Pt(10)
+                bar.plots[0].data_labels.number_format, bar.plots[0].data_labels.number_format_is_linked = "0", False
+                bar.plots[0].gap_width = 60
+                bar.category_axis.tick_labels.font.size = Pt(10)
+                for i, (_, v) in enumerate(items):
+                    pt = bar.plots[0].series[0].points[i]
+                    pt.format.fill.solid()
+                    v = float(v or 0)
+                    pt.format.fill.fore_color.rgb = _rgb(SEV_COLORS["CRITICAL"] if v < 70 else SEV_COLORS["WARNING"] if v < 90 else SEV_COLORS["HEALTHY"])
             continue
         if title == "__chart_fs__":
             header(s, "Filesystem utilisation")
@@ -232,10 +299,14 @@ def _render_builtin(doc, slides, path):
         if title == "__title__":
             shapes.append(_box(2, "bg", 0, 0, W, H, [], "0B3D6E"))
             shapes.append(_box(3, "title", 700000, 1800000, W - 1400000, 1000000, [(doc.title, 40, True, "FFFFFF")]))
-            shapes.append(_box(4, "sub", 700000, 2900000, W - 1400000, 3000000, [(b, 18 if i == 0 else 14, False, "DCE6F1") for i, b in enumerate(bullets)]))
+            shapes.append(_box(4, "sub", 700000, 2900000, W - 1400000, 3000000, [(b, 18 if i == 0 else 14, False, "DCE6F1") for i, b in enumerate(bullets)] + [(doc.copyright, 12, False, "DCE6F1")]))
             shapes.append(_box(5, "score", W - 3200000, H - 1500000, 2500000, 900000, [("%s  %s" % (doc.score, doc.status), 22, True, "FFFFFF")],
                                SEV_COLORS.get(doc.status, "#555555").lstrip("#")))
         else:
+            if title == "__chart_overview__":
+                title = "Health at a glance"
+                bullets = ["%s findings: %d" % (x.title(), doc.counts.get(x, 0)) for x in ("CRITICAL", "WARNING", "UNKNOWN", "INFO")] + \
+                          ["%s: %s" % (k, v) for k, v in doc.charts.get("modules", [])[:10]]
             if title == "__chart_fs__":
                 title = "Filesystem utilisation"
                 bullets = ["%s: %.0f%%" % (k, float(v or 0)) for k, v in doc.charts["filesystems"][:14]]
@@ -248,7 +319,7 @@ def _render_builtin(doc, slides, path):
                     sev = str(r[0]) if r else ""
                     lines.append((" | ".join(str(c) for c in r), 11, False, SEV_COLORS.get(sev, "#1D2733").lstrip("#") if sev in ("CRITICAL", "WARNING") else "1D2733"))
             shapes.append(_box(3, "body", 500000, 1000000, W - 1000000, H - 1500000, lines))
-            shapes.append(_box(4, "footer", 400000, H - 420000, W - 800000, 300000, [(doc.subtitle, 10, False, "5B6876")]))
+            shapes.append(_box(4, "footer", 400000, H - 420000, W - 800000, 300000, [("%s · %s" % (doc.subtitle, doc.copyright), 10, False, "5B6876")]))
         xml_slides.append('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld %s><p:cSld><p:spTree>%s%s</p:spTree></p:cSld>'
                           '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>' % (NS, EMPTY_TREE, "".join(shapes)))
     n = len(xml_slides)

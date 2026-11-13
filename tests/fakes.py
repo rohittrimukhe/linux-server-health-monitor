@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Test doubles: a scripted Runner and helpers to build a Context."""
 import os
 import shutil
@@ -127,6 +129,11 @@ class TempHome(object):
         self.paths = Paths(ROOT, home=self.dir)
         self.paths.ensure()
         self.cfg = Config(self.paths.config_dir)
+        # keep tests away from the real /etc/cron.d and /etc/systemd/system of the machine running them
+        for key, sub in (("cron_file", "cron-lshme"), ("systemd_dir", "systemd")):
+            if "schedule" not in (configs or {}) or key not in configs["schedule"]:
+                self.cfg.set("schedule", "scheduler", key, os.path.join(self.dir, sub))
+        os.makedirs(os.path.join(self.dir, "systemd"), exist_ok=True)
 
     def cleanup(self):
         shutil.rmtree(self.dir, ignore_errors=True)

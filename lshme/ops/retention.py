@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Retention: per-category report expiry, compression, optional archiving, log
 and history pruning, config-backup rotation. Always previewable (dry run);
 every deletion is written to the audit log. The newest report of each
@@ -112,6 +114,10 @@ def plan(cfg, paths, now=None, usage=None):
             if os.path.exists(p):
                 actions.append({"action": "trim", "path": p, "age_days": None, "bytes": _size(p),
                                 "reason": "drop entries older than %g days" % num(key, 90), "days": num(key, 90)})
+        ev = os.path.join(paths.data_dir, "watch_events.jsonl")
+        if os.path.exists(ev):
+            actions.append({"action": "trim", "path": ev, "age_days": None, "bytes": _size(ev),
+                            "reason": "drop incidents older than %g days" % num("history_days", 365), "days": num("history_days", 365)})
     actions += space_plan(cfg, paths, candidates, actions, usage or disk_usage)
     keep = int(num("config_backups_keep", 30))
     bdir = paths.config_backup_dir
@@ -204,8 +210,11 @@ def _trim_jsonl(path, days, now):
     with open(path, encoding="utf-8") as f:
         for line in f:
             try:
-                t = json.loads(line).get("time", "")
-            except ValueError:
+                rec = json.loads(line)
+                t = rec.get("time", "")
+                if not t and rec.get("ts"):  # watch incident log uses epoch "ts"
+                    t = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(rec["ts"]))
+            except (ValueError, TypeError, AttributeError):
                 t = ""
             if t and t < cutoff:
                 removed += 1

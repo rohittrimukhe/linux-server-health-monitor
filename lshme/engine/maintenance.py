@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Maintenance windows: checks still run and are recorded, but alert emails are
 suppressed and reports are marked, so planned work does not page anyone."""
 import json

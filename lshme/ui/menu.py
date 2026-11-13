@@ -1,8 +1,10 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Interactive DOS-style menu."""
 import os
 import time
 
-from lshme import APP_NAME, VERSION
+from lshme import APP_NAME, COPYRIGHT, VERSION
 from lshme import modules as modreg
 from lshme import reports
 from lshme.ui import console as C
@@ -40,7 +42,7 @@ class Menu(object):
         C.out(C.c(" " * w, "title"))
         C.out(C.c(("  %s  v%s" % (APP_NAME, VERSION)).ljust(w), "title"))
         C.out(C.c(("  Host: %s   %s" % (os.uname()[1], time.strftime("%Y-%m-%d %H:%M"))).ljust(w), "title"))
-        C.out(C.c(" " * w, "title"))
+        C.out(C.c(("  " + COPYRIGHT).ljust(w), "title"))
         style = lambda v, wv, cv: "red" if v >= cv else "yellow" if v >= wv else "green"
         C.out("  Load %s   Memory %s   Fullest filesystem %s" % (
             " / ".join(load), C.c("%.0f%%" % mem, style(mem, 85, 95)), C.c("%.0f%%" % disk, style(disk, 80, 90))))
@@ -56,17 +58,20 @@ class Menu(object):
         ("9", "Generate reports (choose formats / period)"), ("10", "SMTP & email settings"),
         ("11", "Scheduling & automation"), ("12", "Report & log retention"), ("13", "History & trends"),
         ("14", "Baseline & configuration drift"), ("15", "Maintenance mode"), ("16", "Multi-server (fleet)"),
-        ("17", "Configuration & setup wizard"), ("18", "Self-diagnostics"), ("19", "View logs"), ("0", "Exit"),
+        ("17", "Configuration & setup wizard"), ("18", "Self-diagnostics"), ("19", "View logs"),
+        ("20", "Real-time monitoring & alerts"), ("21", "Exclusions (accepted findings)"),
+        ("22", "Dashboard, SLA & inventory"), ("0", "Exit"),
     ]
 
     def loop(self):
         while True:
             self.banner()
             half = (len(self.ITEMS) + 1) // 2
+            col = max(len(t) for _, t in self.ITEMS[:half]) + 2  # left column wide enough for its longest label
             for i in range(half):
                 left = self.ITEMS[i]
                 right = self.ITEMS[i + half] if i + half < len(self.ITEMS) else None
-                l = "[%2s] %-36s" % left
+                l = "[%2s] %s" % (left[0], left[1].ljust(col))
                 r = "[%2s] %s" % right if right else ""
                 C.out("  " + l + r)
             choice = C.ask("\n  Select option", "")
@@ -173,7 +178,7 @@ class Menu(object):
             for e in rep["errors"]:
                 C.out(C.c("error: " + e, "red"))
         elif v == "3" and C.yes("Remove all LSHME schedules", False):
-            C.out("Removed: %s" % ", ".join(scheduler.uninstall(self.app.cfg, self.app.runner)))
+            C.out("Removed: %s" % ", ".join(scheduler.uninstall(self.app.cfg, self.app.runner, self.app.global_args())))
 
     def opt_12(self):
         from lshme.ops import retention
@@ -264,6 +269,73 @@ class Menu(object):
     def opt_18(self):
         from lshme.ops import doctor
         C.table(["Area", "Check", "Status", "Detail"], doctor.run(self.app.cfg, self.app.paths, self.app.runner))
+
+    def opt_20(self):
+        from lshme.ui.cli import main as cli_main
+        args = ["--home", self.app.home] if self.app.home else ["--config-dir", self.app.paths.config_dir]
+        cli_main(args + ["watch", "status"])
+        C.out("\n  [1] Run one check now   [2] Install/start continuous monitoring   [3] Stop and remove   [0] Back")
+        v = C.ask("Choice", "0", choices=["0", "1", "2", "3"])
+        if v in ("1", "2", "3"):
+            cli_main(args + ["watch", {"1": "once", "2": "install", "3": "remove"}[v]])
+
+    def opt_21(self):
+        from lshme.engine import exclusions
+        from lshme.ui.cli import main as cli_main
+        args = ["--home", self.app.home] if self.app.home else ["--config-dir", self.app.paths.config_dir]
+        cli_main(args + ["exclude", "list"])
+        C.out("\n  [1] Pick findings from a fresh check to exclude   [2] Remove a rule   [0] Back")
+        v = C.ask("Choice", "0", choices=["0", "1", "2"])
+        if v == "2":
+            name = C.ask("Rule name to remove", "")
+            if name:
+                cli_main(args + ["exclude", "remove", name])
+            return
+        if v != "1":
+            return
+        from lshme.ui.cli import progress_printer
+        run = self.app.check(None, 1, "adhoc", save_history=False, progress=progress_printer(False))
+        found = run.findings("INFO")
+        if not found:
+            C.out("No findings to exclude.")
+            return
+        for i, f in enumerate(found, 1):
+            C.out("  [%2d] %s %-28s %-30s %s" % (i, C.c("%-8s" % f.severity, f.severity), f.code, f.component[:30], f.message[:70]))
+        picks = C.ask("Numbers to exclude (comma-separated, blank to cancel)", "")
+        chosen = []
+        for part in picks.split(","):
+            if part.strip().isdigit() and 1 <= int(part) <= len(found):
+                chosen.append(found[int(part) - 1])
+        if not chosen:
+            return
+        scope = C.ask("Exclude for this exact component only, or every component with the same code", "exact", choices=["exact", "all"])
+        reason = C.ask("Reason (shown in reports)", "Accepted risk", validate=lambda x: None if x.strip() else "a reason is required")
+        owner = C.ask("Approved by (optional)", "")
+        until = C.ask("Expires on YYYY-MM-DD (blank = never)", "",
+                      validate=lambda x: None if not x or exclusions.Rule("t", {"code": "X", "reason": "r", "until": x}).expires_at() else "use YYYY-MM-DD")
+        for f in chosen:
+            name = ("%s-%s" % (f.code, f.component if scope == "exact" else "all")).lower()
+            name = "".join(ch if ch.isalnum() or ch in "._-" else "-" for ch in name).strip("-")[:60]
+            extra = ["--component", f.component] if scope == "exact" else []
+            cli_main(args + ["exclude", "add", name, "--code", f.code, "--module", f.module, "--reason", reason,
+                             "--owner", owner, "--until", until] + extra)
+
+    def opt_22(self):
+        from lshme.ui.cli import main as cli_main
+        args = ["--home", self.app.home] if self.app.home else ["--config-dir", self.app.paths.config_dir]
+        C.out("  [1] Build fleet dashboard        [2] SLA report (this month)   [3] SLA report (choose month)\n"
+              "  [4] Asset inventory (this host)  [5] Asset inventory (fleet)   [6] Install Cockpit page   [0] Back")
+        v = C.ask("Choice", "0", choices=[str(i) for i in range(7)])
+        if v == "1":
+            cli_main(args + ["dashboard", "build"])
+        elif v == "2":
+            cli_main(args + ["sla"])
+        elif v == "3":
+            cli_main(args + ["sla", "--month", C.ask("Month (YYYY-MM)", time.strftime("%Y-%m"))])
+        elif v in ("4", "5"):
+            cli_main(args + ["inventory"] + (["--fleet"] if v == "5" else []))
+        elif v == "6":
+            cli_main(args + ["cockpit-page", "install"])
 
     def opt_19(self):
         files = sorted(f for f in os.listdir(self.app.paths.log_dir) if f.endswith(".log"))

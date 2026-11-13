@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 # Linux Server Health Monitor Enterprise - installer / upgrader
 #
 #   sudo ./install.sh                     install or upgrade to /opt/lshme
 #   sudo ./install.sh --with-optional     also install PDF/XLSX/PPTX libraries from OS repos (or pip)
 #   sudo ./install.sh --prefix /opt/x --config /etc/x --bin /usr/local/bin/healthcheck
 #   sudo ./install.sh --setup             run the configuration wizard after installing
+#   sudo ./install.sh --no-cockpit        do not install/update the Cockpit page
 #   ./install.sh --check                  dependency check only
 #
 # Upgrades keep configuration, history and reports; the previous code is kept
@@ -17,6 +19,7 @@ BIN=/usr/local/bin/healthcheck
 WITH_OPTIONAL=0
 CHECK_ONLY=0
 SETUP=0
+COCKPIT=1
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 while [ $# -gt 0 ]; do
@@ -27,6 +30,7 @@ while [ $# -gt 0 ]; do
     --with-optional) WITH_OPTIONAL=1; shift ;;
     --check) CHECK_ONLY=1; shift ;;
     --setup) SETUP=1; shift ;;
+    --no-cockpit) COCKPIT=0; shift ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
@@ -136,9 +140,19 @@ if [ $WITH_OPTIONAL -eq 1 ]; then install_optional; fi
 
 # refresh schedules on upgrade so unit files point at the new code
 if [ $UPGRADE -eq 1 ]; then
-  if [ -e /etc/cron.d/lshme ] || ls /etc/systemd/system/lshme-*.timer >/dev/null 2>&1; then
+  # only schedules that run this installation (another --config dir's schedules are left alone)
+  if grep -qs -- "--config-dir $CONFIG " /etc/cron.d/lshme /etc/systemd/system/lshme-*.service; then
     if "$BIN" --config-dir "$CONFIG" schedule install >/dev/null; then ok "schedules refreshed"; else warn "schedule refresh failed: run 'healthcheck schedule install'"; fi
   fi
+fi
+
+# Cockpit page (static files only) when Cockpit is present
+# A page installed by a different installation (other --config dir) is left alone.
+COCKPIT_OWNER="$("$PY" -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["command"][1:]))' /usr/share/cockpit/lshme/config.json 2>/dev/null || true)"
+if [ "$COCKPIT" -eq 1 ] && [ -n "$COCKPIT_OWNER" ] && [ "$COCKPIT_OWNER" != "--config-dir $CONFIG" ]; then
+  warn "Cockpit page belongs to another installation ($COCKPIT_OWNER); left unchanged"
+elif [ "$COCKPIT" -eq 1 ] && [ -d /usr/share/cockpit ]; then
+  if "$BIN" --config-dir "$CONFIG" cockpit-page install >/dev/null 2>&1; then ok "Cockpit page installed (menu: LSHME Health)"; else warn "Cockpit page not installed"; fi
 fi
 
 "$BIN" --config-dir "$CONFIG" doctor >/dev/null 2>&1 && ok "self-diagnostics passed" || warn "self-diagnostics reported problems: run 'healthcheck doctor'"

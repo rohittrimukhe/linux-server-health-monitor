@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """End-to-end tests through the real launcher, plus scripted wizard and menu sessions."""
 import io
 import json
@@ -84,6 +86,28 @@ class CliTest(unittest.TestCase):
         self.assertNotIn("Changed Title", slurp(os.path.join(self.home, "config", "reports.conf")))
         rc, out = hc(self.home, "config", "set", "nosuch", "a", "b", "c")
         self.assertEqual(rc, 2)
+
+    def test_06b_config_set_accepts_conf_suffix_and_single_watcher(self):
+        before = slurp(os.path.join(self.home, "config", "reports.conf"))
+        rc, out = hc(self.home, "config", "set", "reports.conf", "reports", "title", "Suffix Test")
+        self.assertEqual(rc, 0, out)
+        after = slurp(os.path.join(self.home, "config", "reports.conf"))
+        self.assertIn("title = Suffix Test", after)
+        # the explanatory comments shipped in the file survive edits
+        self.assertEqual([l for l in before.splitlines() if l.startswith("#")], [l for l in after.splitlines() if l.startswith("#")])
+        rc, out = hc(self.home, "exclude", "add", "demo-rule", "--code", "X_*", "--reason", "test")
+        self.assertEqual(rc, 0, out)
+        ex = slurp(os.path.join(self.home, "config", "exclusions.conf"))
+        self.assertIn("# [exclude:cockpit-self-signed]", ex)   # commented examples kept
+        self.assertIn("[exclude:demo-rule]", ex)
+        self.assertEqual(hc(self.home, "exclude", "remove", "demo-rule")[0], 0)
+        self.assertNotIn("demo-rule", slurp(os.path.join(self.home, "config", "exclusions.conf")))
+        from lshme.core.lock import RunLock
+        with RunLock(os.path.join(self.home, "data", "watch.lock")):   # a watcher is already running
+            rc, out = hc(self.home, "watch", "run")
+            self.assertEqual(rc, 1, out)
+            self.assertIn("already running", out)
+            self.assertEqual(hc(self.home, "watch", "once")[0], 0)        # cron tick: quiet no-op
 
     def test_07_schedule_show_and_retention(self):
         rc, out = hc(self.home, "schedule", "show")

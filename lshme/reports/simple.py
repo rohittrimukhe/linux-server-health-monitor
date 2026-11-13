@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """TXT, JSON and CSV renderers."""
 import csv
 import json
@@ -29,17 +31,17 @@ def _fmt_table(t, width=160):
 def render_txt(doc, path):
     L = []
     bar = "=" * 100
-    L += [bar, doc.title.upper(), doc.subtitle, bar]
+    L += [bar, doc.title.upper(), doc.subtitle, doc.copyright, bar]
     for k, v in doc.meta:
         L.append("%-16s: %s" % (k, v))
     if doc.banner:
         L += ["", "*** %s ***" % doc.banner]
     c = doc.counts
-    L += ["", "OVERALL HEALTH: %s   SCORE: %s/100   critical=%d warning=%d unknown=%d info=%d" % (
-        doc.status, doc.score, c.get("CRITICAL", 0), c.get("WARNING", 0), c.get("UNKNOWN", 0), c.get("INFO", 0)), ""]
-    L.append("MODULE HEALTH")
+    L += ["", "OVERALL HEALTH: %s   %s: %s%s   critical=%d warning=%d unknown=%d info=%d" % (
+        doc.status, doc.score_label, doc.score, doc.score_suffix, c.get("CRITICAL", 0), c.get("WARNING", 0), c.get("UNKNOWN", 0), c.get("INFO", 0)), ""]
+    L.append(doc.overview()[0].upper())
     from lshme.core.model import Table
-    hdr = ["Module", "Score", "Status", "Critical", "Warning", "Summary"] if doc.kind == "host" else ["Server", "Score", "Status", "Critical", "Warning", "Top issue"]
+    hdr = doc.overview()[1]
     L.append(_fmt_table(Table("", hdr, doc.module_rows)))
     L += ["", "FINDINGS (%d)" % len(doc.findings), "-" * 100]
     for f in doc.findings:
@@ -69,7 +71,7 @@ def render_txt(doc, path):
             L.append(_fmt_table(t))
     for title, text in doc.appendix:
         L += ["", bar, "APPENDIX: " + title, bar, text]
-    L += ["", "End of report — generated %s" % time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(doc.generated))]
+    L += ["", "End of report — generated %s" % time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(doc.generated)), doc.copyright]
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(L) + "\n")
     return path

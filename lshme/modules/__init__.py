@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Module registry.
 
 Each module defines NAME, TITLE, WEIGHT (share of the health score) and

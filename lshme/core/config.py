@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Configuration: a directory of INI files with built-in defaults.
 
 Every setting has a default here, so a missing or partial file never breaks a
@@ -5,13 +7,14 @@ run. Files are written 0600 and the previous version is kept in the config
 backup area before every change.
 """
 import configparser
+import re
 import os
 import shutil
 import tarfile
 import time
 
 CONFIG_FILES = ("main", "thresholds", "services", "database", "smtp", "reports", "schedule",
-                "retention", "servers", "backup", "certificates", "custom", "credentials")
+                "retention", "servers", "backup", "certificates", "custom", "exclusions", "credentials")
 
 DEFAULTS = {
     "main": {
@@ -31,6 +34,14 @@ DEFAULTS = {
         "applications": {"http_checks": "", "check_mail_queue": "yes"},
         "history": {"enabled": "yes"},
         "integrations": {"prometheus_textfile": "", "agent_dropdir": ""},
+        "watch": {"interval": "60", "confirm": "2", "repeat_minutes": "60", "recovery_alerts": "yes",
+                  "rotation_modules": "services,database,kvm,cockpit,network,backup,cluster,certificates",
+                  "rotation_minutes": "15", "alert_min_severity": "WARNING", "alert_email": "yes", "alert_to": "",
+                  "syslog": "yes", "webhook_url": "", "max_rss_mb": "100", "netfs_timeout": "5",
+                  "metrics_hours": "24"},
+        "performance": {"nice": "10", "idle_io": "yes"},
+        "sla": {"target_percent": "99.9"},
+        "dashboard": {"title": "", "stale_hours": "26", "refresh_seconds": "300", "auto_build": "yes"},
     },
     "thresholds": {
         "cpu": {"warning": "85", "critical": "95", "iowait_warning": "20", "steal_warning": "10",
@@ -69,7 +80,7 @@ DEFAULTS = {
         "hardware": {"temperature_warning_c": "75", "temperature_critical_c": "90"},
         "mail": {"queue_warning": "100", "queue_critical": "1000"},
         "history": {"forecast_warning_days": "30", "forecast_critical_days": "7",
-                    "forecast_min_samples": "3"},
+                    "forecast_min_samples": "3", "forecast_min_span_hours": "24"},
     },
     "services": {"critical": {"services": "sshd, crond"}, "ports": {}, "processes": {},
                  "ignore": {"failed_units": ""}},
@@ -92,7 +103,8 @@ DEFAULTS = {
                                      "report_type": "technical", "email": "yes", "send_policy": "", "to": "", "cc": ""},
                  "schedule:monthly": {"enabled": "yes", "frequency": "monthly", "monthday": "1", "time": "09:00",
                                       "days": "30", "modules": "all", "formats": "html,pdf,xlsx,pptx,json",
-                                      "report_type": "full", "email": "yes", "send_policy": "always", "to": "", "cc": ""}},
+                                      "report_type": "full", "email": "yes", "send_policy": "always", "to": "", "cc": "",
+                                      "sla_report": "yes", "inventory_report": "yes"}},
     "retention": {"retention": {"daily_days": "30", "weekly_days": "90", "monthly_days": "365",
                                 "adhoc_days": "30", "fleet_days": "90", "custom_days": "60",
                                 "logs_days": "30", "error_logs_days": "90", "audit_logs_days": "365",
@@ -104,12 +116,14 @@ DEFAULTS = {
                                 "space_min_keep_days": "1"}},
     "servers": {"defaults": {"user": "root", "port": "22", "parallel": "8", "timeout": "900",
                              "remote_command": "/usr/local/bin/healthcheck agent --days {days}",
+                             "inventory_command": "/usr/local/bin/healthcheck inventory --json",
                              "ssh_options": "-o BatchMode=yes -o ConnectTimeout=15",
                              "identity_file": ""}},
     "backup": {"netbackup": {"enabled": "auto", "max_age_hours": "26"},
                "backupexec": {"enabled": "auto"}, "veeam": {"enabled": "auto", "max_age_hours": "26"}},
     "certificates": {"certificates": {"files": "", "endpoints": "", "scan_dirs": ""}},
     "custom": {"general": {"checks_dir": "", "default_timeout": "60"}},
+    "exclusions": {},
     "credentials": {},
 }
 
@@ -192,6 +206,64 @@ class Paths(object):
     @property
     def config_backup_dir(self):
         return os.path.join(self.data_dir, "config-backups")
+
+
+_SECTION_RE = re.compile(r"^\s*\[([^\]]+)\]\s*$")
+_KEY_RE = re.compile(r"^([^#;\s][^=:]*?)\s*[=:]")
+
+
+def merge_ini(lines, parser):
+    """Return the lines of an INI file updated to match parser, keeping every comment, blank line and
+    the order of what is already there: changed values are rewritten in place, new keys go under
+    their section, new sections at the end, and keys/sections no longer in parser are dropped."""
+    def render(key, value):
+        return "%s = %s" % (key, value.replace("\n", "\n    "))
+
+    out, section, keep, seen, last_key_at, drop_cont = [], None, False, {}, {}, False
+    for line in (l.rstrip("\n") for l in lines):
+        m = _SECTION_RE.match(line)
+        if m:
+            section = m.group(1).strip()
+            keep, drop_cont = parser.has_section(section), False
+            if keep:
+                seen.setdefault(section, set())
+                out.append(line)
+                last_key_at[section] = len(out)
+            continue
+        if not line.strip() or line.lstrip().startswith(("#", ";")) or section is None:
+            out.append(line)  # comments, blank lines and the file header are always kept
+            continue
+        if line[:1].isspace():  # continuation of a multi-line value
+            if keep and not drop_cont:
+                out.append(line)
+                last_key_at[section] = len(out)
+            continue
+        drop_cont = True
+        km = _KEY_RE.match(line)
+        if not keep or not km:
+            continue
+        key = km.group(1).strip()
+        if not parser.has_option(section, key) or key in seen[section]:
+            continue
+        seen[section].add(key)
+        value = parser.get(section, key)
+        old = line[km.end():].strip()
+        if old == value.split("\n")[0].strip():
+            out.append(line)
+            drop_cont = False  # unchanged: keep its original continuation lines too
+        else:
+            out.append(render(key, value))
+        last_key_at[section] = len(out)
+    inserts = []
+    for sec in parser.sections():
+        missing = [k for k in parser.options(sec) if k not in seen.get(sec, set())]
+        if sec not in seen:
+            inserts.append((len(out), [""] + ["[%s]" % sec] + [render(k, parser.get(sec, k)) for k in missing]))
+        elif missing:
+            inserts.append((last_key_at[sec], [render(k, parser.get(sec, k)) for k in missing]))
+    for at, new in sorted(inserts, key=lambda x: -x[0]):  # bottom first so earlier positions stay valid
+        out[at:at] = new
+    return [l + "\n" for l in out]
 
 
 class Config(object):
@@ -293,8 +365,12 @@ class Config(object):
         tmp = path + ".tmp"
         old_umask = os.umask(0o077)
         try:
+            lines = []
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as f:
+                    lines = f.readlines()
             with open(tmp, "w", encoding="utf-8") as f:
-                self.parsers[name].write(f)
+                f.writelines(merge_ini(lines, self.parsers[name]))  # keeps the explanatory comments
             os.chmod(tmp, 0o600)
             os.replace(tmp, path)
         finally:

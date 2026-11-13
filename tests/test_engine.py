@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 import time
 import unittest
 
@@ -73,6 +75,31 @@ class HistoryTest(unittest.TestCase):
         self.assertTrue(rec and rec[0][3] >= 5)
         cpu = [x for x in cur.trends["metrics"] if x["key"] == "cpu.usage_percent"][0]
         self.assertEqual(cpu["week_ago"], 27)
+        h.close()
+        home.cleanup()
+
+    def test_no_forecast_from_runs_minutes_apart(self):
+        home = TempHome()
+        h = History(home.paths.history_db)
+        now = time.time()
+        size = 100 * 2 ** 30
+        for i, used in ((3, 40), (2, 41), (1, 42)):  # three runs a minute apart, 1 GiB growth each
+            r = RunResult("db01")
+            r.collected_at = now - i * 60
+            m = mod("storage")
+            m.metric("fs.used_bytes:/", used * 2 ** 30)
+            m.metric("fs.size_bytes:/", size)
+            r.modules = [m]
+            scoring.score_run(r)
+            h.save(r)
+        cur = RunResult("db01")
+        cur.collected_at = now
+        m = mod("storage")
+        m.metric("fs.used_bytes:/", 43 * 2 ** 30)
+        m.metric("fs.size_bytes:/", size)
+        cur.modules = [m]
+        t = analyse(h, cur, home.cfg)
+        self.assertFalse([f for f in t.findings if f.code == "FS_FORECAST_FULL"])  # needs 24 h of history
         h.close()
         home.cleanup()
 

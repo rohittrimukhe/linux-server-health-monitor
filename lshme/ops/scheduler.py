@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Scheduling: daily / weekly / monthly / hourly / custom runs via systemd timers
 (preferred) or /etc/cron.d. Each schedule has its own modules, lookback days,
 report formats, report type and recipients."""
@@ -6,6 +8,7 @@ import re
 import shlex
 
 from lshme.core.config import as_bool, as_list
+from lshme.core.util import owned_by
 
 WEEKDAYS = {"mon": (1, "Mon"), "tue": (2, "Tue"), "wed": (3, "Wed"), "thu": (4, "Thu"), "fri": (5, "Fri"),
             "sat": (6, "Sat"), "sun": (0, "Sun"), "1": (1, "Mon"), "2": (2, "Tue"), "3": (3, "Wed"),
@@ -29,6 +32,8 @@ class Schedule(object):
         self.send_policy = s.get("send_policy", "")
         self.to = as_list(s.get("to"))
         self.cc = as_list(s.get("cc"))
+        self.sla_report = as_bool(s.get("sla_report", "no"), False)          # attach last month's SLA report
+        self.inventory_report = as_bool(s.get("inventory_report", "no"), False)  # attach the asset inventory
 
     def validate(self):
         errors = []
@@ -114,8 +119,8 @@ def command_line(launcher, global_args, sched, retries):
 
 def render_systemd(sched, cmdline):
     service = ("[Unit]\nDescription=LSHME health check (%s)\nAfter=network-online.target\nWants=network-online.target\n\n"
-               "[Service]\nType=oneshot\nExecStart=%s\nNice=10\nIOSchedulingClass=idle\nTimeoutStartSec=3h\n"
-               "PrivateTmp=true\nNoNewPrivileges=false\n# LSHME_MANAGED\n" % (sched.name, cmdline))
+               "[Service]\nType=oneshot\nExecStart=%s\nNice=10\nIOSchedulingClass=idle\nCPUQuota=50%%\nMemoryMax=512M\n"
+               "TimeoutStartSec=3h\nPrivateTmp=true\n# LSHME_MANAGED\n" % (sched.name, cmdline))
     timer = ("[Unit]\nDescription=LSHME schedule %s (%s)\n\n[Timer]\nOnCalendar=%s\nPersistent=true\nRandomizedDelaySec=120\n"
              "Unit=lshme-%s.service\n\n[Install]\nWantedBy=timers.target\n# LSHME_MANAGED\n" % (
                  sched.name, sched.describe(), sched.on_calendar(), sched.name))
@@ -195,12 +200,16 @@ def install(cfg, runner, launcher, global_args, dry_run=False):
     return report
 
 
-def uninstall(cfg, runner):
+def uninstall(cfg, runner, owner_args=None):
+    """Remove installed schedules. With owner_args (App.global_args()), only files that run this
+    installation are touched."""
     removed = []
     d = cfg.get("schedule", "scheduler", "systemd_dir", "/etc/systemd/system")
     if os.path.isdir(d):
         for f in sorted(os.listdir(d)):
-            if f.startswith("lshme-") and f.endswith((".timer", ".service")):
+            if f.startswith("lshme-") and f.endswith((".timer", ".service")) and f != "lshme-watch.service":
+                if not owned_by(os.path.join(d, f[:-6] + ".service" if f.endswith(".timer") else f), owner_args):
+                    continue
                 if f.endswith(".timer"):
                     runner.run(["systemctl", "disable", "--now", f])
                 os.remove(os.path.join(d, f))
@@ -208,7 +217,7 @@ def uninstall(cfg, runner):
         if removed and runner.has("systemctl"):
             runner.run(["systemctl", "daemon-reload"])
     cron = cfg.get("schedule", "scheduler", "cron_file", "/etc/cron.d/lshme")
-    if os.path.exists(cron):
+    if os.path.exists(cron) and owned_by(cron, owner_args):
         os.remove(cron)
         removed.append(cron)
     return removed

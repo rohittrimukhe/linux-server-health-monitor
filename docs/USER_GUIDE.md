@@ -20,7 +20,7 @@ sudo ./install.sh --setup            # install, then start the wizard
 | `/usr/local/bin/healthcheck` | Command |
 
 Upgrade: run `install.sh` from the new version. Rollback: `rm -rf /opt/lshme && mv /opt/lshme.previous /opt/lshme`.
-Uninstall: `sudo ./uninstall.sh` keeps configuration and data; add `--purge` to remove everything.
+Uninstall: `sudo ./uninstall.sh` keeps configuration and data; add `--purge` to remove everything. Schedules, the watcher and the Cockpit page are removed only when they belong to the installation being removed (same `--config-dir`), so a second or test installation never touches the main one.
 
 Portable mode, with no installation: `./healthcheck --home /some/dir ...` keeps
 everything under that directory. This is useful for trials and for running
@@ -178,7 +178,7 @@ Every deletion is written to `audit.log` with its reason.
 
 Every full run is stored in `history.sqlite3`. Reports include:
 - a trend table comparing now with 1, 7 and 30 days ago, plus averages,
-- a filesystem fill forecast (a linear trend over 30 days, clearly labelled as an estimate),
+- a filesystem fill forecast (a linear trend over 30 days, clearly labelled as an estimate; it needs at least `forecast_min_samples` runs covering `forecast_min_span_hours`, default 24 h, so a few runs minutes apart never produce a forecast),
 - recurring issues,
 - a score history chart.
 
@@ -234,7 +234,167 @@ reach can write their results to a drop directory instead (`main.conf
 - **Prometheus/Grafana**: set `[integrations] prometheus_textfile = /var/lib/node_exporter/textfile_collector/lshme.prom`, or run `healthcheck export prometheus --output FILE`.
 - **JSON**: `healthcheck agent` or `healthcheck export json`.
 
-## 12. Troubleshooting
+## 12. Real-time monitoring and alerts
+
+```bash
+healthcheck watch install      # start continuous monitoring (systemd service, or cron every minute)
+healthcheck watch status       # active problems, last check, CPU/memory used by the watcher
+healthcheck watch once         # run one check now
+healthcheck watch remove       # stop and remove
+```
+
+Settings are in `main.conf [watch]`:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `interval` | 60 | Seconds between checks |
+| `confirm` | 2 | Consecutive bad checks before alerting (prevents flapping alerts) |
+| `repeat_minutes` | 60 | Reminder interval while a problem continues (0 = never) |
+| `recovery_alerts` | yes | Send a message when a problem clears, and an IMPROVED message when it eases (e.g. CRITICAL to WARNING) |
+| `rotation_modules` | services, database, kvm, cockpit, network, backup, cluster, certificates | Heavier modules run one per check, in turn |
+| `rotation_minutes` | 15 | How often each rotated module repeats |
+| `alert_min_severity` | WARNING | `WARNING` or `CRITICAL` |
+| `alert_email` / `alert_to` | yes / (smtp.conf) | Email alerts and their recipients |
+| `syslog` | yes | Also write alerts to syslog (for SIEM forwarding) |
+| `webhook_url` | | POST JSON `{"text": ...}` to Teams/Slack-style webhooks |
+| `max_rss_mb` | 100 | The watcher restarts cleanly if it ever uses more memory |
+
+The watcher runs at nice 19 with the idle I/O class. Its systemd unit limits
+it to 5% CPU and 128 MB of memory. Thresholds come from `thresholds.conf`,
+critical services, ports and processes from `services.conf`, and email
+settings from `smtp.conf`.
+
+## 13. Exclusions (accepted findings)
+
+Some findings are known and accepted, for example Cockpit using its own
+self-signed certificate. An exclusion removes such a finding from the score,
+the status and all alerts, including real-time ones. The finding still
+appears in reports under **Excluded findings**, with the rule, reason, owner
+and expiry, so nothing is hidden.
+
+```bash
+healthcheck exclude add cockpit-self-signed --code COCKPIT_SELF_SIGNED --module cockpit \
+    --reason "Internal console; CA certificate not required" --owner infra-team
+healthcheck exclude add archive-migration --code DISK_USAGE --component "/archive*" \
+    --reason "Migration CHG-1234" --until 2026-12-31
+healthcheck exclude list
+healthcheck exclude remove archive-migration
+```
+
+How rules work:
+- `code` accepts wildcards (`ORACLE_INVALID_*`).
+- `component` is a glob on the component, such as a mount point, service or database.
+- `module` limits the rule to one module.
+- `hosts` limits it to certain hosts in fleet setups (`dev-*`).
+- A `reason` is required.
+- After the `until` date the rule stops applying and the report shows an `EXCLUSION_EXPIRED` warning, so exceptions are reviewed instead of forgotten.
+
+Menu option 21 runs a fresh check and lets you pick findings by number to
+exclude. Rules are stored in `exclusions.conf`, and every change is backed up
+and recorded in the audit log. See `docs/MODULES.md` for all finding codes.
+
+## 14. Cockpit page
+
+`install.sh` adds an **LSHME Health** page to Cockpit whenever Cockpit is
+installed. You can also run `healthcheck cockpit-page install`, or add
+`--user` to install for your own account only.
+
+The page shows:
+- the latest score and status, issues with recommended actions, and module health;
+- the real-time watcher's active problems and its own CPU and memory use;
+- buttons to open the latest HTML, PDF or JSON report.
+
+**Run health check now** runs a low-priority check and needs administrative
+access in Cockpit. The page watches the result files and refreshes itself; it
+does no polling and runs no background service. To remove it, run
+`healthcheck cockpit-page remove`.
+
+## 14a. Live graphs (real-time graphical monitoring)
+
+While `healthcheck watch` runs, it keeps a rolling 24-hour history (about
+200 KB). `main.conf [watch] metrics_hours` changes the length. Each sample
+holds CPU, memory, swap, load per CPU, the eight fullest filesystems and the
+number of active problems. The live page draws:
+
+- line charts of CPU, memory and swap, with warning and critical lines; of load per CPU; and of active critical and warning problems, switchable between 1 h, 6 h and 24 h;
+- current filesystem usage bars;
+- a findings-by-severity pie and module score bars from the latest full check.
+
+There are two ways to open it:
+
+- **In Cockpit:** the *LSHME Health* page updates the instant new data is written.
+- **Without Cockpit:** `healthcheck live` starts a tiny read-only web server on `127.0.0.1:8089`. Open it from your PC through an SSH tunnel: `ssh -L 8089:127.0.0.1:8089 user@server`, then browse to http://localhost:8089. It refreshes every 15 seconds. It serves only the page and three read-only data endpoints, with a strict content-security policy. Use `--bind` only behind a firewall or reverse proxy; there is no login.
+
+Reports also contain charts: pie charts (findings by severity, module or
+server status) and bar charts (module scores, filesystem usage) in HTML, PDF,
+Excel (native charts on a *Charts* sheet) and PowerPoint (a native "Health at a
+glance" slide), and in the fleet dashboard.
+
+## 15. Fleet web dashboard
+
+Every `healthcheck fleet run` saves each server's latest result and rebuilds
+`reports/_dashboard/index.html`, a single self-contained page that refreshes
+every 5 minutes. It shows each server's status, score, top issues, group and
+environment. Servers whose last result is older than `stale_hours` are marked
+STALE, and failed collections UNREACHABLE. Each server has a full drill-down
+report.
+
+```bash
+healthcheck dashboard build                       # rebuild from the latest results
+healthcheck dashboard serve --port 8088           # read-only web server on 127.0.0.1
+healthcheck dashboard serve --bind 0.0.0.0        # serve to the network (no login: restrict with a firewall/proxy)
+```
+
+The settings are in `main.conf [dashboard]`: `title`, `stale_hours` (default
+26), `refresh_seconds` (default 300) and `auto_build` (default yes).
+
+## 16. Uptime / SLA report
+
+The real-time watcher records every confirmed incident: when it opened,
+escalated and closed. `healthcheck sla` turns that history into an
+availability report:
+
+- **Availability**: time without a confirmed CRITICAL problem, divided by the period. Overlapping incidents are counted once.
+- **Degraded time**: time with WARNING-only problems.
+- **Per-component availability**: for services, filesystems, ports, processes, VMs, databases and so on.
+- **Incident log**: with duration, mean time to recover and the longest incident.
+- **Monitoring coverage**: if the watcher was stopped for part of the month, the report says so.
+- **Breaches**: anything below `main.conf [sla] target_percent` (default 99.9) is a finding.
+
+```bash
+healthcheck sla                         # current month to date
+healthcheck sla --month 2026-10 --formats html,pdf,xlsx,json
+```
+
+The monthly schedule attaches the previous month's SLA report automatically
+(`sla_report = yes` in `[schedule:monthly]`).
+
+## 17. Asset inventory
+
+```bash
+healthcheck inventory                          # this server: XLSX + CSV + JSON
+healthcheck inventory --fleet                  # every server in servers.conf over SSH
+healthcheck inventory --formats xlsx,html,pdf
+```
+
+The inventory has eight sheets:
+- **Servers**: manufacturer, model, serial, BIOS, CPU, memory, OS, kernel, virtualization and counts.
+- **Disks**, **Filesystems** and **Network** (MAC, speed, addresses).
+- **Packages**: name, version, architecture, vendor and install date.
+- **Databases**: engine, instance, version and owner.
+- **VMs** and **Services** (listening ports).
+
+The monthly schedule attaches it as XLSX (`inventory_report = yes`).
+
+## 18. Branding
+
+Reports carry the LRS Services logo and "© 2026 LRS Services Pvt Ltd,
+Mumbai. All rights reserved." A customer logo set in `main.conf [general]
+logo` appears alongside it. The built-in PDF and PPTX writers, used when
+ReportLab or python-pptx are not installed, show the copyright as text
+without the logo image.
+
+## 19. Troubleshooting
 
 | Symptom | What to do |
 |---|---|

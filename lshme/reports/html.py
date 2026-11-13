@@ -1,9 +1,12 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Self-contained HTML report (inline CSS + SVG charts, no external assets)."""
 import base64
 import html
 import os
 import time
 
+from lshme.reports import charts as ch
 from lshme.reports.doc import SEV_COLORS
 
 E = lambda s: html.escape(str(s if s is not None else ""))
@@ -15,8 +18,11 @@ CSS = """
 header{background:linear-gradient(120deg,#0b3d6e,#0b5cad);color:#fff;padding:28px 16px}
 header .inner{max-width:1200px;margin:0 auto;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
 header h1{margin:0;font-size:26px}header p{margin:4px 0 0;opacity:.85}
-header img{max-height:56px;background:#fff;border-radius:6px;padding:4px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:16px 0}
+header img{max-height:60px;background:#fff;border-radius:8px;padding:6px 10px}
+header .logos{display:flex;gap:12px;align-items:center;margin-left:auto}
+.copyright{margin-top:6px;font-weight:600;color:#0b3d6e}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin:16px 0}
+.grid.wide{grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr))}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;overflow:auto}
 .card h2,.card h3{margin:0 0 10px;font-size:16px}
 .kv{width:100%;border-collapse:collapse}.kv td{padding:3px 6px;border-bottom:1px solid #eef1f4;vertical-align:top}.kv td:first-child{color:var(--muted);width:40%}
@@ -47,9 +53,9 @@ def gauge(score, status):
             '<circle cx="70" cy="70" r="%d" fill="none" stroke="#e6eaef" stroke-width="14"/>'
             '<circle cx="70" cy="70" r="%d" fill="none" stroke="%s" stroke-width="14" stroke-linecap="round" '
             'stroke-dasharray="%.1f" stroke-dashoffset="%.1f" transform="rotate(-90 70 70)"/>'
-            '<text x="70" y="68" text-anchor="middle" font-size="32" font-weight="700" fill="#1d2733">%s</text>'
+            '<text x="70" y="68" text-anchor="middle" font-size="%d" font-weight="700" fill="#1d2733">%s</text>'
             '<text x="70" y="92" text-anchor="middle" font-size="12" fill="%s" font-weight="700">%s</text></svg>') % (
-        score, r, r, color, c, off, score, color, E(status))
+        score, r, r, color, c, off, 32 if len(str(score)) <= 3 else 22, score, color, E(status))
 
 
 def bar_color(v, warn=80, crit=90, score_mode=False):
@@ -63,7 +69,7 @@ def hbars(items, maxv=100.0, unit="%", warn=80, crit=90, score_mode=False):
         return '<p class="muted">No data</p>'
     row = 30
     h = row * len(items) + 8
-    out = ['<svg width="100%%" viewBox="0 0 600 %d" role="img" font-family="Helvetica,Arial,sans-serif">' % h]
+    out = ['<svg width="100%%" viewBox="0 0 600 %d" role="img" font-family="Helvetica,Arial,sans-serif" style="max-width:640px">' % h]
     for i, (label, v) in enumerate(items):
         v = float(v or 0)
         y = 4 + i * row
@@ -101,6 +107,8 @@ def table_html(t):
             s = str(c)
             if s in SEV_COLORS and s != "OK":
                 cells.append("<td>%s</td>" % sev_badge(s))
+            elif s in ("BREACH", "READ-ONLY", "STALE", "MISSING", "NOT LISTENING", "EXPIRED", "FAILED", "UNREACHABLE"):
+                cells.append('<td><span class="sev" style="background:%s">%s</span></td>' % (SEV_COLORS["CRITICAL"], E(s)))
             else:
                 cells.append("<td>%s</td>" % E(s))
         body.append("<tr>%s</tr>" % "".join(cells))
@@ -138,28 +146,42 @@ def render(doc, path, logo=""):
     chips = "".join('<span class="chip" style="background:%s">%s %d</span>' % (SEV_COLORS[s], s.title(), c.get(s, 0))
                     for s in ("CRITICAL", "WARNING", "UNKNOWN", "INFO"))
     meta = "".join("<tr><td>%s</td><td>%s</td></tr>" % (E(k), E(v)) for k, v in doc.meta)
-    mod_hdr = ["Module", "Score", "Status", "Critical", "Warning", "Summary"] if doc.kind == "host" else ["Server", "Score", "Status", "Critical", "Warning", "Top issue"]
+    ov_title, mod_hdr, chart_title = doc.overview()
     from lshme.core.model import Table
     parts = ['<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
              '<title>%s — %s</title><style>%s</style></head><body>' % (E(doc.title), E(doc.host or doc.subtitle), CSS),
-             '<header><div class="inner">%s<div><h1>%s</h1><p>%s</p></div></div></header><div class="wrap">' % (logo_tag(logo), E(doc.title), E(doc.subtitle))]
+             '<header><div class="inner"><div><h1>%s</h1><p>%s</p></div><div class="logos">%s%s</div></div></header><div class="wrap">' % (
+                 E(doc.title), E(doc.subtitle), logo_tag(doc.customer_logo or logo), logo_tag(doc.brand_logo))]
     if doc.banner:
         parts.append('<div class="banner">%s</div>' % E(doc.banner))
     parts.append('<div class="grid"><div class="card" style="display:flex;gap:16px;align-items:center">%s<div><h2>Overall health</h2>'
                  '<div class="chips">%s</div><p class="small muted">%s</p></div></div>'
                  '<div class="card"><h3>Report details</h3><table class="kv">%s</table></div></div>' % (
                      gauge(doc.score, doc.status), chips, E(doc.health.get("method", "")), meta))
-    charts = []
-    if doc.charts["modules"]:
-        charts.append('<div class="card"><h3>%s</h3>%s</div>' % ("Module scores" if doc.kind == "host" else "Server scores",
-                                                                hbars(doc.charts["modules"], 100, "", score_mode=True)))
-    if doc.charts["filesystems"]:
-        charts.append('<div class="card"><h3>Filesystem usage</h3>%s</div>' % hbars(doc.charts["filesystems"]))
+    pies, wide = [], []
+    sev_items = ch.severity_items(doc.counts)
+    if any(v for _, v, _ in sev_items):
+        pies.append(ch.card("Findings by severity", ch.pie_block(sev_items, "findings")))
+    if doc.module_rows and doc.kind in ("host", "fleet"):
+        st = {}
+        for r in doc.module_rows:
+            st[r[2]] = st.get(r[2], 0) + 1
+        palette = {"OK": SEV_COLORS["HEALTHY"], "HEALTHY": SEV_COLORS["HEALTHY"], "WARNING": SEV_COLORS["WARNING"],
+                   "CRITICAL": SEV_COLORS["CRITICAL"], "UNREACHABLE": "#6a1b9a", "SKIPPED": "#a8b0b9"}
+        mod_items = [(k.title(), st[k], palette[k]) for k in palette if st.get(k)]
+        pies.append(ch.card("%s status" % ("Module" if doc.kind == "host" else "Server"),
+                            ch.pie_block(mod_items, "modules" if doc.kind == "host" else "servers")))
     if doc.kind == "host":
-        charts.append('<div class="card"><h3>Health score history</h3>%s</div>' % spark(doc.charts["score_history"]))
-    if charts:
-        parts.append('<div class="grid">%s</div>' % "".join(charts))
-    parts.append('<div class="card"><h2>%s</h2>%s</div>' % ("Module health" if doc.kind == "host" else "Servers",
+        wide.append(ch.card("Health score history", ch.line(doc.charts["score_history"], empty="Score history appears after a few runs.")))
+    if doc.charts["modules"]:
+        wide.insert(0, ch.card(chart_title + " (worst first)", ch.hbars(doc.charts["modules"], 100, "", score_mode=True)))
+    if doc.charts["filesystems"]:
+        wide.append(ch.card("Filesystem usage", ch.columns(doc.charts["filesystems"], 100, "%", score_mode=False, y_title="Used %")))
+    if pies:
+        parts.append('<div class="grid">%s</div>' % "".join(pies))
+    if wide:
+        parts.append('<div class="grid wide">%s</div>' % "".join(wide))
+    parts.append('<div class="card"><h2>%s</h2>%s</div>' % (ov_title,
                                                             table_html(Table("", mod_hdr, doc.module_rows))))
     key = [f for f in doc.findings if f["severity"] in ("CRITICAL", "WARNING", "UNKNOWN")]
     parts.append('<div class="card" style="margin-top:16px"><h2>Issues requiring attention (%d)</h2>%s</div>' % (
@@ -184,8 +206,8 @@ def render(doc, path, logo=""):
             s.score if s.score is not None else "n/a", "".join(body)))
     for title, text in doc.appendix:
         parts.append('<details><summary>Appendix — %s</summary><pre>%s</pre></details>' % (E(title), E(text)))
-    parts.append('<footer>Generated %s · read-only health check · %s</footer></div></body></html>' % (
-        time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(doc.generated)), E(dict(doc.meta).get("Generated by", ""))))
+    parts.append('<footer>Generated %s · read-only health check · %s<div class="copyright">%s</div></footer></div></body></html>' % (
+        time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(doc.generated)), E(dict(doc.meta).get("Generated by", "")), E(doc.copyright)))
     with open(path, "w", encoding="utf-8") as f:
         f.write("".join(parts))
     return path
@@ -202,8 +224,8 @@ def email_body(doc, report_files=()):
     return ("<html><body style='font-family:Arial,sans-serif;color:#1d2733'>"
             "<h2 style='margin:0'>%s</h2><p style='margin:4px 0 12px;color:#5b6876'>%s</p>%s"
             "<p style='font-size:18px'><b style='color:%s'>%s</b> — score <b>%s/100</b> · critical %d · warning %d · unknown %d</p>"
-            "%s<p>Attached reports:</p><ul>%s</ul><p style='color:#888;font-size:12px'>Generated by %s</p></body></html>") % (
+            "%s<p>Attached reports:</p><ul>%s</ul><p style='color:#888;font-size:12px'>Generated by %s<br>%s</p></body></html>") % (
         E(doc.title), E(doc.subtitle), ("<p style='background:#fff4e5;padding:8px'>%s</p>" % E(doc.banner)) if doc.banner else "",
         SEV_COLORS.get(doc.status, "#555"), E(doc.status), doc.score, c.get("CRITICAL", 0), c.get("WARNING", 0), c.get("UNKNOWN", 0),
         ("<table style='border-collapse:collapse;font-size:13px'>%s</table>" % rows) if rows else "<p>No critical or warning findings.</p>",
-        files or "<li>none</li>", E(dict(doc.meta).get("Generated by", "LSHME")))
+        files or "<li>none</li>", E(dict(doc.meta).get("Generated by", "LSHME")), E(doc.copyright))

@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """PostgreSQL adapter (9.4+): availability, connections, sizes, replication,
 long-running queries, locks, transaction-ID wraparound and WAL archiving."""
 from lshme.core.util import fmt_bytes, pct, severity_for, to_float, to_int

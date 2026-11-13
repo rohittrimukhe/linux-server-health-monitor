@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """XLSX workbook: Summary, Findings, one sheet per module, Metrics.
 
 Uses openpyxl when installed; otherwise writes a valid minimal OOXML workbook
@@ -37,7 +39,7 @@ def sheets_for(doc, run=None):
     """Return [(name, [rows...], header_row_indexes, severity_col_rows)] in a format-neutral way."""
     used = set()
     out = []
-    summary = [[doc.title], [doc.subtitle], []]
+    summary = [[doc.title], [doc.subtitle], [doc.copyright], []]
     summary += [[k, v] for k, v in doc.meta]
     summary += [[], ["Overall status", doc.status], ["Health score", doc.score]]
     for s in ("CRITICAL", "WARNING", "UNKNOWN", "INFO"):
@@ -46,7 +48,7 @@ def sheets_for(doc, run=None):
         summary.append(["Note", doc.banner])
     summary.append([])
     hdr_idx = [len(summary)]
-    summary.append(["Module" if doc.kind == "host" else "Server", "Score", "Status", "Critical", "Warning", "Summary"])
+    summary.append(list(doc.overview()[1]))
     summary += [list(r) for r in doc.module_rows]
     out.append((sheet_name("Summary", used), summary, hdr_idx))
     f_rows = [["Severity", "Module", "Code", "Component", "Message", "Recommendation", "Evidence"]]
@@ -95,13 +97,73 @@ def _cell_value(v):
 def render(doc, path, run=None):
     sheets = sheets_for(doc, run)
     if available():
-        _render_openpyxl(sheets, path)
+        _render_openpyxl(sheets, path, doc.brand_logo, chart_data(doc))
         return path, "openpyxl"
     _render_builtin(sheets, path)
     return path, "builtin"
 
 
-def _render_openpyxl(sheets, path):
+def chart_data(doc):
+    """Data for native Excel charts: severity counts, module/server scores, filesystem usage."""
+    sev = [(s.title(), doc.counts.get(s, 0)) for s in ("CRITICAL", "WARNING", "UNKNOWN", "INFO")]
+    return {"severity": sev if any(v for _, v in sev) else [],
+            "scores": [(str(k)[:30], float(v or 0)) for k, v in doc.charts.get("modules", [])],
+            "filesystems": [(str(k)[:30], float(v or 0)) for k, v in doc.charts.get("filesystems", [])],
+            "score_title": doc.overview()[2]}
+
+
+def _add_charts(wb, data):
+    from openpyxl.chart import BarChart, Reference
+    from openpyxl.chart.series import DataPoint
+    if not (data["severity"] or data["scores"] or data["filesystems"]):
+        return
+    ws = wb.create_sheet("Charts", 1)
+    row = 1
+    anchors = []
+    for key, title in (("severity", "Findings by severity"), ("scores", data["score_title"]), ("filesystems", "Filesystem usage %")):
+        rows = data[key]
+        if not rows:
+            continue
+        ws.cell(row=row, column=1, value=title)
+        for i, (k, v) in enumerate(rows, 1):
+            ws.cell(row=row + i, column=1, value=k)
+            ws.cell(row=row + i, column=2, value=v)
+        anchors.append((key, title, row, len(rows)))
+        row += len(rows) + 2
+    for idx, (key, title, start, n) in enumerate(anchors):
+        cats = Reference(ws, min_col=1, min_row=start + 1, max_row=start + n)
+        vals = Reference(ws, min_col=2, min_row=start + 1, max_row=start + n)
+        if key == "severity":
+            from openpyxl.chart import DoughnutChart
+            from openpyxl.chart.label import DataLabelList
+            c = DoughnutChart(holeSize=55)
+            c.add_data(vals)
+            c.set_categories(cats)
+            c.dataLabels = DataLabelList()
+            c.dataLabels.showPercent = True
+            c.dataLabels.showVal = False
+            for i, color in enumerate(("C62828", "EF8F00", "6D6D6D", "1565C0")[:n]):
+                pt = DataPoint(idx=i)
+                pt.graphicalProperties.solidFill = color
+                c.series[0].dPt.append(pt)
+        else:
+            c = BarChart()
+            c.type = "bar" if key == "scores" else "col"
+            c.add_data(vals)
+            c.set_categories(cats)
+            c.legend = None
+            c.y_axis.scaling.min, c.y_axis.scaling.max = 0, 100
+            c.series[0].graphicalProperties.solidFill = "0B5CAD"
+            from openpyxl.chart.label import DataLabelList
+            c.dataLabels = DataLabelList()
+            c.dataLabels.showVal = True
+            c.gapWidth = 60
+        c.title = title
+        c.height, c.width = 9, 16
+        ws.add_chart(c, "%s%d" % ("D", 1 + idx * 20))
+
+
+def _render_openpyxl(sheets, path, logo="", charts=None):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
@@ -133,6 +195,19 @@ def _render_openpyxl(sheets, path):
         if hdrs and hdrs[0] == 0:
             ws.freeze_panes = "A2"
             ws.auto_filter.ref = ws.dimensions
+    if charts:
+        try:
+            _add_charts(wb, charts)
+        except Exception:
+            pass
+    if logo:
+        try:  # needs Pillow; the report is complete without the image
+            from openpyxl.drawing.image import Image as XLImage
+            img = XLImage(logo)
+            img.width, img.height = 240, 72
+            wb[sheets[0][0]].add_image(img, "E1")
+        except Exception:
+            pass
     wb.save(path)
 
 

@@ -1,9 +1,11 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 import json
 import os
 import time
 import unittest
 
-from fakes import slurp, FakeRunner, TempHome
+from fakes import ROOT, slurp, FakeRunner, TempHome
 from lshme.core.lock import LockBusy, RunLock
 from lshme.core.model import ModuleResult, RunResult
 from lshme.engine import scoring
@@ -28,7 +30,6 @@ class SchedulerTest(unittest.TestCase):
     def test_install_systemd_and_cron(self):
         home = TempHome()
         sd = os.path.join(home.dir, "systemd")
-        os.makedirs(sd)
         home.cfg.set("schedule", "scheduler", "backend", "systemd")
         home.cfg.set("schedule", "scheduler", "systemd_dir", sd)
         home.cfg.set("schedule", "schedule:monthly", "enabled", "no")
@@ -49,6 +50,27 @@ class SchedulerTest(unittest.TestCase):
         text = slurp(cron)
         self.assertIn("0 7 * * * root /opt/lshme/healthcheck run --schedule daily", text)
         self.assertIn("0 8 * * 1 root", text)
+        home.cleanup()
+
+    def test_uninstall_leaves_other_installations_alone(self):
+        home = TempHome()
+        cron = os.path.join(home.dir, "cron-lshme")
+        home.cfg.set("schedule", "scheduler", "backend", "cron")
+        home.cfg.set("schedule", "scheduler", "cron_file", cron)
+        r = FakeRunner({})
+        scheduler.install(home.cfg, r, "/opt/lshme/healthcheck", ["--config-dir", "/etc/lshme"])
+        # a second installation (or the test suite) must not remove the production schedules
+        self.assertEqual(scheduler.uninstall(home.cfg, r, ["--config-dir", "/tmp/other"]), [])
+        self.assertEqual(scheduler.uninstall(home.cfg, r, ["--config-dir", "/etc/lsh"]), [])  # prefix of the real dir
+        self.assertTrue(os.path.exists(cron))
+        self.assertEqual(scheduler.uninstall(home.cfg, r, ["--config-dir", "/etc/lshme"]), [cron])
+        from lshme.ops import cockpit_page
+        from lshme.app import App
+        dest = os.path.join(home.dir, "cockpit", "lshme")
+        cockpit_page.install(App(ROOT, home=home.dir), dest=dest)
+        self.assertIsNone(cockpit_page.remove(dest=dest, owner_args=["--config-dir", "/etc/lshme"]))
+        self.assertTrue(os.path.isdir(dest))
+        self.assertEqual(cockpit_page.remove(dest=dest, owner_args=["--home", home.dir]), dest)
         home.cleanup()
 
 

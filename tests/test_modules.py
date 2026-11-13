@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 import os
 import subprocess
 import tempfile
@@ -99,8 +101,14 @@ class KvmTest(unittest.TestCase):
         self.assertEqual(res.status, "SKIPPED")
 
     def test_libvirt_down(self):
-        res = run_module(kvm, FakeRunner({"virsh -c qemu:///system uri": (1, "", "failed to connect to the hypervisor")}))
+        res = run_module(kvm, FakeRunner({"virsh -c qemu:///system uri": (1, "", "failed to connect to the hypervisor")},
+                                         files={"/usr/sbin/libvirtd": ""}))
         self.assertEqual(codes(res)["LIBVIRT_UNREACHABLE"], "CRITICAL")
+
+    def test_client_only_is_skipped(self):
+        res = run_module(kvm, FakeRunner({"virsh -c qemu:///system uri": (1, "", "failed to connect to the hypervisor")}))
+        self.assertEqual(res.status, "SKIPPED")
+        self.assertFalse(res.findings)
 
 
 class CockpitTest(unittest.TestCase):
@@ -298,7 +306,10 @@ class OtherDatabasesTest(unittest.TestCase):
             if sql == "SHOW GLOBAL VARIABLES":
                 return (0, "max_connections\t1000\n")
             if "REPLICA STATUS" in sql:
-                return (0, "Replica_IO_Running: Yes\nReplica_SQL_Running: No\nLast_SQL_Error: Duplicate entry\nSeconds_Behind_Source: NULL\n")
+                # real MariaDB 10.11 shape: header row + value row, tab-separated (captured from a live server)
+                assert "-N" not in a, "column names are required to label the replica status"
+                return (0, "Slave_IO_State\tMaster_Host\tSlave_IO_Running\tSlave_SQL_Running\tLast_IO_Error\tSeconds_Behind_Master\n"
+                           "Connecting to master\t127.0.0.1\tConnecting\tYes\terror connecting to master\tNULL")
             return (0, "app\t1073741824\t20\n")
         c = codes(self.check(mysql, FakeRunner({"mysql": mysql_cmd}), {"name": "main"}))
         self.assertEqual(c["MYSQL_CONNECTIONS"], "CRITICAL")

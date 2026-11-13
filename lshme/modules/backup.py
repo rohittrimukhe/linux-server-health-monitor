@@ -1,3 +1,5 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Backup monitoring: NetBackup (master and client), Backup Exec RALUS, Veeam
 Agent, generic backup directories/log files and backup cron inventory.
 Oracle RMAN backups are evaluated by the database module."""

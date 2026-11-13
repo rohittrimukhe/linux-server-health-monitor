@@ -1,0 +1,38 @@
+/* Linux Server Health Monitor Enterprise - Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved. */
+:root { --bg: #f0f0f0; --card: #fff; --ink: #151515; --muted: #6a6e73; --line: #d2d2d2; --accent: #0066cc;
+        --crit: #c9190b; --warn: #c58c00; --ok: #3e8635; --unk: #6a6e73; }
+@media (prefers-color-scheme: dark) { :root:not(.pf-v5-theme-light) { --bg: #1b1d21; --card: #26292d; --ink: #e0e0e0; --muted: #a7aaad; --line: #3c3f42; --accent: #73bcf7; } }
+:root.pf-v5-theme-dark { --bg: #1b1d21; --card: #26292d; --ink: #e0e0e0; --muted: #a7aaad; --line: #3c3f42; --accent: #73bcf7; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink); font: 14px/1.5 RedHatText, "Red Hat Text", Overpass, Helvetica, Arial, sans-serif; }
+.hdr { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+h1 { margin: 0; font-size: 22px; } h2 { margin: 0 0 10px; font-size: 16px; }
+.logo { margin-left: auto; height: 44px; background: #fff; border-radius: 6px; padding: 4px 8px; }
+.row { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; margin-bottom: 12px; overflow-x: auto; }
+.score-card { display: flex; gap: 18px; align-items: center; }
+.score { font-size: 52px; font-weight: 700; min-width: 90px; text-align: center; }
+.status { font-weight: 700; font-size: 18px; }
+.muted { color: var(--muted); }
+.actions { margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.btn { border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 4px; padding: 6px 14px; cursor: pointer; font: inherit; }
+.btn.primary { background: var(--accent); color: #fff; } .btn:disabled { opacity: .6; cursor: progress; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); }
+.sev { display: inline-block; min-width: 74px; text-align: center; color: #fff; border-radius: 3px; font-size: 11px; font-weight: 700; padding: 1px 6px; }
+.CRITICAL { background: var(--crit); } .WARNING { background: var(--warn); } .HEALTHY, .OK { background: var(--ok); } .UNKNOWN, .SKIPPED { background: var(--unk); }
+.t-CRITICAL { color: var(--crit); } .t-WARNING { color: var(--warn); } .t-HEALTHY { color: var(--ok); }
+.rec { color: var(--muted); font-size: 12px; }
+footer { color: var(--muted); font-size: 12px; text-align: center; margin: 8px 0; }
+code { font-size: 12px; }
+
+.titlebar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.range { display: flex; gap: 4px; } .btn.small { padding: 2px 10px; font-size: 12px; } .btn.small.on { background: var(--accent); color: #fff; }
+.graphs { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 14px 20px; }
+h3 { margin: 6px 0 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; margin-top: 2px; }
+.legend.col { flex-direction: column; gap: 6px; } .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 7px; vertical-align: -1px; }
+.legend b { margin-left: 4px; } .legend small { color: var(--muted); margin-left: 4px; } .legend.col span { font-size: 13px; }
+.donut { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.standalone #run { display: none; }
