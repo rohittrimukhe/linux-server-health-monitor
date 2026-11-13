@@ -153,6 +153,9 @@ def analyse(hist, run, cfg):
     fw = cfg.threshold("history", "forecast_warning_days", 30)
     fcrit = cfg.threshold("history", "forecast_critical_days", 7)
     min_samples = int(cfg.threshold("history", "forecast_min_samples", 3))
+    # samples must cover a real period, or a few runs minutes apart turn noise into "full in 1 day"
+    min_span = float(cfg.threshold("history", "forecast_min_span_hours", 24)) * 3600
+    enough = lambda pts: len(pts) >= min_samples and pts[-1][0] - pts[0][0] >= min_span
     since = now - 30 * 86400
     for key in [k for k in cur if k.startswith("fs.used_bytes:")]:
         mp = key.split(":", 1)[1]
@@ -160,7 +163,7 @@ def analyse(hist, run, cfg):
         if not size:
             continue
         pts = [(t, v) for t, v in hist.series(host, key, since)] + [(now, cur[key])]
-        if len(pts) < min_samples:
+        if not enough(pts):
             continue
         secs = linear_forecast(pts, size)
         growth = (pts[-1][1] - pts[0][1]) / max(1.0, (pts[-1][0] - pts[0][0]) / 86400.0)
@@ -179,7 +182,7 @@ def analyse(hist, run, cfg):
                   ["Mount point", "Size", "Used now", "Growth", "Estimated time to full", "Samples"], fc_rows, kind="summary")
     for key in [k for k in cur if k.startswith("kvm.pool_used_percent:")]:
         pts = [(t, v) for t, v in hist.series(host, key, since)] + [(now, cur[key])]
-        if len(pts) >= min_samples:
+        if enough(pts):
             secs = linear_forecast(pts, 100.0)
             if secs is not None and secs / 86400 <= fw:
                 res.add("WARNING", "KVM_POOL_FORECAST_FULL", key.split(":", 1)[1],

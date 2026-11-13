@@ -40,6 +40,21 @@ class EvaluateTest(unittest.TestCase):
         self.assertEqual(ev[3][0], [])
         self.assertEqual(ev[4][0], ["STILL:CRITICAL"])      # reminder after 120 s
 
+    def test_improvement_is_reported_once_and_logged(self):
+        w = {"disk:/u01": ("WARNING", "/u01", "86%", "")}
+        c = {"disk:/u01": ("CRITICAL", "/u01", "95%", "")}
+        state, now, out = {}, 1000.0, []
+        for cur in (c, c, w, w, {}):
+            a, r = watch.evaluate(state, cur, now, 2, 0, "WARNING", True)
+            out.append(([x["kind"] for x in a], [x["kind"] for x in r]))
+            now += 60
+        self.assertEqual(out, [([], []), (["NEW"], []), ([], ["IMPROVED"]), ([], []), ([], ["RECOVERED"])])
+        self.assertEqual([e["event"] for e in state["pending_events"]], ["open", "improve", "close"])
+        subject, body, _ = watch.format_alert("db01", [], [dict(c=1, kind="IMPROVED", previous="CRITICAL", severity="WARNING",
+                                                                component="/u01", message="86%")])
+        self.assertIn("1 improved", subject)
+        self.assertIn("[IMPROVED] /u01: CRITICAL -> WARNING", body)
+
     def test_min_severity_and_no_recovery(self):
         w = {"swap": ("WARNING", "swap", "60%", "")}
         ev = self.run_ticks([w, w, {}], min_sev="CRITICAL", recovery=True)

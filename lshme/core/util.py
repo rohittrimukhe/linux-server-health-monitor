@@ -282,3 +282,20 @@ def linear_forecast(points, limit):
     t_limit = (limit - intercept) / slope
     last_t = max(p[0] for p in points)
     return max(0.0, t_limit - last_t)
+
+
+def owned_by(path, owner_args):
+    """True when a system file LSHME wrote (cron file, systemd unit) belongs to the installation
+    identified by its global arguments, e.g. ["--config-dir", "/etc/lshme"]. Used so that removing
+    one installation (or running the test suite) never deletes another installation's files.
+    owner_args=None means "no ownership check"."""
+    if owner_args is None:
+        return True
+    if not owner_args:
+        return False
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except (IOError, OSError):
+        return False
+    return re.search(re.escape(" ".join(owner_args)) + r"""(?=[\s'"]|$)""", text) is not None

@@ -52,18 +52,28 @@ def load_events(path):
 
 
 def incidents_from(events, now):
-    """Rebuild incidents: {key, component, message, start, crit_start, end, severity, ongoing}."""
+    """Rebuild incidents: {key, component, message, start, crit_start, crit_periods, end, severity, ongoing}.
+    crit_periods are the [start, end] spans the incident was actually CRITICAL (it can escalate and
+    improve several times); only those count as downtime."""
     open_, done = {}, []
     for e in events:
         k = e.get("key")
         if e["event"] == "open":
             open_[k] = {"key": k, "component": e.get("component", ""), "message": e.get("message", ""), "start": e["ts"],
-                        "crit_start": e["ts"] if e.get("severity") == "CRITICAL" else None, "severity": e.get("severity", "WARNING")}
+                        "crit_start": e["ts"] if e.get("severity") == "CRITICAL" else None, "severity": e.get("severity", "WARNING"),
+                        "crit_periods": [[e["ts"], None]] if e.get("severity") == "CRITICAL" else []}
         elif e["event"] == "escalate" and k in open_:
             inc = open_[k]
             if e.get("severity") == "CRITICAL" and inc["crit_start"] is None:
                 inc["crit_start"] = e["ts"]
+            if e.get("severity") == "CRITICAL" and not (inc["crit_periods"] and inc["crit_periods"][-1][1] is None):
+                inc["crit_periods"].append([e["ts"], None])
             inc["severity"] = "CRITICAL" if e.get("severity") == "CRITICAL" else inc["severity"]
+            inc["message"] = e.get("message", inc["message"])
+        elif e["event"] == "improve" and k in open_:
+            inc = open_[k]
+            if e.get("severity") != "CRITICAL" and inc["crit_periods"] and inc["crit_periods"][-1][1] is None:
+                inc["crit_periods"][-1][1] = e["ts"]
             inc["message"] = e.get("message", inc["message"])
         elif e["event"] == "close" and k in open_:
             inc = open_.pop(k)
@@ -72,6 +82,10 @@ def incidents_from(events, now):
     for inc in open_.values():
         inc.update(end=now, ongoing=True)
         done.append(inc)
+    for inc in done:
+        for p in inc["crit_periods"]:
+            if p[1] is None:
+                p[1] = inc["end"]
     return sorted(done, key=lambda i: i["start"])
 
 
@@ -116,10 +130,10 @@ def compute(events, start, end, now=None, coverage=None, interval=60):
         span = _clip(inc["start"], inc["end"], start, end)
         if span is None:
             continue
-        crit = _clip(inc["crit_start"], inc["end"], start, end) if inc["crit_start"] is not None else None
+        crit = [c for c in (_clip(s, e, start, end) for s, e in inc["crit_periods"]) if c]
         incidents.append(dict(inc, span=span, crit=crit))
     period = max(1.0, now - start)
-    down = _union([i["crit"] for i in incidents if i["crit"]])
+    down = _union([c for i in incidents for c in i["crit"]])
     any_problem = _union([i["span"] for i in incidents])
     comps = {}
     for i in incidents:
@@ -128,7 +142,7 @@ def compute(events, start, end, now=None, coverage=None, interval=60):
         c["all"].append(i["span"])
         c["count"] += 1
         if i["crit"]:
-            c["crit"].append(i["crit"])
+            c["crit"].extend(i["crit"])
             c["critical"] += 1
     rows = []
     for (group, comp), c in comps.items():

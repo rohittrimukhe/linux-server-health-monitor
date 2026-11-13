@@ -9,7 +9,7 @@ expire; an expired rule stops applying and is reported once per run.
 
     [exclude:cockpit-self-signed]
     code = COCKPIT_SELF_SIGNED          ; finding code, wildcards allowed (ORACLE_*)
-    component = *                       ; optional glob on the component
+    component = *                       ; optional component glob(s), comma-separated
     module = cockpit                    ; optional module name
     hosts = *                           ; optional host glob(s), comma-separated (fleet)
     reason = Internal console, CA certificate not required
@@ -28,6 +28,7 @@ class Rule(object):
         self.name = name
         self.code = s.get("code", "").strip()
         self.component = s.get("component", "*").strip() or "*"
+        self.components = as_list(self.component) or ["*"]
         self.module = s.get("module", "").strip()
         self.hosts = as_list(s.get("hosts", "")) or ["*"]
         self.reason = s.get("reason", "").strip()
@@ -64,7 +65,7 @@ class Rule(object):
             return False
         if self.module and self.module != module:
             return False
-        if not fnmatch.fnmatch(component, self.component):
+        if not any(fnmatch.fnmatch(component, c) for c in self.components):
             return False
         return any(fnmatch.fnmatch(host, h) for h in self.hosts)
 

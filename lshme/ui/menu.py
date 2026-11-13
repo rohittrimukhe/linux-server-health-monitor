@@ -67,10 +67,11 @@ class Menu(object):
         while True:
             self.banner()
             half = (len(self.ITEMS) + 1) // 2
+            col = max(len(t) for _, t in self.ITEMS[:half]) + 2  # left column wide enough for its longest label
             for i in range(half):
                 left = self.ITEMS[i]
                 right = self.ITEMS[i + half] if i + half < len(self.ITEMS) else None
-                l = "[%2s] %-36s" % left
+                l = "[%2s] %s" % (left[0], left[1].ljust(col))
                 r = "[%2s] %s" % right if right else ""
                 C.out("  " + l + r)
             choice = C.ask("\n  Select option", "")
@@ -177,7 +178,7 @@ class Menu(object):
             for e in rep["errors"]:
                 C.out(C.c("error: " + e, "red"))
         elif v == "3" and C.yes("Remove all LSHME schedules", False):
-            C.out("Removed: %s" % ", ".join(scheduler.uninstall(self.app.cfg, self.app.runner)))
+            C.out("Removed: %s" % ", ".join(scheduler.uninstall(self.app.cfg, self.app.runner, self.app.global_args())))
 
     def opt_12(self):
         from lshme.ops import retention

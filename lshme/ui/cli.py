@@ -132,7 +132,7 @@ def build_parser():
     x.add_argument("action", nargs="?", default="list", choices=("list", "add", "remove"))
     x.add_argument("name", nargs="?", help="rule name (add/remove)")
     x.add_argument("--code", help="finding code, wildcards allowed (e.g. COCKPIT_SELF_SIGNED, ORACLE_INVALID_*)")
-    x.add_argument("--component", default="*", help="component glob (e.g. /mnt/backup*, oracle:ORCL*)")
+    x.add_argument("--component", default="*", help="component glob(s), comma-separated (e.g. /mnt/backup*, oracle:ORCL*)")
     x.add_argument("--module", default="", help="limit to a module (see 'healthcheck modules')")
     x.add_argument("--hosts", default="*", help="host glob(s) for fleet use, comma-separated")
     x.add_argument("--reason", help="why this is accepted (shown in reports)")
@@ -323,7 +323,7 @@ def dispatch(app, cmd, args):
             for a in alerts:
                 C.out("%s %s: %s" % (C.c("%-8s" % a["severity"], a["severity"]), a["component"], a["message"]))
             for r in recovered:
-                C.out("%s %s: %s" % (C.c("RECOVERED", "green"), r["component"], r["message"]))
+                C.out("%s %s: %s" % (C.c(r["kind"], "green"), r["component"], r["message"]))
             if delivery:
                 C.out("alert delivery: %s" % delivery)
         elif args.action == "install":
@@ -434,7 +434,7 @@ def dispatch(app, cmd, args):
             app.audit("cockpit-page-install", path=dest)
             C.out(C.c("Cockpit page installed in %s. Open Cockpit and choose 'LSHME Health' in the menu." % dest, "green"))
         else:
-            dest = cockpit_page.remove(args.user)
+            dest = cockpit_page.remove(args.user, owner_args=app.global_args())
             app.audit("cockpit-page-remove", path=dest)
             C.out("Removed %s" % dest if dest else "Cockpit page was not installed")
     elif cmd == "sla":
@@ -476,7 +476,7 @@ def dispatch(app, cmd, args):
                 C.out(C.c("  error: " + e, "red"))
             return 1 if rep["errors"] else 0
         else:
-            removed = scheduler.uninstall(app.cfg, app.runner)
+            removed = scheduler.uninstall(app.cfg, app.runner, app.global_args())
             app.audit("schedule-remove", removed=removed)
             C.out("Removed: %s" % (", ".join(removed) or "nothing"))
     elif cmd == "retention":
@@ -605,6 +605,8 @@ def dispatch(app, cmd, args):
             if len(args.args) != 4:
                 raise ValueError("config set FILE SECTION KEY VALUE")
             name, section, key, value = args.args
+            if name.endswith(".conf"):
+                name = name[:-5]  # accept "main.conf" as well as "main"
             if name not in app.cfg.parsers:
                 raise ValueError("unknown config file %s" % name)
             app.cfg.set(name, section, key, value)

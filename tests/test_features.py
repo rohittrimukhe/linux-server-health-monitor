@@ -58,6 +58,16 @@ class SlaTest(unittest.TestCase):
         self.assertAlmostEqual(r["coverage"], 100.0, places=3)
         self.assertAlmostEqual(r["mttr"], (3600 + 14 * 3600 + 2 * 3600) / 3.0)
 
+    def test_downtime_stops_when_critical_improves(self):
+        s, e, _ = sla.month_range("2026-10")
+        ev = [{"event": "open", "key": "disk:/u01", "severity": "CRITICAL", "component": "/u01", "message": "95%", "ts": t(5, 10)},
+              {"event": "improve", "key": "disk:/u01", "severity": "WARNING", "component": "/u01", "message": "86%", "ts": t(5, 11)},
+              {"event": "escalate", "key": "disk:/u01", "severity": "CRITICAL", "component": "/u01", "message": "97%", "ts": t(5, 15)},
+              {"event": "close", "key": "disk:/u01", "severity": "CRITICAL", "component": "/u01", "message": "", "ts": t(5, 16)}]
+        r = sla.compute(ev, s, e, now=e)
+        self.assertAlmostEqual(r["downtime"], 2 * 3600)   # 10-11 and 15-16 critical; 11-15 only degraded
+        self.assertEqual(r["critical_incidents"], 1)
+
     def test_report_with_breach(self):
         home = TempHome({"main": "[sla]\ntarget_percent = 99.9\n"})
         s, e, label = sla.month_range("2026-10")
