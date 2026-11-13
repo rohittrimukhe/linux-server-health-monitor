@@ -20,7 +20,7 @@ sudo ./install.sh --setup            # install, then start the wizard
 | `/usr/local/bin/healthcheck` | Command |
 
 Upgrade: run `install.sh` from the new version. Rollback: `rm -rf /opt/lshme && mv /opt/lshme.previous /opt/lshme`.
-Uninstall: `sudo ./uninstall.sh` keeps configuration and data; add `--purge` to remove everything.
+Uninstall: `sudo ./uninstall.sh` keeps configuration and data; add `--purge` to remove everything. Schedules, the watcher and the Cockpit page are removed only when they belong to the installation being removed (same `--config-dir`), so a second or test installation never touches the main one.
 
 Portable mode, with no installation: `./healthcheck --home /some/dir ...` keeps
 everything under that directory. This is useful for trials and for running
@@ -178,7 +178,7 @@ Every deletion is written to `audit.log` with its reason.
 
 Every full run is stored in `history.sqlite3`. Reports include:
 - a trend table comparing now with 1, 7 and 30 days ago, plus averages,
-- a filesystem fill forecast (a linear trend over 30 days, clearly labelled as an estimate),
+- a filesystem fill forecast (a linear trend over 30 days, clearly labelled as an estimate; it needs at least `forecast_min_samples` runs covering `forecast_min_span_hours`, default 24 h, so a few runs minutes apart never produce a forecast),
 - recurring issues,
 - a score history chart.
 
@@ -250,7 +250,7 @@ Settings are in `main.conf [watch]`:
 | `interval` | 60 | Seconds between checks |
 | `confirm` | 2 | Consecutive bad checks before alerting (prevents flapping alerts) |
 | `repeat_minutes` | 60 | Reminder interval while a problem continues (0 = never) |
-| `recovery_alerts` | yes | Send a message when a problem clears |
+| `recovery_alerts` | yes | Send a message when a problem clears, and an IMPROVED message when it eases (e.g. CRITICAL to WARNING) |
 | `rotation_modules` | services, database, kvm, cockpit, network, backup, cluster, certificates | Heavier modules run one per check, in turn |
 | `rotation_minutes` | 15 | How often each rotated module repeats |
 | `alert_min_severity` | WARNING | `WARNING` or `CRITICAL` |

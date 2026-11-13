@@ -79,7 +79,7 @@ DEFAULTS = {
         "hardware": {"temperature_warning_c": "75", "temperature_critical_c": "90"},
         "mail": {"queue_warning": "100", "queue_critical": "1000"},
         "history": {"forecast_warning_days": "30", "forecast_critical_days": "7",
-                    "forecast_min_samples": "3"},
+                    "forecast_min_samples": "3", "forecast_min_span_hours": "24"},
     },
     "services": {"critical": {"services": "sshd, crond"}, "ports": {}, "processes": {},
                  "ignore": {"failed_units": ""}},

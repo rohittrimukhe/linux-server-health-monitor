@@ -23,7 +23,7 @@ from lshme import APP_NAME, COPYRIGHT
 from lshme.core import logs
 from lshme.core.config import as_bool, as_list
 from lshme.core.model import ModuleResult, SEV_RANK
-from lshme.core.util import NETWORK_FS, PSEUDO_FS, listening_ports_from_proc, to_int
+from lshme.core.util import NETWORK_FS, PSEUDO_FS, listening_ports_from_proc, owned_by, to_int
 
 DEFAULTS = {"interval": "60", "confirm": "2", "repeat_minutes": "60", "recovery_alerts": "yes",
             "rotation_modules": "services,database,kvm,cockpit,network,backup,cluster,certificates",
@@ -299,6 +299,17 @@ def evaluate(state, current, now, confirm, repeat_seconds, min_sev, recovery):
             elif SEV_RANK[sev] > SEV_RANK[p["logged"]]:
                 events.append({"ts": now, "event": "escalate", "key": key, "severity": sev, "component": comp, "message": msg})
                 p["logged"] = sev
+            elif SEV_RANK[sev] < SEV_RANK[p["logged"]]:  # e.g. CRITICAL -> WARNING: critical downtime ends here
+                events.append({"ts": now, "event": "improve", "key": key, "severity": sev, "component": comp, "message": msg})
+                p["logged"] = sev
+        if p["alerted"] and SEV_RANK[sev] < SEV_RANK[p["alerted"]] and p["count"] >= confirm:
+            # tell the on-call people a critical problem has eased (not yet resolved)
+            if recovery:
+                recovered.append(dict(p, key=key, kind="IMPROVED", previous=p["alerted"]))
+            p["alerted"], p["last_alert"] = sev, now
+            if SEV_RANK[sev] < floor:
+                p["alerted"] = None
+            continue
         if SEV_RANK[sev] < floor or p["count"] < confirm:
             continue
         if not p["alerted"] or escalated or (repeat_seconds and now - p["last_alert"] >= repeat_seconds):
@@ -321,8 +332,11 @@ def format_alert(host, alerts, recovered):
     head = []
     if alerts:
         head.append("%d %s" % (len(alerts), "CRITICAL" if crit else "WARNING"))
-    if recovered:
-        head.append("%d recovered" % len(recovered))
+    fixed = [r for r in recovered if r["kind"] == "RECOVERED"]
+    if fixed:
+        head.append("%d recovered" % len(fixed))
+    if len(fixed) < len(recovered):
+        head.append("%d improved" % (len(recovered) - len(fixed)))
     subject = "[LSHME ALERT] %s: %s" % (host, ", ".join(head))
     lines = ["%s - real-time alert for %s at %s" % (APP_NAME, host, time.strftime("%Y-%m-%d %H:%M:%S")), ""]
     for a in alerts:
@@ -330,7 +344,10 @@ def format_alert(host, alerts, recovered):
         if a.get("recommendation"):
             lines.append("    Action: %s" % a["recommendation"])
     for r in recovered:
-        lines.append("[RECOVERED] %s: %s (after %d min)" % (r["component"], r["message"], r["duration"] // 60))
+        if r["kind"] == "IMPROVED":
+            lines.append("[IMPROVED] %s: %s -> %s: %s" % (r["component"], r["previous"], r["severity"], r["message"]))
+        else:
+            lines.append("[RECOVERED] %s: %s (after %d min)" % (r["component"], r["message"], r["duration"] // 60))
     lines += ["", COPYRIGHT]
     return subject, "\n".join(lines), ("CRITICAL" if crit else "WARNING" if alerts else "HEALTHY")
 
@@ -543,15 +560,17 @@ def install(app, cpu_quota=5, memory_mb=128):
 
 
 def uninstall(app):
+    """Remove the watcher service/cron entry, but only if it runs this installation."""
     removed = []
+    owner = app.global_args()
     d = app.cfg.get("schedule", "scheduler", "systemd_dir", "/etc/systemd/system")
     unit = os.path.join(d, "lshme-watch.service")
-    if os.path.exists(unit):
+    if os.path.exists(unit) and owned_by(unit, owner):
         app.runner.run(["systemctl", "disable", "--now", "lshme-watch.service"])
         os.remove(unit)
         app.runner.run(["systemctl", "daemon-reload"])
         removed.append(unit)
-    if os.path.exists("/etc/cron.d/lshme-watch"):
+    if os.path.exists("/etc/cron.d/lshme-watch") and owned_by("/etc/cron.d/lshme-watch", owner):
         os.remove("/etc/cron.d/lshme-watch")
         removed.append("/etc/cron.d/lshme-watch")
     return removed

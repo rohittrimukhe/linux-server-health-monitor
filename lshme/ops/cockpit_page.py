@@ -32,8 +32,20 @@ def install(app, user=False, dest=None):
     return dest
 
 
-def remove(user=False, dest=None):
+def owner(dest):
+    """Global arguments of the installation that installed the page at dest, or None."""
+    try:
+        with open(os.path.join(dest, "config.json"), encoding="utf-8") as f:
+            return json.load(f).get("command", [])[1:]
+    except (IOError, OSError, ValueError, AttributeError):
+        return None
+
+
+def remove(user=False, dest=None, owner_args=None):
+    """Remove the page. With owner_args, only a page installed by that installation is removed."""
     dest = dest or target(user)
+    if owner_args is not None and owner(dest) not in (None, list(owner_args)):
+        return None
     if os.path.isdir(dest) and os.path.exists(os.path.join(dest, "lshme.js")):
         shutil.rmtree(dest)
         return dest

@@ -8,6 +8,7 @@ import re
 import shlex
 
 from lshme.core.config import as_bool, as_list
+from lshme.core.util import owned_by
 
 WEEKDAYS = {"mon": (1, "Mon"), "tue": (2, "Tue"), "wed": (3, "Wed"), "thu": (4, "Thu"), "fri": (5, "Fri"),
             "sat": (6, "Sat"), "sun": (0, "Sun"), "1": (1, "Mon"), "2": (2, "Tue"), "3": (3, "Wed"),
@@ -199,12 +200,16 @@ def install(cfg, runner, launcher, global_args, dry_run=False):
     return report
 
 
-def uninstall(cfg, runner):
+def uninstall(cfg, runner, owner_args=None):
+    """Remove installed schedules. With owner_args (App.global_args()), only files that run this
+    installation are touched."""
     removed = []
     d = cfg.get("schedule", "scheduler", "systemd_dir", "/etc/systemd/system")
     if os.path.isdir(d):
         for f in sorted(os.listdir(d)):
-            if f.startswith("lshme-") and f.endswith((".timer", ".service")):
+            if f.startswith("lshme-") and f.endswith((".timer", ".service")) and f != "lshme-watch.service":
+                if not owned_by(os.path.join(d, f[:-6] + ".service" if f.endswith(".timer") else f), owner_args):
+                    continue
                 if f.endswith(".timer"):
                     runner.run(["systemctl", "disable", "--now", f])
                 os.remove(os.path.join(d, f))
@@ -212,7 +217,7 @@ def uninstall(cfg, runner):
         if removed and runner.has("systemctl"):
             runner.run(["systemctl", "daemon-reload"])
     cron = cfg.get("schedule", "scheduler", "cron_file", "/etc/cron.d/lshme")
-    if os.path.exists(cron):
+    if os.path.exists(cron) and owned_by(cron, owner_args):
         os.remove(cron)
         removed.append(cron)
     return removed

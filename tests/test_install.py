@@ -17,7 +17,7 @@ class InstallTest(unittest.TestCase):
         self.prefix = os.path.join(self.t, "opt", "lshme")
         self.conf = os.path.join(self.t, "site", "config")
         self.bin = os.path.join(self.t, "bin", "healthcheck")
-        self.args = ["--prefix", self.prefix, "--config", self.conf, "--bin", self.bin]
+        self.args = ["--prefix", self.prefix, "--config", self.conf, "--bin", self.bin, "--no-cockpit"]
 
     def tearDown(self):
         shutil.rmtree(self.t, ignore_errors=True)

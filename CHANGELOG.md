@@ -34,6 +34,13 @@
   - The KVM module raised CRITICAL on hosts with only the `virsh` client and no libvirt daemon; it now skips.
   - PostgreSQL now raises a finding for waiting lock requests.
   - The Cockpit summary now shows its state on hosts without systemd.
+- **Fixes found during an end-to-end run on a fresh install.**
+  - Uninstalling a second installation (or running the test suite on a server) removed the main installation's schedules, watcher entry and Cockpit page. Removal now only touches files that run the same `--config-dir`, and an upgrade only refreshes its own schedules. `install.sh`/`uninstall.sh` gain `--no-cockpit`.
+  - Capacity forecasts could raise "full in 1 day" from a few runs minutes apart. A forecast now needs at least `forecast_min_span_hours` (default 24) of history.
+  - When a critical problem eased to warning, nothing was sent and SLA downtime kept counting until it cleared. The watcher now sends an IMPROVED notice and logs the change, and the SLA report counts only the time actually spent critical.
+  - `exclude add --component` accepts a comma-separated list of globs, like `--hosts`.
+  - `config set` accepts `main.conf` as well as `main`.
+  - The menu's two columns no longer run together when a label is long.
 
 ## 1.1.0
 

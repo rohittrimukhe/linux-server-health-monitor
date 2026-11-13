@@ -58,6 +58,12 @@ class ExclusionTest(unittest.TestCase):
     def tearDown(self):
         self.home.cleanup()
 
+    def test_component_list(self):
+        r = exclusions.Rule("mounts", {"code": "FS_READ_ONLY", "component": "/opt/a, /opt/b*", "reason": "platform"})
+        self.assertTrue(r.matches("FS_READ_ONLY", "/opt/a", "storage", "h"))
+        self.assertTrue(r.matches("FS_READ_ONLY", "/opt/b2", "storage", "h"))
+        self.assertFalse(r.matches("FS_READ_ONLY", "/opt/c", "storage", "h"))
+
     def test_apply_moves_findings_and_reports_rule_problems(self):
         run = make_run()
         excluded = exclusions.apply(run, self.rules)
