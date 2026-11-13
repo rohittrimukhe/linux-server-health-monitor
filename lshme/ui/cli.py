@@ -314,12 +314,27 @@ def dispatch(app, cmd, args):
         from lshme.ops import watch
         if args.interval:
             app.cfg.set("main", "watch", "interval", str(args.interval))
+        if args.action in ("run", "once"):
+            # one watcher per installation: a second one would send every alert twice
+            try:
+                lock = RunLockWatch(app).__enter__()
+            except LockBusy as e:
+                holder = str(e).split("(", 1)[-1].rstrip(")")
+                if args.action == "once":
+                    return 0  # cron tick while the previous one (or the service) is still running
+                C.out(C.c("Real-time monitoring is already running (%s); not starting a second watcher." % holder, "yellow"))
+                return 1
         if args.action == "run":
-            return watch.Watcher(app).run_forever()
+            try:
+                return watch.Watcher(app).run_forever()
+            finally:
+                lock.__exit__(None, None, None)
         if args.action == "once":
             watch.lower_priority()
-            with RunLockWatch(app):
+            try:
                 alerts, recovered, delivery = watch.Watcher(app).tick()
+            finally:
+                lock.__exit__(None, None, None)
             for a in alerts:
                 C.out("%s %s: %s" % (C.c("%-8s" % a["severity"], a["severity"]), a["component"], a["message"]))
             for r in recovered:

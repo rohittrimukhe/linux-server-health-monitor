@@ -41,6 +41,8 @@
   - `exclude add --component` accepts a comma-separated list of globs, like `--hosts`.
   - `config set` accepts `main.conf` as well as `main`.
   - The menu's two columns no longer run together when a label is long.
+  - A second `healthcheck watch run` could start beside the service, so every alert was sent twice or more. Only one watcher runs per installation now; a second one exits with a clear message.
+  - Long scores such as an availability of `99.948` no longer wrap inside the PDF summary box.
 
 ## 1.1.0
 

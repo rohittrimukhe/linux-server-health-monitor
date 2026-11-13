@@ -145,7 +145,11 @@ def render(doc, path, logo=""):
         story += [Spacer(1, 6), Paragraph("<b>%s</b>" % escape(doc.banner), ParagraphStyle("b", parent=st["n"], textColor=colors.HexColor("#8a4b00"), backColor=colors.HexColor("#fff4e5"), borderPadding=4))]
     c = doc.counts
     col = SEV_COLORS.get(doc.status, "#555")
-    summary = Table([[Paragraph('<font size="30" color="%s"><b>%s</b></font>' % (col, doc.score), st["n"]),
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    # largest size up to 30 pt that keeps the score on one line in its 35 mm cell (e.g. "99.948")
+    score_pt = min(30, int(84 / max(0.1, stringWidth(str(doc.score), "Helvetica-Bold", 1))))
+    summary = Table([[Paragraph('<font size="%d" color="%s"><b>%s</b></font>' % (score_pt, col, doc.score),
+                                ParagraphStyle("score", parent=st["n"], leading=score_pt * 1.15)),
                       Paragraph('<font size="14" color="%s"><b>%s</b></font><br/><br/>Critical <b>%d</b> &nbsp; Warning <b>%d</b> &nbsp; '
                                 'Unknown <b>%d</b> &nbsp; Info <b>%d</b><br/><font size="7" color="#5b6876">%s</font>' % (
                                     col, doc.status, c.get("CRITICAL", 0), c.get("WARNING", 0), c.get("UNKNOWN", 0), c.get("INFO", 0),
