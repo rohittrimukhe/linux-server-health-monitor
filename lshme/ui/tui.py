@@ -470,7 +470,7 @@ def page_reports(ctx):
     b = lambda label, opt, kind="text", **kw: bound(ctx, label, "reports", "reports", opt, kind, **kw)
     settings(ctx, "Report settings", [
         b("Formats", "formats", "multi", choices=reports.FORMATS, help="Press Enter to tick the formats written on every run."),
-        b("Report type", "report_type", "choice", choices=["executive", "technical", "full"], help="executive: summary; technical: findings and evidence; full: everything."),
+        b("Report type", "report_type", "choice", choices=["daily", "weekly", "monthly", "executive", "technical", "full"], help="executive: summary; technical: findings and evidence; full: everything."),
         b("Title", "title", help="Leave blank for the standard title."),
         b("Include appendix", "include_appendix", "bool", help="Add the detailed tables at the end of reports."),
         b("Evidence length (chars)", "max_evidence_chars", "int", lo=200, hi=100000, help="How much command output to keep per finding."),
@@ -553,7 +553,7 @@ def schedule_form(ctx, name, new=False, frequency=None):
         b("Days of data", "days", "int", lo=1, hi=3650, help="How far back logs and trends are analysed."),
         b("Modules", "modules", validate=v_modules, help="'all' or a comma list such as database,storage."),
         b("Formats", "formats", "multi", choices=reports.FORMATS, help="Report files written by this schedule."),
-        b("Report type", "report_type", "choice", choices=["executive", "technical", "full"], help="executive, technical or full."),
+        b("Report type", "report_type", "choice", choices=["daily", "weekly", "monthly", "executive", "technical", "full"], help="executive, technical or full."),
         b("Email the report", "email", "bool", help="Send the result by email."),
         b("Recipients", "to", validate=v_emails, help="Blank uses the addresses from the Email page."),
         b("CC", "cc", validate=v_emails, help="Optional."),

@@ -182,7 +182,7 @@ class Wizard(object):
                                                             self.cfg.get("reports", "reports", "formats", "html,pdf,json"),
                                                             validate=lambda x: _fmt_err(x)))
         self.cfg.set("reports", "reports", "report_type", C.ask("Default report type", self.cfg.get("reports", "reports", "report_type", "technical"),
-                                                                choices=["executive", "technical", "full"]))
+                                                                choices=["daily", "weekly", "monthly", "executive", "technical", "full"]))
         self.cfg.set("reports", "reports", "title", C.ask("Report title (blank for default)", self.cfg.get("reports", "reports", "title", "")))
         self.save("reports")
 
@@ -234,7 +234,7 @@ class Wizard(object):
                 self.cfg.set("schedule", sec, "monthday", C.ask("Day of month (1-28)", s.monthday, validate=C.num_validator(1, 28)))
             self.cfg.set("schedule", sec, "days", C.ask("Days of data the report covers", str(s.days), validate=C.num_validator(1, 3650)))
             self.cfg.set("schedule", sec, "formats", C.ask("Formats", s.formats, validate=_fmt_err))
-            self.cfg.set("schedule", sec, "report_type", C.ask("Report type", s.report_type, choices=["executive", "technical", "full"]))
+            self.cfg.set("schedule", sec, "report_type", C.ask("Report type", s.report_type, choices=["daily", "weekly", "monthly", "executive", "technical", "full"]))
             self.cfg.set("schedule", sec, "modules", C.ask("Modules (all or comma list)", s.modules))
             self.cfg.set("schedule", sec, "email", "yes" if C.yes("Email this report", s.email) else "no")
             self.cfg.set("schedule", sec, "to", C.ask("Recipients for this schedule (blank = smtp.conf default)", ",".join(s.to)))

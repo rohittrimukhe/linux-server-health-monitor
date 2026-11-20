@@ -138,7 +138,7 @@ class Menu(object):
         from lshme.ui.cli import print_run, progress_printer
         days = int(C.ask("Report period in days", "7", validate=C.num_validator(1, 3650)))
         fm = C.ask("Formats (%s or all)" % ",".join(reports.FORMATS), "all")
-        rt = C.ask("Report type", "technical", choices=["executive", "technical", "full"])
+        rt = C.ask("Report type", "technical", choices=["daily", "weekly", "monthly", "executive", "technical", "full"])
         run, result = self.app.full_run(None, days, fm, rt, None, progress=progress_printer(False))
         print_run(run, result)
 

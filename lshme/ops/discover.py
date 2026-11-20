@@ -16,7 +16,7 @@ from lshme.core.config import as_list
 from lshme.core.model import iso
 
 ALWAYS = {"system": "every server has an operating system", "cpu_memory": "every server has CPU and memory",
-          "storage": "every server has filesystems", "services": "every server runs services",
+          "storage": "every server has filesystems", "folders": "folder sizes feed the growth reports", "services": "every server runs services",
           "network": "every server has a network", "hardware": "every server has hardware",
           "logs": "every server writes logs", "security": "every server has a security posture"}
 KVM_DAEMONS = ("/usr/sbin/libvirtd", "/usr/sbin/virtqemud", "/run/libvirt", "/var/run/libvirt")

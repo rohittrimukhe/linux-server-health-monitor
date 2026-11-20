@@ -5,7 +5,9 @@
 Produces a clean multi-page A4 document with headings, wrapped paragraphs and
 monospaced tables using the standard Helvetica/Courier fonts (no embedding).
 """
+import struct
 import time
+import zlib
 
 PAGE_W, PAGE_H = 595.28, 841.89
 MARGIN = 42
@@ -21,9 +23,25 @@ class MiniPDF(object):
         self.title = title
         self.footer = footer
         self.pages = []
+        self.images = []   # (name, width, height, colourspace, filter, data, alpha_data)
         self.ops = None
         self.y = 0
         self.new_page()
+
+    def add_image(self, path):
+        """Register a PNG or JPEG logo; returns (name, width, height) or None if it cannot be used."""
+        try:
+            img = load_image(path)
+        except Exception:
+            return None
+        if not img:
+            return None
+        name = "Im%d" % (len(self.images) + 1)
+        self.images.append((name,) + img)
+        return name, img[0], img[1]
+
+    def draw_image(self, name, x, y, w, h):
+        self.ops.append("q %.1f 0 0 %.1f %.1f %.1f cm /%s Do Q" % (w, h, x, y, name))
 
     def new_page(self):
         self.ops = []
@@ -99,7 +117,17 @@ class MiniPDF(object):
         pages_id = add(None)
         fonts = [add("<< /Type /Font /Subtype /Type1 /BaseFont /%s /Encoding /WinAnsiEncoding >>" % f)
                  for f in ("Helvetica", "Helvetica-Bold", "Courier", "Courier-Bold")]
-        res = "<< /Font << /F1 %d 0 R /F2 %d 0 R /F3 %d 0 R /F4 %d 0 R >> >>" % tuple(fonts)
+        xobj = ""
+        for name, w, h, cs, flt, data, alpha in self.images:
+            smask = ""
+            if alpha is not None:
+                a_id = add("<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length %d >>\nstream\n%s\nendstream" % (
+                    w, h, len(alpha), alpha.decode("latin-1")))
+                smask = " /SMask %d 0 R" % a_id
+            i_id = add("<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /%s /BitsPerComponent 8 /Filter /%s%s /Length %d >>\nstream\n%s\nendstream" % (
+                w, h, cs, flt, smask, len(data), data.decode("latin-1")))
+            xobj += "/%s %d 0 R " % (name, i_id)
+        res = "<< /Font << /F1 %d 0 R /F2 %d 0 R /F3 %d 0 R /F4 %d 0 R >> %s >>" % (tuple(fonts) + (("/XObject << %s>>" % xobj) if xobj else "",))
         kids = []
         total = len(self.pages)
         for i, ops in enumerate(self.pages, 1):
@@ -125,6 +153,98 @@ class MiniPDF(object):
         with open(path, "wb") as f:
             f.write(bytes(out))
         return path
+
+
+def load_image(path):
+    """(width, height, colourspace, filter, data, alpha) for a JPEG or an 8-bit PNG, else None."""
+    with open(path, "rb") as f:
+        raw = f.read()
+    if raw[:2] == bytes([0xFF, 0xD8]):          # JPEG: embedded as is
+        i = 2
+        while i < len(raw) - 9:
+            if raw[i] != 0xFF:
+                i += 1
+                continue
+            marker = raw[i + 1]
+            if marker in (0xC0, 0xC1, 0xC2):
+                h, w = struct.unpack(">HH", raw[i + 5:i + 9])
+                comps = raw[i + 9]
+                return w, h, {1: "DeviceGray", 3: "DeviceRGB"}.get(comps, "DeviceRGB"), "DCTDecode", raw, None
+            i += 2 + struct.unpack(">H", raw[i + 2:i + 4])[0]
+        return None
+    if raw[:8] != bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]):
+        return None
+    pos, idat, plte, trns, hdr = 8, b"", b"", b"", None
+    while pos < len(raw):
+        n, kind = struct.unpack(">I4s", raw[pos:pos + 8])
+        body = raw[pos + 8:pos + 8 + n]
+        if kind == b"IHDR":
+            hdr = struct.unpack(">IIBBBBB", body)
+        elif kind == b"IDAT":
+            idat += body
+        elif kind == b"PLTE":
+            plte = body
+        elif kind == b"tRNS":
+            trns = body
+        pos += 12 + n
+    if not hdr:
+        return None
+    w, h, depth, ctype, _, _, interlace = hdr
+    if depth != 8 or interlace or ctype not in (0, 2, 3, 6) or w * h > 700000:
+        return None
+    bpp = {0: 1, 2: 3, 3: 1, 6: 4}[ctype]
+    data = zlib.decompress(idat)
+    stride = w * bpp
+    rows, prev = [], bytearray(stride)
+    p = 0
+    for _ in range(h):
+        ft = data[p]
+        line = bytearray(data[p + 1:p + 1 + stride])
+        p += 1 + stride
+        if ft == 1:
+            for i in range(bpp, stride):
+                line[i] = (line[i] + line[i - bpp]) & 255
+        elif ft == 2:
+            for i in range(stride):
+                line[i] = (line[i] + prev[i]) & 255
+        elif ft == 3:
+            for i in range(stride):
+                left = line[i - bpp] if i >= bpp else 0
+                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 255
+        elif ft == 4:
+            for i in range(stride):
+                a = line[i - bpp] if i >= bpp else 0
+                b = prev[i]
+                c = prev[i - bpp] if i >= bpp else 0
+                pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
+                pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                line[i] = (line[i] + pr) & 255
+        rows.append(line)
+        prev = line
+    alpha = None
+    if ctype == 6:
+        rgb, al = bytearray(), bytearray()
+        for line in rows:
+            rgb += b"".join(bytes(line[i:i + 3]) for i in range(0, stride, 4))
+            al += bytes(line[3::4])
+        cs, pix, alpha = "DeviceRGB", bytes(rgb), zlib.compress(bytes(al))
+    elif ctype == 3:
+        pal = [plte[i:i + 3] for i in range(0, len(plte), 3)]
+        tr = list(trns) + [255] * (len(pal) - len(trns))
+        rgb, al = bytearray(), bytearray()
+        has_alpha = bool(trns)
+        for line in rows:
+            for v in line:
+                rgb += pal[v] if v < len(pal) else b"\x00\x00\x00"
+                if has_alpha:
+                    al.append(tr[v] if v < len(tr) else 255)
+        cs, pix = "DeviceRGB", bytes(rgb)
+        alpha = zlib.compress(bytes(al)) if has_alpha else None
+    elif ctype == 2:
+        cs, pix = "DeviceRGB", b"".join(bytes(r) for r in rows)
+    else:
+        cs, pix = "DeviceGray", b"".join(bytes(r) for r in rows)
+    return w, h, cs, "FlateDecode", zlib.compress(pix), alpha
 
 
 SEV_RGB = {"CRITICAL": (0.78, 0.16, 0.16), "WARNING": (0.85, 0.5, 0.0), "UNKNOWN": (0.4, 0.4, 0.4),

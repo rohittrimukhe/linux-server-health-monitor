@@ -33,7 +33,7 @@ WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 SEVERITIES = ["INFO", "WARNING", "CRITICAL"]
 CHOICES = {
     "method": ["smtp", "sendmail"], "security": ["starttls", "ssl", "none"], "send_policy": ["", "always", "issues", "critical", "never"],
-    "report_type": ["executive", "technical", "full"], "alert_min_severity": SEVERITIES, "expected_selinux": ["enforcing", "permissive", "disabled"],
+    "report_type": ["daily", "weekly", "monthly", "executive", "technical", "full"], "alert_min_severity": SEVERITIES, "expected_selinux": ["enforcing", "permissive", "disabled"],
     "weekday": WEEKDAYS, "frequency": ["hourly", "daily", "weekly", "monthly", "custom"], "backend": ["auto", "systemd", "cron"],
     "type": ["directory", "logfile"],
 }
