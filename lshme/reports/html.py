@@ -4,6 +4,7 @@
 import base64
 import html
 import os
+import re
 import time
 
 from lshme.reports import charts as ch
@@ -37,7 +38,16 @@ details>summary::-webkit-details-marker{display:none}details[open]>summary{borde
 .muted{color:var(--muted)}.small{font-size:12px}pre{white-space:pre-wrap;word-break:break-word;background:#f6f8fa;border:1px solid var(--line);border-radius:6px;padding:8px;font-size:11.5px;max-height:320px;overflow:auto}
 .tblwrap{overflow:auto;max-height:520px;margin:6px 0 16px}h4{margin:14px 0 4px;font-size:13.5px}
 footer{color:var(--muted);text-align:center;font-size:12px;margin-top:32px}
-@media print{header{background:#0b3d6e!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}details{break-inside:avoid}.tblwrap{max-height:none}}
+.toc{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 0;margin:-8px 0 8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.toc a{text-decoration:none;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px 11px;font-size:12.5px;font-weight:600}
+.toc a:hover{border-color:var(--accent);color:var(--accent)}.toc .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+.toc a.m-CRITICAL{border-left:5px solid #c9190b}.toc a.m-WARNING{border-left:5px solid #e08e0b}.toc a.m-OK{border-left:5px solid #3e8635}
+.toc button{font:inherit;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:3px 10px;cursor:pointer;color:var(--ink)}
+.toc button:hover{border-color:var(--accent);color:var(--accent)}
+.summary .lead{font-size:17px;font-weight:600;margin:0 0 8px}.summary ul{margin:6px 0 10px;padding-left:20px}.summary li{margin:3px 0}
+.summary .first{background:#eef6ff;border-left:4px solid var(--accent);padding:8px 12px;border-radius:6px;margin:8px 0}
+#flt{font:inherit;border:1px solid var(--line);border-radius:8px;padding:4px 10px;min-width:220px;margin:0 0 8px}
+@media print{.toc{display:none}header{background:#0b3d6e!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}details{break-inside:avoid}.tblwrap{max-height:none}}
 """
 
 
@@ -130,6 +140,61 @@ def findings_html(findings, show_evidence=True):
     return '<div class="tblwrap"><table class="t"><thead><tr><th>Severity</th><th>Component</th><th>Finding</th><th>Recommended action</th></tr></thead><tbody>%s</tbody></table></div>' % "".join(rows)
 
 
+def slug(text):
+    return re.sub(r"[^a-z0-9]+", "-", str(text).lower()).strip("-") or "section"
+
+
+def summary_card(doc):
+    """A few plain sentences at the top: how the server is, what matters most, and what to do first."""
+    if doc.kind != "host":
+        return ""
+    c = doc.counts
+    crit, warn = c.get("CRITICAL", 0), c.get("WARNING", 0)
+    host = doc.host or "This server"
+    if crit:
+        lead = "%s needs attention: %d critical and %d warning finding(s)." % (host, crit, warn)
+    elif warn:
+        lead = "%s is working, with %d warning(s) worth a look." % (host, warn)
+    else:
+        lead = "%s is healthy. There are no warnings or critical findings." % host
+    top = [f for f in doc.findings if f["severity"] in ("CRITICAL", "WARNING")]
+    top.sort(key=lambda f: 0 if f["severity"] == "CRITICAL" else 1)
+    items = "".join("<li>%s %s</li>" % (sev_badge(f["severity"]), E(f["message"])) for f in top[:3])
+    more = '<p class="small muted">...and %d more under "Issues requiring attention".</p>' % (len(top) - 3) if len(top) > 3 else ""
+    first = ""
+    if doc.recommendations:
+        first = '<div class="first"><b>Do this first:</b> %s</div>' % E(doc.recommendations[0][2])
+    return ('<div class="card summary" id="summary"><h2>At a glance</h2><p class="lead">%s</p>%s%s%s'
+            '<p class="muted small">%d areas checked - health score %s/100</p></div>') % (
+        E(lead), ("<ul>%s</ul>" % items) if items else "", more, first, len(doc.module_rows), E(doc.score))
+
+
+SCRIPT = ("<script>(function(){var d=document;function all(o){[].forEach.call(d.querySelectorAll('details'),function(x){x.open=o})}"
+          "var e=d.getElementById('exp'),c=d.getElementById('col'),p=d.getElementById('prt'),f=d.getElementById('flt');"
+          "if(e)e.onclick=function(){all(true)};if(c)c.onclick=function(){all(false)};if(p)p.onclick=function(){window.print()};"
+          "window.addEventListener('beforeprint',function(){all(true)});"
+          "if(f)f.oninput=function(){var q=f.value.toLowerCase();[].forEach.call(d.querySelectorAll('#issues tbody tr'),function(r){"
+          "r.style.display=r.textContent.toLowerCase().indexOf(q)<0?'none':''})}}());</script>")
+
+
+def toc(doc):
+    """Sticky navigation: sections, then one coloured link per area."""
+    if doc.kind != "host":
+        return ""
+    links = ['<a href="#summary">Summary</a>', '<a href="#issues">Issues</a>']
+    if doc.recommendations:
+        links.append('<a href="#actions">Actions</a>')
+    links.append('<a href="#areas">Areas</a>')
+    links.append('<span class="sep"></span>')
+    for sec in doc.sections:
+        status = ("CRITICAL" if any(f["severity"] == "CRITICAL" for f in sec.findings)
+                  else "WARNING" if any(f["severity"] == "WARNING" for f in sec.findings) else "OK")
+        links.append('<a class="m-%s" href="#mod-%s">%s</a>' % (status, slug(sec.title), E(sec.title)))
+    links.append('<span class="sep"></span><button id="exp" type="button">Expand all</button><button id="col" type="button">Collapse all</button>'
+                 '<button id="prt" type="button">Print</button>')
+    return '<nav class="toc" aria-label="Report sections">%s</nav>' % "".join(links)
+
+
 def logo_tag(path):
     if not path or not os.path.isfile(path):
         return ""
@@ -152,8 +217,10 @@ def render(doc, path, logo=""):
              '<title>%s — %s</title><style>%s</style></head><body>' % (E(doc.title), E(doc.host or doc.subtitle), CSS),
              '<header><div class="inner"><div><h1>%s</h1><p>%s</p></div><div class="logos">%s%s</div></div></header><div class="wrap">' % (
                  E(doc.title), E(doc.subtitle), logo_tag(doc.customer_logo or logo), logo_tag(doc.brand_logo))]
+    parts.append(toc(doc))
     if doc.banner:
         parts.append('<div class="banner">%s</div>' % E(doc.banner))
+    parts.append(summary_card(doc))
     parts.append('<div class="grid"><div class="card" style="display:flex;gap:16px;align-items:center">%s<div><h2>Overall health</h2>'
                  '<div class="chips">%s</div><p class="small muted">%s</p></div></div>'
                  '<div class="card"><h3>Report details</h3><table class="kv">%s</table></div></div>' % (
@@ -181,13 +248,14 @@ def render(doc, path, logo=""):
         parts.append('<div class="grid">%s</div>' % "".join(pies))
     if wide:
         parts.append('<div class="grid wide">%s</div>' % "".join(wide))
-    parts.append('<div class="card"><h2>%s</h2>%s</div>' % (ov_title,
-                                                            table_html(Table("", mod_hdr, doc.module_rows))))
+    parts.append('<div class="card" id="areas"><h2>%s</h2>%s</div>' % (ov_title,
+                                                                      table_html(Table("", mod_hdr, doc.module_rows))))
     key = [f for f in doc.findings if f["severity"] in ("CRITICAL", "WARNING", "UNKNOWN")]
-    parts.append('<div class="card" style="margin-top:16px"><h2>Issues requiring attention (%d)</h2>%s</div>' % (
-        len(key), findings_html(key, doc.report_type != "executive")))
+    parts.append('<div class="card" id="issues" style="margin-top:16px"><h2>Issues requiring attention (%d)</h2>%s%s</div>' % (
+        len(key), '<input id="flt" type="search" placeholder="Filter issues...">' if len(key) > 4 else "",
+        findings_html(key, doc.report_type != "executive")))
     if doc.recommendations:
-        parts.append('<div class="card" style="margin-top:16px"><h2>Recommended actions</h2><ol>%s</ol></div>' % "".join(
+        parts.append('<div class="card" id="actions" style="margin-top:16px"><h2>Recommended actions</h2><ol>%s</ol></div>' % "".join(
             "<li>%s <b>%s</b>: %s</li>" % (sev_badge(s), E(c_), E(r)) for s, c_, r in doc.recommendations))
     for s in doc.sections:
         status = "SKIPPED" if s.score is None and s.status == "SKIPPED" else (
@@ -201,13 +269,14 @@ def render(doc, path, logo=""):
         if info:
             body.append("<h4>Informational</h4>" + findings_html(info, False))
         body += [table_html(t) for t in s.tables]
-        parts.append('<details %s><summary>%s %s <span class="muted small">score %s</span></summary>%s</details>' % (
-            "open" if status in ("CRITICAL", "WARNING") else "", badge, E(s.title),
+        parts.append('<details id="mod-%s" %s><summary>%s %s <span class="muted small">score %s</span></summary>%s</details>' % (
+            slug(s.title), "open" if status in ("CRITICAL", "WARNING") else "", badge, E(s.title),
             s.score if s.score is not None else "n/a", "".join(body)))
     for title, text in doc.appendix:
         parts.append('<details><summary>Appendix — %s</summary><pre>%s</pre></details>' % (E(title), E(text)))
     parts.append('<footer>Generated %s · read-only health check · %s<div class="copyright">%s</div></footer></div></body></html>' % (
         time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(doc.generated)), E(dict(doc.meta).get("Generated by", "")), E(doc.copyright)))
+    parts[-1] = parts[-1].replace("</body></html>", SCRIPT + "</body></html>")  # the script belongs inside the body
     with open(path, "w", encoding="utf-8") as f:
         f.write("".join(parts))
     return path

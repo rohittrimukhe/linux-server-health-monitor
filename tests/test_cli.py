@@ -223,7 +223,7 @@ class InteractiveTest(unittest.TestCase):
         with redirect_stdout(buf):
             Menu(app).loop()
         out = buf.getvalue()
-        self.assertIn("Linux Server Health Monitor Enterprise", out)
+        self.assertIn("LRS Vitals", out)
         self.assertIn("Self-diagnostics", out)
         self.assertIn("SQLite history database", out)
         self.assertIn("Storage & Filesystems", out)

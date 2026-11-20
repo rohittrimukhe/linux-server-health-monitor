@@ -33,7 +33,7 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(oct(os.stat(self.conf).st_mode & 0o777), "0o700")
         self.assertEqual(oct(os.stat(os.path.join(self.conf, "credentials.conf")).st_mode & 0o777), "0o600")
         rc, out = self.sh(self.bin, "--config-dir", self.conf, "version")
-        self.assertIn("Linux Server Health Monitor Enterprise", out)
+        self.assertIn("LRS Vitals", out)
         # customise config, then upgrade: config must survive, previous code kept for rollback
         with open(os.path.join(self.conf, "main.conf"), "a") as f:
             f.write("\n# site customisation marker\n")

@@ -87,10 +87,14 @@ class CursesBackend(object):
         ("edit", "black", "green", False), ("button", "white", "blue", False),
         ("button_sel", "white", "red", True), ("error", "red", "white", True),
         ("list_sel", "white", "blue", True), ("dim", "blue", "white", False),
+        ("bar_ok", "black", "green", False), ("bar_warn", "black", "yellow", False), ("bar_crit", "white", "red", True),
+        ("track", "white", "blue", False), ("val", "blue", "white", True), ("good", "green", "white", True),
+        ("warn", "yellow", "white", True),
     )
     FALLBACK = {"title": "bold", "wtitle": "bold", "heading": "bold", "error": "bold", "note_err": "bold",
                 "field": "underline", "field_sel": "reverse", "edit": "reverse", "button": "normal",
-                "button_sel": "reverse", "list_sel": "reverse"}
+                "button_sel": "reverse", "list_sel": "reverse", "bar_ok": "reverse", "bar_warn": "reverse",
+                "bar_crit": "reverse", "val": "bold", "good": "bold", "warn": "bold"}
 
     def __init__(self, scr):
         import curses
@@ -104,9 +108,12 @@ class CursesBackend(object):
             pass
         self.attrs = {}
         colour = curses.has_colors()
+        self.colors = bool(colour)
+        import locale
+        self.unicode = (locale.getpreferredencoding(False) or "").lower().replace("-", "") in ("utf8", "utf8mb4")
         if colour:
             names = {"black": curses.COLOR_BLACK, "white": curses.COLOR_WHITE, "blue": curses.COLOR_BLUE,
-                     "red": curses.COLOR_RED, "cyan": curses.COLOR_CYAN, "green": curses.COLOR_GREEN}
+                     "red": curses.COLOR_RED, "cyan": curses.COLOR_CYAN, "green": curses.COLOR_GREEN, "yellow": curses.COLOR_YELLOW}
             for i, (name, fg, bg, bold) in enumerate(self.PALETTE, 1):
                 curses.init_pair(i, names[fg], names[bg])
                 self.attrs[name] = curses.color_pair(i) | (curses.A_BOLD if bold else 0)
@@ -170,15 +177,18 @@ class CursesBackend(object):
             pass
         self.scr.refresh()
 
-    def key(self):
+    def key(self, timeout=None):
+        """Next key name. With a timeout (seconds) returns None when nothing was pressed in that time."""
         c = self.curses
         while True:
             try:
-                self.scr.timeout(-1)
+                self.scr.timeout(-1 if timeout is None else max(1, int(timeout * 1000)))
                 k = self.scr.get_wch()
             except KeyboardInterrupt:
                 return "ESC"
             except c.error:
+                if timeout is not None:
+                    return None
                 continue
             if isinstance(k, int):
                 return "RESIZE" if k == c.KEY_RESIZE else "UNKNOWN"
@@ -363,14 +373,14 @@ class Field(object):
 # the screen controller
 # ---------------------------------------------------------------------------------------------
 class UI(object):
-    def __init__(self, backend, title="LSHME configuration"):
+    def __init__(self, backend, title="LRS Vitals"):
         self.b = backend
         self.title = title
         self.note_text, self.note_kind = "", "info"
         self.on_error = None  # called with the exception when a menu action fails unexpectedly
 
-    def key(self):
-        k = self.b.key()
+    def key(self, timeout=None):
+        k = self.b.key(timeout) if timeout is not None else self.b.key()
         return KEY_ALIASES.get(k, k)
 
     def working(self, text):
@@ -415,6 +425,32 @@ class UI(object):
             t = " %s " % title[:w - 6]
             self.b.put(y, x + max(2, (w - len(t)) // 2), t, "wtitle")
         return Rect(y, x, h, w)
+
+    # -- drawing helpers for the dashboards -----------------------------------------------
+    def panel(self, y, x, h, w, title=""):
+        """A framed box on the window background, with a title in the top border."""
+        self.b.fill(y, x, h, w, "window")
+        self.b.box(y, x, h, w, "window")
+        if title:
+            self.b.put(y, x + 2, " %s " % title[:max(0, w - 6)], "wtitle")
+
+    def bar(self, y, x, width, value, level="ok", maximum=100.0):
+        """A horizontal bar: filled part coloured by level (ok/warn/crit) on a track. Plain terminals get # and ."""
+        width = max(1, width)
+        filled = int(round(width * min(max(value, 0.0), maximum) / float(maximum))) if maximum else 0
+        if getattr(self.b, "colors", False):
+            self.b.put(y, x, " " * filled, "bar_" + level)
+            self.b.put(y, x + filled, " " * (width - filled), "track")
+        else:
+            self.b.put(y, x, "#" * filled + "." * (width - filled), "window")
+
+    def spark(self, y, x, width, values, maximum=None, attr="val"):
+        """A one-line history graph of the last `width` values."""
+        ramp = "▁▂▃▄▅▆▇█" if getattr(self.b, "unicode", False) else ".:-=+*#%"
+        vals = list(values)[-width:]
+        top = float(maximum if maximum else (max(vals) if vals else 0)) or 1.0
+        text = "".join(ramp[min(len(ramp) - 1, int(max(0.0, v) / top * (len(ramp) - 1) + 0.5))] for v in vals)
+        self.b.put(y, x, " " * (width - len(vals)) + text, attr)
 
     def buttons(self, y, x, w, labels, focus):
         """Draw a centred row of buttons; returns nothing. focus: index or None."""
@@ -611,12 +647,15 @@ class Form(object):
     on_save(form) writes the values and returns a message; raise ValueError(message) to refuse.
     check(form) may return an error message before saving. Returns True when the values were saved."""
 
-    def __init__(self, ui, title, items, on_save, buttons=None, intro="", check=None, width=76):
+    def __init__(self, ui, title, items, on_save, buttons=None, intro="", check=None, width=76,
+                 save_label="Save", back_label="Back", skip_label=None, confirm_discard=True):
         self.ui, self.title, self.items = ui, title, items
         self.on_save, self.check, self.intro, self.width = on_save, check, intro, width
         self.fields = [i for i in items if isinstance(i, Field)]
         self.extra = list(buttons or [])
-        self.labels = [b[0] for b in self.extra] + ["Save", "Back"]
+        self.skip_label, self.confirm_discard = skip_label, confirm_discard
+        self.exit = "back"  # how the form was left: "saved", "skip" or "back"
+        self.labels = [b[0] for b in self.extra] + [save_label] + ([skip_label] if skip_label else []) + [back_label]
         self.order = [("f", i) for i, it in enumerate(items) if isinstance(it, Field) and not it.readonly]
         self.order += [("b", j) for j in range(len(self.labels))]
         self.focus = 0
@@ -754,8 +793,9 @@ class Form(object):
         return True
 
     def back(self):
-        if self.changed() and not self.ui.confirm("Discard your changes?", "Unsaved changes", False):
+        if self.confirm_discard and self.changed() and not self.ui.confirm("Discard your changes?", "Unsaved changes", False):
             return None
+        self.exit = "back"
         return "close"
 
     def handle(self, key):
@@ -788,6 +828,7 @@ class Form(object):
                 self.focus = nxt  # stay on the button row
         elif key == "F10":
             if self.save():
+                self.exit = "saved"
                 return "close"
         elif key == "ESC":
             return self.back()
@@ -804,7 +845,11 @@ class Form(object):
                 self.extra[j][1](self)
             elif j == len(self.extra):
                 if self.save():
+                    self.exit = "saved"
                     return "close"
+            elif self.skip_label and j == len(self.extra) + 1:
+                self.exit = "skip"
+                return "close"
             else:
                 return self.back()
         return None

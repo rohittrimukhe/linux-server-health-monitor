@@ -91,6 +91,43 @@ class Schedule(object):
         return "day %s of every month at %s" % (self.monthday, self.time)
 
 
+class ScanJob(object):
+    """The weekly server rescan (default Sunday 02:00), scheduled with the same timers or cron as the reports so it
+    notices new software (a database, KVM, a backup product...) and brings the matching module back."""
+    name = "scan"
+    label = "server scan"
+    frequency = "weekly"
+
+    def __init__(self, cfg):
+        g = lambda key, default: cfg.get("main", "scan", key, default)
+        self.enabled = as_bool(g("enabled", "yes"), True)
+        self.weekday = g("weekday", "sun").lower()[:3]
+        self.time = g("time", "02:00")
+
+    def validate(self):
+        errors = []
+        if not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", self.time):
+            errors.append("scan time must be HH:MM")
+        if self.weekday not in WEEKDAYS:
+            errors.append("scan weekday must be mon..sun")
+        return errors
+
+    def hm(self):
+        h, m = self.time.split(":")
+        return int(h), int(m)
+
+    def on_calendar(self):
+        h, m = self.hm()
+        return "%s *-*-* %02d:%02d:00" % (WEEKDAYS[self.weekday][1], h, m)
+
+    def cron(self):
+        h, m = self.hm()
+        return "%d %d * * %d" % (m, h, WEEKDAYS[self.weekday][0])
+
+    def describe(self):
+        return "server scan every %s at %s" % (WEEKDAYS[self.weekday][1], self.time)
+
+
 def schedules(cfg):
     out = []
     for section in cfg.sections("schedule", "schedule:"):
@@ -113,14 +150,17 @@ def backend(cfg, runner):
 
 
 def command_line(launcher, global_args, sched, retries):
-    args = [launcher] + list(global_args) + ["run", "--schedule", sched.name, "--quiet", "--retries", str(retries)]
+    if isinstance(sched, ScanJob):
+        args = [launcher] + list(global_args) + ["scan", "--apply", "--quiet"]
+    else:
+        args = [launcher] + list(global_args) + ["run", "--schedule", sched.name, "--quiet", "--retries", str(retries)]
     return " ".join(shlex.quote(a) for a in args)
 
 
 def render_systemd(sched, cmdline):
-    service = ("[Unit]\nDescription=LSHME health check (%s)\nAfter=network-online.target\nWants=network-online.target\n\n"
+    service = ("[Unit]\nDescription=LSHME %s (%s)\nAfter=network-online.target\nWants=network-online.target\n\n"
                "[Service]\nType=oneshot\nExecStart=%s\nNice=10\nIOSchedulingClass=idle\nCPUQuota=50%%\nMemoryMax=512M\n"
-               "TimeoutStartSec=3h\nPrivateTmp=true\n# LSHME_MANAGED\n" % (sched.name, cmdline))
+               "TimeoutStartSec=3h\nPrivateTmp=true\n# LSHME_MANAGED\n" % (getattr(sched, "label", "health check"), sched.name, cmdline))
     timer = ("[Unit]\nDescription=LSHME schedule %s (%s)\n\n[Timer]\nOnCalendar=%s\nPersistent=true\nRandomizedDelaySec=120\n"
              "Unit=lshme-%s.service\n\n[Install]\nWantedBy=timers.target\n# LSHME_MANAGED\n" % (
                  sched.name, sched.describe(), sched.on_calendar(), sched.name))
@@ -141,7 +181,7 @@ def install(cfg, runner, launcher, global_args, dry_run=False):
     be = backend(cfg, runner)
     retries = cfg.getint("schedule", "scheduler", "retries", 2)
     report = {"backend": be, "installed": [], "removed": [], "errors": [], "files": {}}
-    all_s = schedules(cfg)
+    all_s = schedules(cfg) + [ScanJob(cfg)]  # the weekly server scan is scheduled alongside the reports
     for s in all_s:
         for e in s.validate():
             report["errors"].append("%s: %s" % (s.name, e))
@@ -206,8 +246,9 @@ def uninstall(cfg, runner, owner_args=None):
     removed = []
     d = cfg.get("schedule", "scheduler", "systemd_dir", "/etc/systemd/system")
     if os.path.isdir(d):
-        for f in sorted(os.listdir(d)):
-            if f.startswith("lshme-") and f.endswith((".timer", ".service")) and f != "lshme-watch.service":
+        # timers first: whether a timer is ours is read from its service file, which must still exist
+        for f in sorted(os.listdir(d), key=lambda n: (not n.endswith(".timer"), n)):
+            if f.startswith("lshme-") and f.endswith((".timer", ".service")) and f not in ("lshme-watch.service", "lshme-web.service"):
                 if not owned_by(os.path.join(d, f[:-6] + ".service" if f.endswith(".timer") else f), owner_args):
                     continue
                 if f.endswith(".timer"):

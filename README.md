@@ -1,4 +1,4 @@
-# Linux Server Health Monitor Enterprise (LSHME)
+# LRS Vitals
 
 ![LRS Services](lshme/reports/lrs_logo.png)
 
@@ -17,7 +17,7 @@ whole fleet of servers from one central host.
 
 ```
  ==========================================================================
-   Linux Server Health Monitor Enterprise  v1.2.0
+   Linux Server Health Monitor Enterprise  v1.3.0
    © 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
    Host: db01   2026-11-12 09:00
  ==========================================================================
@@ -40,10 +40,23 @@ whole fleet of servers from one central host.
 
 ## Quick start
 
+**LRS Vitals** installs as an RPM and is run with one command, `vitals` (the older names `systemhealth` and `healthcheck` still work):
+
 ```bash
-sudo ./install.sh              # installs to /opt/lshme, config in /etc/lshme, command 'healthcheck'
-sudo healthcheck setup         # full-screen forms (like nmtui): identity, thresholds, services, databases, SMTP, schedules, retention, alerts
-sudo healthcheck               # interactive menu
+sudo dnf install ./lrs-vitals-1.3.0-1.el9.noarch.rpm   # shows a getting-started guide
+sudo vitals                    # first time: scans the server, then a few setup pages, one at a time
+vitals                         # afterwards: live graphs, reports, settings (full-screen, like nmtui)
+vitals run                     # a complete health check now
+vitals scan                    # what is present on this server (re-scanned every Sunday 02:00)
+vitals web                     # the same pages in a browser (see docs/USER_GUIDE.md)
+```
+
+Build the RPM yourself with `packaging/build_rpm.sh` (needs `rpm-build`). Without RPM, use the installer script:
+
+```bash
+sudo ./install.sh              # installs to /opt/lshme, config in /etc/lshme, commands vitals, systemhealth, healthcheck
+sudo vitals setup              # the setup pages again
+sudo healthcheck               # the classic numbered menu is still `healthcheck menu`
 sudo healthcheck run --formats all --email
 sudo healthcheck schedule install
 sudo healthcheck watch install   # real-time monitoring with alerts

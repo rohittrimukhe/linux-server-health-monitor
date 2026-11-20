@@ -73,7 +73,8 @@ class CompatTest(unittest.TestCase):
             self.assertNotIn("universal_newlines=True", open(path, encoding="utf-8").read(), path)
 
     def test_read_only_commands(self):
-        allowed = {os.path.join(PKG, "ops", "scheduler.py")}  # manages its own timers only
+        # each manages only its own units: the schedule timers, and the web interface service
+        allowed = {os.path.join(PKG, "ops", "scheduler.py"), os.path.join(PKG, "ops", "webservice.py")}
         for path in sources():
             if path in allowed:
                 continue
@@ -81,6 +82,12 @@ class CompatTest(unittest.TestCase):
                 src = f.read()
             m = DANGEROUS.search(src)
             self.assertIsNone(m, "%s runs a state-changing command: %s" % (path, m.group(0) if m else ""))
+
+    def test_web_service_only_touches_its_own_unit(self):
+        with open(os.path.join(PKG, "ops", "webservice.py"), encoding="utf-8") as f:
+            src = f.read()
+        for m in re.finditer(r'"systemctl",\s*"(enable|disable|restart|stop|start)"[^\]]*\]', src):
+            self.assertIn("UNIT_NAME", m.group(0), m.group(0))  # every state-changing call names lshme-web.service only
 
     def test_scheduler_only_touches_lshme_units(self):
         with open(os.path.join(PKG, "ops", "scheduler.py"), encoding="utf-8") as f:

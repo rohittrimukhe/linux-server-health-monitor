@@ -41,6 +41,14 @@ command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload 2>/dev/null || t
 if [ "$(readlink -f "$BIN" 2>/dev/null)" = "$(readlink -f "$PREFIX/healthcheck" 2>/dev/null)" ]; then
   rm -f "$BIN"
 fi
+SHBIN="$(dirname "$BIN")/systemhealth"
+if [ "$(readlink -f "$SHBIN" 2>/dev/null)" = "$(readlink -f "$PREFIX/healthcheck" 2>/dev/null)" ]; then
+  rm -f "$SHBIN"
+fi
+VBIN="$(dirname "$BIN")/vitals"
+if [ "$(readlink -f "$VBIN" 2>/dev/null)" = "$(readlink -f "$PREFIX/healthcheck" 2>/dev/null)" ]; then
+  rm -f "$VBIN"
+fi
 rm -rf "$PREFIX" "$PREFIX.previous"
 case "$CONFIG" in
   /etc/*) DATA=/var/lib/lshme; LOGS=/var/log/lshme; REPORTS="" ;;
