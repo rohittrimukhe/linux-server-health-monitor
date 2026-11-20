@@ -177,6 +177,15 @@ class FormTests(TuiCase):
         self.assertTrue(os.listdir(self.app.paths.config_backup_dir))  # a backup is taken before each change
         self.assertEqual(ctx.ui.note_text, "Saved main.conf")  # shown in the footer of the screen that called the form
 
+    def test_identity_screen_shows_the_builtin_lrs_logo(self):
+        from lshme import BRAND_LOGO
+        ctx = self.ctx(["ESC"])
+        tui.page_identity(ctx)
+        self.assertTrue(self.be.saw("LRS Services logo"))
+        self.assertTrue(self.be.saw("built in"))
+        with open(BRAND_LOGO, "rb") as f:
+            self.assertEqual(f.read(8), b"\x89PNG\r\n\x1a\n")  # the default logo ships with the program
+
     def test_bad_number_is_refused_and_nothing_written(self):
         ctx = self.ctx(["ENTER", "CTRL_U"] + typed("abc") + ["ENTER", "ESC", "ESC"])
         tui.page_thresholds(ctx)
