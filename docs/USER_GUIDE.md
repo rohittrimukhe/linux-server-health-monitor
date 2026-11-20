@@ -44,6 +44,13 @@ setting has a default.
 | F10 | Validate and save |
 | Esc | Go back (asks first if there are unsaved changes) |
 | Ctrl-U / Ctrl-K | While typing: delete to the start / end of the line |
+| Ctrl-N / Ctrl-P, or j / k | Down / up, for connections that do not send the arrow keys |
+| Ctrl-B, or q | Back, for connections that do not send Esc |
+
+Use PuTTY, Windows Terminal, an SSH session in a terminal, or any other terminal emulator
+and the arrow keys and Esc work. Some Windows command-line SSH tools (plink run inside a
+console window) never send arrow keys or Esc at all; the alternative keys above work there.
+(`j`, `k` and `q` are only shortcuts when you are not typing in a field.)
 
 Screens: organisation and report identity; monitoring modules (switch each on or
 off); thresholds (with a check that warning is not above critical); services,

@@ -316,6 +316,44 @@ class HelpTextTests(unittest.TestCase):
         self.assertEqual(too_long, [], "help lines wider than the footer would be cut off")
 
 
+class NoArrowKeysTests(TuiCase):
+    """plink in a Windows console never sends arrows or Esc: the screens must be fully usable without them."""
+
+    def test_menu_with_ctrl_n_and_enter_then_ctrl_b_back(self):
+        ctx = self.ctx(["CTRL_N", "ENTER", "CTRL_B", "CTRL_B"])  # 2nd entry (modules), back, quit
+        tui.start(ctx)
+        self.assertTrue(self.be.saw("switches a module"))
+
+    def test_menu_with_j_k_q(self):
+        ctx = self.ctx(["j", "j", "k", "ENTER", "q", "q"])
+        tui.start(ctx)
+        self.assertTrue(self.be.saw("switches a module"))
+
+    def test_form_move_toggle_save_and_leave_without_arrows(self):
+        ctx = self.ctx(["j", " ", "k", "F10"])  # second module off, save (first module untouched)
+        tui.page_modules(ctx)
+        self.assertEqual(self.app.cfg.get("main", "modules", "disabled"), "cpu_memory")
+
+    def test_typing_j_k_q_into_a_field_is_still_text(self):
+        ctx = self.ctx(["ENTER"] + typed("jkq") + ["ENTER", "F10"])
+        tui.page_identity(ctx)
+        self.assertEqual(self.app.cfg.get("main", "general", "company"), "jkq")
+
+    def test_list_and_popup_without_arrows(self):
+        ctx = self.ctx(["j", "j", "q"])
+        tui.page_schedules(ctx)  # moves down the list, then q leaves
+        self.assertTrue(self.be.saw("weekly"))
+        ctx = self.ctx(["ENTER", "CTRL_N", "ENTER", "F10"])  # report type choice: open, next entry, pick
+        tui.page_reports(ctx)  # (first field is Formats; just prove a popup closes with Ctrl-B)
+        ctx = self.ctx(["ENTER", "CTRL_B", "ESC"])
+        tui.page_reports(ctx)
+
+    def test_ctrl_keys_do_not_break_text_editing(self):
+        ctx = self.ctx(["ENTER", "CTRL_N", "CTRL_P"] + typed("ok") + ["ENTER", "F10"])
+        tui.page_identity(ctx)
+        self.assertEqual(self.app.cfg.get("main", "general", "company"), "ok")
+
+
 class NavigationTests(TuiCase):
     def test_main_menu_opens_a_page_and_quits(self):
         ctx = self.ctx(["ENTER", "ESC", "ESC"])
