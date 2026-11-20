@@ -38,7 +38,7 @@ DEFAULTS = {
         "history": {"enabled": "yes"},
         "integrations": {"prometheus_textfile": "", "agent_dropdir": ""},
         "watch": {"interval": "60", "confirm": "2", "repeat_minutes": "60", "recovery_alerts": "yes",
-                  "rotation_modules": "services,database,kvm,cockpit,network,backup,cluster,certificates",
+                  "rotation_modules": "services,database,kvm,cockpit,network,backup,cluster,certificates,selfcheck",
                   "rotation_minutes": "15", "alert_min_severity": "WARNING", "alert_email": "yes", "alert_to": "",
                   "syslog": "yes", "webhook_url": "", "max_rss_mb": "100", "netfs_timeout": "5",
                   "metrics_hours": "24"},

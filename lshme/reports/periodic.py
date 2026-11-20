@@ -36,10 +36,11 @@ IMPACT = {
     "db": "A database problem can stop every application that depends on that database.",
     "time": "A wrong clock can break logins, certificates, logs and database replication.",
     "reboot": "A restart means the services on this server were unavailable for a short time.",
+    "monitoring": "If the monitoring itself is not working, problems on this server can go unnoticed and no alert or report reaches you.",
     "generic": "This is outside the normal range and should be looked at.",
 }
 MODULE_KIND = {"storage": "fs", "cpu_memory": "cpu", "services": "services", "security": "updates", "logs": "logs", "backup": "backup",
-               "database": "db", "system": "time", "folders": "fs"}
+               "database": "db", "system": "time", "folders": "fs", "selfcheck": "monitoring"}
 
 
 def impact_for_module(module):

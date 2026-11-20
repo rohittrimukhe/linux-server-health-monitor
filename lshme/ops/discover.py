@@ -18,7 +18,8 @@ from lshme.core.model import iso
 ALWAYS = {"system": "every server has an operating system", "cpu_memory": "every server has CPU and memory",
           "storage": "every server has filesystems", "folders": "folder sizes feed the growth reports", "services": "every server runs services",
           "network": "every server has a network", "hardware": "every server has hardware",
-          "logs": "every server writes logs", "security": "every server has a security posture"}
+          "logs": "every server writes logs", "security": "every server has a security posture",
+          "selfcheck": "checks that LRS Vitals itself is working"}
 KVM_DAEMONS = ("/usr/sbin/libvirtd", "/usr/sbin/virtqemud", "/run/libvirt", "/var/run/libvirt")
 BACKUP_TOOLS = ("restic", "borg", "duplicity", "bacula-fd", "bconsole", "rsnapshot", "rear", "veeamconfig", "dsmc", "bpclimagelist")
 PSEUDO_FS = ("proc", "sysfs", "devtmpfs", "tmpfs", "devpts", "cgroup", "cgroup2", "securityfs", "debugfs", "tracefs",
