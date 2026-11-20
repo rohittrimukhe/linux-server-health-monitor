@@ -32,7 +32,9 @@ CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src '
        "frame-ancestors 'self'; base-uri 'none'; form-action 'self'")
 REPORT_CSP = ("default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; "
               "frame-ancestors 'self'; sandbox allow-scripts allow-popups")
-INLINE_TYPES = {".html": "text/html; charset=utf-8", ".pdf": "application/pdf"}
+INLINE_TYPES = {".html": "text/html; charset=utf-8", ".pdf": "application/pdf", ".txt": "text/plain; charset=utf-8",
+                ".csv": "text/plain; charset=utf-8", ".json": "text/plain; charset=utf-8"}
+DOWNLOAD_TYPES = {".csv": "text/csv; charset=utf-8", ".json": "application/json"}
 MAX_BODY = 1 << 20
 COOKIE = "lshme_session"
 ACTIONS = ("schedule-install", "watch-install", "watch-remove", "email-test", "config-backup")
@@ -165,7 +167,7 @@ class WebApp(object):
             if path.startswith("/reports/") and path[len("/reports/"):].split("/")[0] not in self.group_hosts(sess["group"]):
                 return err("not found", 404)
         if path.startswith("/reports/"):
-            return self.report_file(path)
+            return self.report_file(path, (req.query.get("download") or [""])[0] in ("1", "yes", "true"))
         name = path[len("/api/"):]
         handler = getattr(self, "api_" + name.replace("/", "_"), None)
         if handler is None:
@@ -441,11 +443,10 @@ class WebApp(object):
         if sess.get("group") and rid.split("/")[0] not in self.group_hosts(sess["group"]):
             raise ValueError("unknown report")
         d = self.report_dir(rid)
-        listing = archive.list_files(d)
-        files = [f[0] for f in listing]
-        detail = {"id": rid, "files": [{"name": n, "url": "/reports/%s/%s" % (rid, n), "size": size, "stored": stored, "compressed": gz}
-                                       for n, stored, size, gz in listing]}
-        j = next((f for f in files if f.endswith(".json")), None)
+        listing = archive.catalog(d)
+        files = [f["name"] for f in listing]
+        detail = {"id": rid, "files": [dict(f, url="/reports/%s/%s" % (rid, f["name"])) for f in listing]}
+        j = next((f for f in files if f.endswith(".json") and os.path.isfile(archive.real_path(os.path.join(d, f)))), None)
         if j:
             try:
                 run = reportlist.load_run(os.path.join(d, j))
@@ -458,26 +459,33 @@ class WebApp(object):
                 detail["error"] = "The JSON result in this report could not be read."
         return jr(detail)
 
-    def report_file(self, path):
+    def report_file(self, path, download=False):
+        """A report file: the stored one when it is there (plain or compressed), else rebuilt exactly from the report's source."""
         parts = path[len("/reports/"):].split("/")
         if len(parts) != 4:
             return err("not found", 404)
         d = self.report_dir("/".join(parts[:3]))
         name = parts[3]
-        if not name or name in (".", "..") or "/" in name or "\\" in name:
+        if not name or name in (".", "..") or "/" in name or "\\" in name or name.startswith("."):
             return err("not found", 404)
         if name.endswith(".gz"):                          # old links to the stored name still work
             name = name[:-3]
         full = os.path.realpath(archive.real_path(os.path.join(d, name)))
-        if os.path.dirname(full) != d or not os.path.isfile(full):
+        if os.path.lexists(archive.real_path(os.path.join(d, name))) and (os.path.dirname(full) != d or not os.path.isfile(full)):
+            return err("not found", 404)                  # a link out of the report folder
+        try:
+            body, how = archive.materialize(d, name)
+        except ValueError:
             return err("not found", 404)
         ext = os.path.splitext(name)[1].lower()
-        body = archive.read_bytes(full)                   # compressed reports are shown as they were, no unpacking on disk
-        if ext in INLINE_TYPES:
-            return Resp(200, body, INLINE_TYPES[ext], {"Content-Security-Policy": REPORT_CSP})
-        ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
-        return Resp(200, body, ctype, {"Content-Disposition": 'attachment; filename="%s"' % re.sub(r'[^A-Za-z0-9._-]', "_", name),
-                                       "Content-Security-Policy": "default-src 'none'; sandbox"})
+        extra = {"X-Report-Source": how}
+        safe_name = re.sub(r'[^A-Za-z0-9._-]', "_", name)
+        if ext in INLINE_TYPES and not download:
+            extra["Content-Security-Policy"] = REPORT_CSP
+            return Resp(200, body, INLINE_TYPES[ext], extra)
+        ctype = DOWNLOAD_TYPES.get(ext) or INLINE_TYPES.get(ext) or mimetypes.guess_type(name)[0] or "application/octet-stream"
+        extra.update({"Content-Disposition": 'attachment; filename="%s"' % safe_name, "Content-Security-Policy": "default-src 'none'; sandbox"})
+        return Resp(200, body, ctype, extra)
 
     def api_run(self, req, sess):
         if req.method == "GET":

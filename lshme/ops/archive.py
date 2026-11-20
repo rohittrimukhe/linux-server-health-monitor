@@ -73,6 +73,39 @@ def list_files(d):
     return out
 
 
+def catalog(d):
+    """Every file of a report, on disk or rebuildable from the stored source:
+    [{'name', 'format', 'size', 'stored', 'compressed', 'on_disk', 'rebuild'}] sorted by name."""
+    from lshme.reports import snapshot
+    src = snapshot.entries(d)
+    out = {}
+    for name, stored, size, gz in list_files(d):
+        out[name] = {"name": name, "format": name.rsplit(".", 1)[-1].lower(), "size": size, "stored": stored, "compressed": gz,
+                     "on_disk": True, "rebuild": name in src}
+    for name, e in src.items():
+        if name not in out:
+            out[name] = {"name": name, "format": e.get("format", ""), "size": e.get("size", 0), "stored": 0, "compressed": False,
+                         "on_disk": False, "rebuild": True}
+    return [out[k] for k in sorted(out)]
+
+
+def materialize(d, name):
+    """The bytes of a report file: the stored file when it is still there (plain or .gz), otherwise rebuilt from the report's
+    source exactly as it was produced. Returns (bytes, 'stored' | 'rebuilt'). Raises ValueError when neither is possible."""
+    if not name or "/" in name or "\\" in name or name.startswith("."):
+        raise ValueError("unknown file")
+    name = display_name(name)
+    p = os.path.join(d, name)
+    real = real_path(p)
+    if os.path.isfile(real) and not os.path.islink(real):
+        return read_bytes(real), "stored"
+    from lshme.reports import snapshot
+    data, identical = snapshot.rebuild(d, name)
+    # 'rebuilt': byte for byte the file that was sent (fingerprint checked). 'rebuilt-changed': same data, but a later version
+    # of LRS Vitals lays the file out differently; retention never removes a file unless it rebuilds identically.
+    return data, "rebuilt" if identical else "rebuilt-changed"
+
+
 # -- compression ---------------------------------------------------------------------------------------------
 def compressible(name):
     return not name.lower().endswith(SKIP_EXT) and not name.startswith(".")
@@ -224,7 +257,7 @@ def resolve(paths, text):
 
 
 def pick_file(d, name=None, prefer=("txt", "json", "csv", "html")):
-    files = [f[0] for f in list_files(d)]
+    files = [f["name"] for f in catalog(d)]
     if name:
         match = [f for f in files if f == name or f.endswith(name) or name in f]
         if not match:
@@ -241,9 +274,13 @@ def tail_lines(path, n=20):
     """The last n lines of a (possibly compressed) text file, reading it as a stream."""
     from collections import deque
     last = deque(maxlen=max(1, n))
-    with open_binary(path) as f:
-        for line in io.TextIOWrapper(f, encoding="utf-8", errors="replace"):
-            last.append(line.rstrip("\n"))
+    if os.path.isfile(real_path(path)):
+        with open_binary(path) as f:
+            for line in io.TextIOWrapper(f, encoding="utf-8", errors="replace"):
+                last.append(line.rstrip("\n"))
+    else:                                                     # removed by retention: rebuilt from the report's source
+        for line in materialize(os.path.dirname(path), os.path.basename(path))[0].decode("utf-8", "replace").splitlines():
+            last.append(line)
     return list(last)
 
 
@@ -310,7 +347,8 @@ class Index(object):
         except (ValueError, OverflowError):
             ts = os.path.getmtime(d)
         live = set()
-        for name, stored, size, gz in list_files(d):
+        for f in catalog(d):                     # files on disk and files that can be rebuilt from the report's source
+            name, stored, size, gz = f["name"], f["stored"], f["size"], f["compressed"]
             rel = "%s/%s" % (rid, name)
             live.add(rel)
             row = self.con.execute("SELECT id FROM files WHERE rel=?", (rel,)).fetchone()
@@ -321,8 +359,9 @@ class Index(object):
                                    (rel, rid, host, cat, stamp, ts, name, size, stored, 1 if gz else 0))
             if name.lower().endswith(TEXT_EXT):
                 try:
-                    text = plain_text(name, read_bytes(os.path.join(d, name), MAX_INDEX_BYTES))
-                except (OSError, IOError, EOFError):
+                    raw = read_bytes(os.path.join(d, name), MAX_INDEX_BYTES) if f["on_disk"] else materialize(d, name)[0][:MAX_INDEX_BYTES]
+                    text = plain_text(name, raw)
+                except (OSError, IOError, EOFError, ValueError):
                     text = ""
                 self.con.execute("INSERT INTO body(docid, text) VALUES(?,?)", (cur.lastrowid, text))
         for rel, fid in self.con.execute("SELECT rel, id FROM files WHERE rid=?", (rid,)).fetchall():
@@ -409,7 +448,7 @@ def email_report(app, d, to=None, names=None):
     problems = [p for p in ms.validate() if not (to and "recipients" in p)]
     if problems:
         return {"ok": False, "error": "; ".join(problems), "attached": []}
-    listing = [f[0] for f in list_files(d)]
+    listing = [f["name"] for f in catalog(d)]
     if names:
         want = [n.strip().lstrip(".").lower() for n in names if n and n.strip()]
         pick = [n for n in listing if n.lower() in want or n.rsplit(".", 1)[-1].lower() in want]
@@ -424,18 +463,31 @@ def email_report(app, d, to=None, names=None):
     jname = next((n for n in listing if n.endswith(".json")), None)
     if jname:
         try:
-            status = (json.loads(read_text(os.path.join(d, jname))).get("health") or {}).get("status", "")
+            doc = json.loads(materialize(d, jname)[0].decode("utf-8", "replace"))
+            status = (doc.get("health") or {}).get("status", "") or doc.get("status", "")
         except (ValueError, OSError, EOFError, AttributeError):
             status = ""
     subject = "%s Stored %s report - %s - %s" % (ms.prefix, cat, host, stamp)
     text = "Stored health report\nHost: %s\nReport: %s\nTaken: %s\n%sFiles: %s\n" % (
         host, cat, stamp, ("Status: %s\n" % status) if status else "", ", ".join(pick))
-    msg, recipients, attached, skipped = mailer.build_message(ms, subject, text, None, [os.path.join(d, n) for n in pick],
-                                                               status or "HEALTHY", to, None if to else ms.cc)
+    files, how = [], {}
+    for n in pick:
+        ext = n.rsplit(".", 1)[-1].lower()
+        if ms.attach_formats and ext not in ms.attach_formats and "all" not in ms.attach_formats:
+            continue
+        try:
+            data, how[n] = materialize(d, n)
+        except ValueError:
+            continue
+        files.append((n, data))
+    if any(v != "stored" for v in how.values()):
+        text += "Rebuilt from the stored report data: %s\n" % ", ".join(n for n, v in sorted(how.items()) if v != "stored")
+    msg, recipients, attached, skipped = mailer.build_message(ms, subject, text, None, files, status or "HEALTHY", to, None if to else ms.cc)
     if not attached:
         return {"ok": False, "error": "nothing could be attached: %s" % ("; ".join(skipped) or "file types not allowed"), "attached": []}
     res = mailer.send(ms, msg, recipients, app.paths.log_dir)
     res["attached"], res["skipped_attachments"] = attached, skipped
+    res["rebuilt"] = sorted(n for n, v in how.items() if v != "stored" and n in attached)
     return res
 
 

@@ -103,17 +103,20 @@ def build_message(ms, subject, text, html_body, attachments, status="HEALTHY", t
     budget = ms.max_mb * 1024 * 1024
     used = 0
     for path in attachments:
+        blob = None
+        if isinstance(path, tuple):                                # (name, bytes): a file rebuilt in memory
+            path, blob = path
         shown = archive.display_name(os.path.basename(path))      # a stored name.gz goes out as the original name
         ext = shown.rsplit(".", 1)[-1].lower()
         if ms.attach_formats and ext not in ms.attach_formats and "all" not in ms.attach_formats:
             continue
-        size = archive.original_size(path)
+        size = len(blob) if blob is not None else archive.original_size(path)
         if used + size > budget:
             skipped.append("%s (%.1f MB exceeds the %.0f MB limit)" % (shown, size / 1048576.0, ms.max_mb))
             continue
         ctype = MIME.get(ext) or mimetypes.guess_type(shown)[0] or "application/octet-stream"
         maintype, subtype = ctype.split("/", 1)
-        msg.add_attachment(archive.read_bytes(path), maintype=maintype, subtype=subtype, filename=shown)
+        msg.add_attachment(blob if blob is not None else archive.read_bytes(path), maintype=maintype, subtype=subtype, filename=shown)
         used += size
         attached.append(shown)
     recipients = to + cc + list(ms.bcc)

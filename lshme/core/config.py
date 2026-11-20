@@ -118,7 +118,7 @@ DEFAULTS = {
                                 "logs_days": "30", "error_logs_days": "90", "audit_logs_days": "365",
                                 "auto_apply": "yes",
                                 "email_log_days": "90", "history_days": "365",
-                                "config_backups_keep": "30", "compress_after_days": "1",
+                                "config_backups_keep": "30", "compress_after_days": "1", "keep_rendered_days": "7", "keep_formats": "json", "keep_monthly_pdf": "yes",
                                 "keep_latest": "yes", "archive_dir": "", "min_free_percent": "10",
                                 "space_cleanup": "yes", "free_target_percent": "15", "max_report_dir_gb": "0",
                                 "space_min_keep_days": "1"}},

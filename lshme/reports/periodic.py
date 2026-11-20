@@ -741,7 +741,15 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
     dbs_pre = databases(data)
     fo_pre = folders(data, mounts)
     d.add("In short", [X.narrative(data, usage, fs_pre, dbs_pre, fo_pre, levels, run.fqdn or run.host)])
+    sla_blocks = None
+    try:
+        from lshme.reports import periodic_sla
+        sla_kpi, sla_blocks = periodic_sla.blocks(cfg, paths, now, days, ptype)
+        items.append(sla_kpi)
+    except Exception as e:  # the report must never fail because of this section
+        sla_blocks = [note("The SLA figures could not be calculated: %s" % e)]
     d.add("Overall status", [kpis(items)])
+    d.add("SLA achieved", sla_blocks)
     d.add("Daily checklist" if ptype == "daily" else "Checklist for the period",
           [table("", ["Status", "Check", "Value", "Warn at", "Critical at", "Detail"], rows, align=["", "", "r", "r", "r", ""],
                  legend="OK = within limits. WARN = needs attention soon. CRIT = act now.")])
@@ -840,7 +848,7 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
             d.add("More checks", [note("These sections could not be built: %s" % e)])
     d.add("Server overview", [{"type": "kv", "rows": overview_rows(run)}])
     if variant == "database":
-        keep = ("In short", "Overall status", "Database size and growth", "Database health", "Capacity forecast", "Backup verification", "Top folders and growth",
+        keep = ("In short", "Overall status", "SLA achieved", "Database size and growth", "Database health", "Capacity forecast", "Backup verification", "Top folders and growth",
                 "Repeating problems and log errors", "This period against the last one", "This month against last month", "Server overview")
         dbm = run.module("database")
         dtabs = [t for t in (dbm.tables if dbm else []) if t.rows and re.search(r"RMAN|backup|tablespace|replication|datafile", t.title, re.I)][:8]

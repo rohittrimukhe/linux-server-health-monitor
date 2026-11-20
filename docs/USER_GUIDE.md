@@ -214,6 +214,30 @@ and its text are kept in an index (`data/reports_index.sqlite3`, full-text searc
 SQLite supports it) that is updated after every run and every cleanup. Older installations
 that compressed whole folders into `<stamp>.tar.gz` are converted automatically.
 
+**Keep the data, rebuild the files.** Every report folder also holds its source,
+`.source.json.gz`: the complete report as it was written (every table, chart, colour and
+note, the health-check result and the logos), plus a SHA-256 fingerprint of each file
+produced. After `keep_rendered_days` (default 7) the PDF, Excel, HTML, PowerPoint, CSV and
+text files are removed, but only after each one has been rebuilt from the source and found
+to be byte for byte the same as the file that was sent. A file that would differ is kept.
+The `.json` report (`keep_formats`) and, with `keep_monthly_pdf = yes`, the monthly and SLA
+PDFs always stay as files. A daily report of about 500 KB then keeps about 50 KB.
+
+When anyone opens, downloads or e-mails a removed file (web dashboard, `vitals archive cat`,
+`vitals archive email`), it is rebuilt in memory from the source and is identical to the
+original; nothing is written back to the report folder. The history database is not used
+for this, so old reports stay exact even after the history has been thinned or has expired.
+In the web dashboard each report lists every format with **View**, **Download** and an
+**Email** tick box; "Kept as" shows whether the file is on disk, compressed, or rebuilt on
+request. Set `keep_rendered_days = 0` to keep every file.
+
+**SLA achieved.** Daily, weekly and monthly reports have an "SLA achieved" section and
+a tile in "Overall status": availability for the report period against the target
+(`[sla] target_percent` in main.conf, default 99.9), downtime, the downtime allowed by the
+target and how much of it was used, degraded time, incidents, mean time to recover,
+monitoring coverage and availability per component. The figures come from the live
+watcher's incident log, so keep `lshme-watch` running (`vitals watch install`).
+
 **Space rules.** These delete reports early when space matters:
 
 | Setting | Default | Meaning |

@@ -81,8 +81,9 @@ def run(app, args):
     rid, d = archive.resolve(paths, args.target)
     if act == "files":
         C.out(rid)
-        C.table(["File", "Size", "Stored", "Compressed"],
-                [[n, fmt_bytes(size), fmt_bytes(stored), "yes" if gz else "no"] for n, stored, size, gz in archive.list_files(d)])
+        C.table(["File", "Size", "Stored", "Kept as"],
+                [[f["name"], fmt_bytes(f["size"]), fmt_bytes(f["stored"]) if f["on_disk"] else "-",
+                  ("compressed" if f["compressed"] else "file") if f["on_disk"] else "rebuilt on request"] for f in archive.catalog(d)])
         return 0
     if act == "email":
         to = [x.strip() for x in args.to.replace(";", ",").split(",") if x.strip()]
@@ -91,6 +92,8 @@ def run(app, args):
         app.audit("report-email", report=rid, to=",".join(to), ok=res.get("ok"))
         if res.get("ok"):
             C.out(C.c("Sent %s (%s) to %s" % (rid, ", ".join(res["attached"]), ", ".join(res["recipients"])), "green"))
+            if res.get("rebuilt"):
+                C.out("Rebuilt from the stored report data: %s" % ", ".join(res["rebuilt"]))
             return 0
         C.out(C.c("Not sent: %s" % res.get("error"), "red"))
         return 1
@@ -100,18 +103,15 @@ def run(app, args):
             C.out(line)
         return 0
     out = getattr(sys.stdout, "buffer", None)                  # cat: the original bytes, so it can be piped or redirected
+    data, how = archive.materialize(d, os.path.basename(path))
+    if how == "rebuilt-changed":
+        sys.stderr.write("note: rebuilt with this version's layout; the content is the stored report data\n")
     try:
-        with archive.open_binary(path) as f:
-            while True:
-                block = f.read(1 << 16)
-                if not block:
-                    break
-                if out is not None:
-                    out.write(block)
-                else:
-                    sys.stdout.write(block.decode("utf-8", "replace"))
         if out is not None:
+            out.write(data)
             out.flush()
+        else:
+            sys.stdout.write(data.decode("utf-8", "replace"))
     except BrokenPipeError:                                    # `vitals archive cat ... | head` closed the pipe early
         try:
             os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())

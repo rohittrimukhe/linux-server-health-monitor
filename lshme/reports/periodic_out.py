@@ -20,7 +20,7 @@ def sheets(doc):
     summary += [[k, v] for k, v in doc.meta]
     summary += [[], ["Overall status", doc.status], ["Health score", doc.score]]
     hdr = []
-    for title, blocks in doc.sections[:3]:
+    for title, blocks in doc.sections[:4]:      # in short, status, SLA, checklist
         for b in blocks:
             if b["type"] == "points":
                 summary += [[], [title]] + [[txt] for _, txt in b["items"]]
@@ -32,7 +32,7 @@ def sheets(doc):
                 summary.append(list(b["headers"]))
                 summary += [cells(r) for r in b["rows"]]
     out.append((xlsx.sheet_name("Summary", used), summary, hdr))
-    for title, blocks in doc.sections[3:]:
+    for title, blocks in doc.sections[4:]:
         rows, hdrs = [[title]], []
         for b in blocks:
             if b["type"] == "table":

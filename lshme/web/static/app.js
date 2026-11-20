@@ -441,19 +441,26 @@
                     body.appendChild(h("div", { class: "finding " + f.severity }, h("b", { text: f.severity + " - " }), f.message, f.recommendation ? h("div", { class: "rec", text: "Recommended: " + f.recommendation }) : null));
                 });
             } else if (d.error) body.appendChild(h("p", { class: "err", text: d.error }));
+            var admin = S.me.role === "admin", picks = {};
+            var KIND = { pdf: "PDF", html: "Web page", xlsx: "Excel", pptx: "PowerPoint", csv: "CSV", txt: "Text", json: "Data (JSON)" };
             body.appendChild(h("h3", { text: "Files" }));
-            body.appendChild(h("div", { class: "row" }, d.files.map(function (f) {
-                var viewable = /\.(html|pdf)$/i.test(f.name);
-                return h("a", { class: "btn", href: f.url, target: "_blank", rel: "noopener", text: (viewable ? "Open " : "Download ") + f.name + " (" + size(f.size) + (f.compressed ? ", stored " + size(f.stored) + " compressed" : "") + ")" });
-            })));
-            if (S.me.role === "admin") {
-                var to = h("input", { type: "text", placeholder: "recipients (empty = the configured ones)", style: "min-width:280px" });
-                var kinds = h("input", { type: "text", placeholder: "files, e.g. pdf,html (empty = usual formats)", style: "min-width:220px" });
-                body.appendChild(h("h3", { text: "Send this report by email" }));
-                body.appendChild(h("div", { class: "row" }, to, kinds, h("button", { class: "primary", text: "Send", onclick: function () {
-                    var files = kinds.value.split(/[ ,;]+/).filter(function (x) { return x; });
+            body.appendChild(h("p", { class: "muted", text: "Files kept on disk open as they are. Files removed by retention are rebuilt from the stored report data, byte for byte as they were sent." }));
+            body.appendChild(table(["Format", "File", "Size", "Kept as", "", ""].concat(admin ? ["Email"] : []), d.files.map(function (f) {
+                var view = /^(html|pdf|txt|csv|json)$/.test(f.format);
+                var box = h("input", { type: "checkbox", onchange: function () { picks[f.name] = box.checked; } });
+                var kept = f.on_disk ? (f.compressed ? "compressed (" + size(f.stored) + ")" : "file") : "rebuilt on request";
+                return [h("b", { text: KIND[f.format] || f.format.toUpperCase() }), f.name, size(f.size), kept,
+                    view ? h("a", { class: "btn small primary", href: f.url, target: "_blank", rel: "noopener", text: "View" }) : h("span", { class: "muted", text: "opens in " + (KIND[f.format] || "its app") }),
+                    h("a", { class: "btn small", href: f.url + "?download=1", text: "Download" })].concat(admin ? [box] : []);
+            }), [2]));
+            if (admin) {
+                var to = h("input", { type: "text", placeholder: "recipients, comma separated (empty = the configured ones)", style: "min-width:320px;flex:1" });
+                body.appendChild(h("h3", { text: "Send by email" }));
+                body.appendChild(h("div", { class: "row" }, to, h("button", { class: "primary", text: "Email selected files", onclick: function () {
+                    var files = Object.keys(picks).filter(function (k) { return picks[k]; });
+                    if (!files.length) { toast("Tick the files to send in the Email column.", "bad"); return; }
                     api("POST", "/api/reports/email", { id: id, to: to.value, files: files }).then(function (r) {
-                        if (r.ok) toast("Sent " + r.attached.join(", ") + " to " + r.recipients.join(", "), "good");
+                        if (r.ok) toast("Sent " + r.attached.join(", ") + " to " + r.recipients.join(", ") + (r.rebuilt && r.rebuilt.length ? " (rebuilt: " + r.rebuilt.join(", ") + ")" : ""), "good");
                         else toast("Not sent: " + r.error, "bad");
                     }).catch(fail);
                 } })));

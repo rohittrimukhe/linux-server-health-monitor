@@ -346,6 +346,31 @@ class ReportTests(WebCase):
         self.assertFalse(r["ok"])                                               # no SMTP configured: a clear message, no crash
         self.assertIn("SMTP", r["error"])
 
+    def test_removed_files_are_rebuilt_for_view_download_and_email(self):
+        import hashlib
+        from lshme import reports
+        run = fake_run()
+        _, d, files, _ = reports.generate(run, self.app.cfg, self.app.paths, ["html", "pdf", "txt", "json"], "technical", "adhoc")
+        orig = dict((os.path.basename(p), open(p, "rb").read()) for p in files)
+        html = [n for n in orig if n.endswith(".html")][0]
+        os.remove(os.path.join(d, html))                       # as retention does once the file is checked
+        rid = os.path.relpath(d, self.app.paths.report_dir).replace(os.sep, "/")
+        detail = self.call("GET", "/api/report", user="viewer", query={"id": [rid]}).json
+        f = dict((x["name"], x) for x in detail["files"])[html]
+        self.assertEqual((f["on_disk"], f["rebuild"], f["format"]), (False, True, "html"))
+        view = self.call("GET", f["url"], user="viewer")
+        self.assertEqual((view.status, view.headers["X-Report-Source"]), (200, "rebuilt"))
+        self.assertEqual(hashlib.sha256(view.body).hexdigest(), hashlib.sha256(orig[html]).hexdigest())
+        self.assertNotIn("Content-Disposition", view.headers)
+        down = self.call("GET", f["url"], user="viewer", query={"download": ["1"]})
+        self.assertIn("attachment", down.headers["Content-Disposition"])
+        self.assertEqual(down.body, orig[html])
+        txt = [n for n in orig if n.endswith(".txt")][0]
+        stored = self.call("GET", "/reports/%s/%s" % (rid, txt), user="viewer")
+        self.assertEqual((stored.headers["X-Report-Source"], stored.ctype), ("stored", "text/plain; charset=utf-8"))
+        self.assertEqual(self.call("GET", "/reports/%s/.source.json.gz" % rid, user="admin").status, 404)
+        self.assertFalse(os.path.exists(os.path.join(d, html)))         # viewing never writes the file back
+
     def test_nothing_outside_the_report_folder_is_served(self):
         self.write_report()
         outside = os.path.join(self.home.dir, "secret.txt")

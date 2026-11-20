@@ -4,7 +4,7 @@
 #
 # Roll LRS Vitals out to other servers from the central server, with the same settings everywhere.
 #
-#   sudo tools/deploy_fleet.sh --rpm lrs-vitals-1.4.0-3.noarch.rpm [--config-from /etc/lshme] [--dry-run] [--test-email] \
+#   sudo tools/deploy_fleet.sh --rpm lrs-vitals-1.4.0-4.noarch.rpm [--config-from /etc/lshme] [--dry-run] [--test-email] \
 #        db1.example.com:Production db2.example.com:Production kvm2.example.com:Production
 #
 # Run it as root on the central server, after the central server itself is installed and set up (email, schedules, ...).

@@ -9,6 +9,8 @@ import struct
 import time
 import zlib
 
+from lshme.reports import stable
+
 PAGE_W, PAGE_H = 595.28, 841.89
 MARGIN = 42
 
@@ -141,7 +143,7 @@ class MiniPDF(object):
                 pages_id, PAGE_W, PAGE_H, res, content)))
         objs[catalog - 1] = "<< /Type /Catalog /Pages %d 0 R >>" % pages_id
         objs[pages_id - 1] = "<< /Type /Pages /Kids [%s] /Count %d >>" % (" ".join("%d 0 R" % k for k in kids), len(kids))
-        info = add("<< /Title (%s) /Producer (LSHME) /CreationDate (D:%s) >>" % (_esc(self.title), time.strftime("%Y%m%d%H%M%S")))
+        info = add("<< /Title (%s) /Producer (LSHME) /CreationDate (D:%s) >>" % (_esc(self.title), time.strftime("%Y%m%d%H%M%S", time.localtime(stable.now()))))
         out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
         offsets = []
         for i, body in enumerate(objs, 1):

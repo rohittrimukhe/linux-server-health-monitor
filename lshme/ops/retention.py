@@ -64,6 +64,9 @@ def plan(cfg, paths, now=None, usage=None):
     num = lambda k, d: float(r.get(k) or d)
     keep_latest = as_bool(r.get("keep_latest", "yes"), True)
     compress_after = num("compress_after_days", 1)
+    rendered_days = num("keep_rendered_days", 7)
+    keep_fmts = set(x.strip().lower() for x in (r.get("keep_formats", "json") or "").split(",") if x.strip())
+    keep_pdf_cats = ("monthly", "sla") if as_bool(r.get("keep_monthly_pdf", "yes"), True) else ()
     archive_dir = r.get("archive_dir", "")
     actions = []
     candidates = []  # report items eligible for space cleanup
@@ -90,6 +93,13 @@ def plan(cfg, paths, now=None, usage=None):
                         actions.append({"action": "archive" if archive_dir else "delete", "path": p, "age_days": round(age, 1),
                                         "bytes": size, "reason": "%s report older than %g days" % (cat, days)})
                         continue
+                    if rendered_days and age > rendered_days and os.path.isdir(p):
+                        drop = removable(p, keep_fmts, "pdf" if cat in keep_pdf_cats else None)
+                        if drop:
+                            actions.append({"action": "slim", "path": p, "age_days": round(age, 1), "bytes": sum(b for _, b in drop),
+                                            "files": [n for n, _ in drop],
+                                            "reason": "older than %g days: %d rendered file(s) removed after checking they rebuild identically "
+                                                      "from the stored report data" % (rendered_days, len(drop))})
                     if compress_after and age > compress_after and ((os.path.isdir(p) and archive.needs_compress(p)) or p.endswith(".tar.gz")):
                         actions.append({"action": "compress", "path": p, "age_days": round(age, 1), "bytes": size,
                                         "reason": "older than %g days: each file is gzip-compressed in place (readable with zcat/zless)" % compress_after})
@@ -130,6 +140,47 @@ def plan(cfg, paths, now=None, usage=None):
     actions.append({"action": "prune-history", "path": paths.history_db, "age_days": None, "bytes": 0,
                     "reason": "history older than %g days" % num("history_days", 365), "days": num("history_days", 365)})
     return actions
+
+
+def removable(d, keep_fmts, keep_extra=None):
+    """[(file, bytes)] of rendered files in a report folder that its stored source can rebuild (never the source itself,
+    never a kept format such as json)."""
+    from lshme.reports import snapshot
+    cand = [(name, stored) for name, stored, size, gz in archive.list_files(d)
+            if name.rsplit(".", 1)[-1].lower() not in keep_fmts and name.rsplit(".", 1)[-1].lower() != keep_extra]
+    if not cand:                                     # already slim: no need to open the source
+        return []
+    src = snapshot.entries(d)
+    return [(n, b) for n, b in cand if n in src]
+
+
+def slim(d, names):
+    """Remove rendered files that rebuild byte for byte from the report's source. Returns (removed, kept_with_reason)."""
+    import hashlib
+    from lshme.reports import snapshot
+    src = snapshot.load(d)
+    removed, kept = [], []
+    st = os.stat(d)
+    try:
+        for name in names:
+            entry = (src or {}).get("files", {}).get(name)
+            real = archive.real_path(os.path.join(d, name))
+            if not entry or not os.path.isfile(real):
+                continue
+            try:
+                current = hashlib.sha256(archive.read_bytes(real)).hexdigest()
+                data, identical = snapshot.rebuild(d, name, src)
+            except Exception as e:
+                kept.append((name, "cannot be rebuilt: %s" % e))
+                continue
+            if not identical or current != entry["sha256"]:
+                kept.append((name, "rebuilt file would differ from the stored one"))
+                continue
+            os.remove(real)
+            removed.append(name)
+    finally:
+        os.utime(d, (st.st_atime, st.st_mtime))
+    return removed, kept
 
 
 def space_plan(cfg, paths, candidates, already, usage):
@@ -178,7 +229,7 @@ def space_plan(cfg, paths, candidates, already, usage):
     # a compress action on a folder we now delete is pointless
     gone = set(a["path"] for a in out)
     for a in already:
-        if a["action"] == "compress" and a["path"] in gone:
+        if a["action"] in ("compress", "slim") and a["path"] in gone:
             a["action"], a["reason"] = "skip", "deleted for space"
     return out
 
@@ -247,6 +298,11 @@ def apply(cfg, paths, actions, now=None):
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 shutil.move(p, dest)
                 a["destination"] = dest
+            elif a["action"] == "slim":
+                a["removed_files"], kept = slim(p, a.get("files", []))
+                if kept:
+                    a["kept_files"] = ["%s (%s)" % k for k in kept]
+                    logs.get().warning("retention: kept %s", "; ".join(a["kept_files"]))
             elif a["action"] == "compress":
                 if p.endswith(".tar.gz") and os.path.isfile(p):
                     a["destination"] = archive.convert_tarball(p)
@@ -271,11 +327,11 @@ def apply(cfg, paths, actions, now=None):
             a["result"] = "ok"
         except Exception as e:
             a["result"] = "error: %s" % e
-        if a["action"] in ("delete", "archive", "compress"):
+        if a["action"] in ("delete", "archive", "compress", "slim"):
             logs.audit(paths.log_dir, "retention-" + a["action"], path=p, age_days=a.get("age_days"),
                        bytes=a.get("bytes"), result=a["result"], destination=a.get("destination", ""),
                        reason=a.get("reason", ""))
         done.append(a)
-    if any(a["action"] in ("delete", "archive", "compress") and a.get("result") == "ok" and a["path"].startswith(paths.report_dir) for a in done):
+    if any(a["action"] in ("delete", "archive", "compress", "slim") and a.get("result") == "ok" and a["path"].startswith(paths.report_dir) for a in done):
         archive.refresh(paths, full=True)
     return done

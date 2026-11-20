@@ -67,8 +67,9 @@ def list_reports(paths, limit=300):
                     ts = time.mktime(time.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")) if m else os.path.getmtime(d)
                 except (ValueError, OverflowError, OSError):
                     ts = 0
-                files = [f[0] for f in archive.list_files(d)]          # original names, whether stored plain or as name.gz
-                jpath = next((archive.real_path(os.path.join(d, f)) for f in files if f.endswith(".json")), "")
+                files = [f["name"] for f in archive.catalog(d)]        # stored plain, as name.gz, or rebuildable from the source
+                jpath = next((archive.real_path(os.path.join(d, f)) for f in files
+                              if f.endswith(".json") and os.path.isfile(archive.real_path(os.path.join(d, f)))), "")
                 entry = {"ts": ts, "when": iso(ts) if ts else "?", "host": host, "category": cat, "dir": d, "files": files, "json": jpath}
                 entry.update(_summary(jpath) if jpath else EMPTY)
                 out.append(entry)

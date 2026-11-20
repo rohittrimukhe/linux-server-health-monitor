@@ -7,7 +7,7 @@ import time
 
 from lshme.core import logs
 from lshme.reports import doc as docmod
-from lshme.reports import html, pdf, pptx, simple, xlsx
+from lshme.reports import html, pdf, pptx, simple, stable, xlsx
 
 FORMATS = ("html", "pdf", "xlsx", "pptx", "txt", "csv", "json")
 
@@ -43,6 +43,11 @@ def output_dir(report_root, host, category, stamp=None):
 
 def write_all(document, formats, outdir, basename, run=None, runs=None, logo=""):
     """Render a ReportDoc into each format. Returns (files, notes)."""
+    with stable.rendering(document.generated):          # every date inside the files is the report's own time
+        return _write_all(document, formats, outdir, basename, run, runs, logo)
+
+
+def _write_all(document, formats, outdir, basename, run=None, runs=None, logo=""):
     files, notes = [], []
     log = logs.get()
     for fmt in formats:
@@ -63,12 +68,12 @@ def write_all(document, formats, outdir, basename, run=None, runs=None, logo="")
                     notes.append("PDF written with the built-in renderer (install python3-reportlab for charts).")
             elif fmt == "xlsx":
                 p, engine = xlsx.render(document, path, run)
-                files.append(p)
+                files.append(stable.normalize_zip(p, document.generated))
                 if engine == "builtin":
                     notes.append("XLSX written with the built-in writer (install python3-openpyxl for richer formatting).")
             elif fmt == "pptx":
                 p, engine = pptx.render(document, path)
-                files.append(p)
+                files.append(stable.normalize_zip(p, document.generated))
                 if engine == "builtin":
                     notes.append("PPTX written as text slides (install python-pptx for charts and tables).")
         except Exception as e:  # one failing format must not lose the others
@@ -87,27 +92,14 @@ PERIODIC = ("daily", "weekly", "monthly")
 
 def write_periodic(docs, formats, outdir, base, logo=""):
     """Render daily/weekly/monthly documents (monthly has a summary and a comprehensive one)."""
-    from lshme.reports import periodic_html, periodic_out, periodic_pdf
     files, notes = [], []
     log = logs.get()
     for doc in docs:
         stem = os.path.join(outdir, base + doc.basename_suffix())
         for fmt in formats:
             try:
-                if fmt == "html":
-                    files.append(periodic_html.render(doc, stem + ".html", logo))
-                elif fmt == "pdf":
-                    files.append(periodic_pdf.render(doc, stem + ".pdf", logo))
-                elif fmt == "xlsx":
-                    files.append(periodic_out.render_xlsx(doc, stem + ".xlsx")[0])
-                elif fmt == "csv":
-                    files.extend(periodic_out.render_csv(doc, stem + ".csv"))
-                elif fmt == "txt":
-                    files.append(periodic_out.render_txt(doc, stem + ".txt"))
-                elif fmt == "json":
-                    files.append(periodic_out.render_json(doc, stem + ".json"))
-                elif fmt == "pptx":
-                    notes.append("PowerPoint is not produced for %s reports." % doc.ptype)
+                with stable.rendering(doc.generated):
+                    _periodic_one(doc, fmt, stem, logo, files, notes)
             except Exception as e:
                 log.exception("periodic report format %s failed", fmt)
                 notes.append("%s report failed: %s" % (fmt.upper(), e))
@@ -117,6 +109,24 @@ def write_periodic(docs, formats, outdir, base, logo=""):
         except OSError:
             pass
     return files, notes
+
+
+def _periodic_one(doc, fmt, stem, logo, files, notes):
+    from lshme.reports import periodic_html, periodic_out, periodic_pdf
+    if fmt == "html":
+        files.append(periodic_html.render(doc, stem + ".html", logo))
+    elif fmt == "pdf":
+        files.append(periodic_pdf.render(doc, stem + ".pdf", logo))
+    elif fmt == "xlsx":
+        files.append(stable.normalize_zip(periodic_out.render_xlsx(doc, stem + ".xlsx")[0], doc.generated))
+    elif fmt == "csv":
+        files.extend(periodic_out.render_csv(doc, stem + ".csv"))
+    elif fmt == "txt":
+        files.append(periodic_out.render_txt(doc, stem + ".txt"))
+    elif fmt == "json":
+        files.append(periodic_out.render_json(doc, stem + ".json"))
+    elif fmt == "pptx":
+        notes.append("PowerPoint is not produced for %s reports." % doc.ptype)
 
 
 def build_document(run, cfg, paths, report_type):
@@ -140,12 +150,14 @@ def generate(run, cfg, paths, formats, report_type=None, category=None):
         outdir = output_dir(paths.report_dir, run.host, category)
         base = "%s_%s_%s" % (safe(run.host), safe(category), time.strftime("%Y%m%d_%H%M", time.localtime(run.collected_at)))
         files, notes = write_periodic(docs, formats, outdir, base, cfg.get("main", "general", "logo", ""))
+        keep_source(notes, outdir, base, "periodic", docs, files, cfg.get("main", "general", "logo", ""))
         return docs[0], outdir, files, notes
     document = docmod.build(run, cfg, report_type)
     outdir = output_dir(paths.report_dir, run.host, category)
     base = "%s_%s_%s" % (safe(run.host), safe(category), time.strftime("%Y%m%d_%H%M", time.localtime(run.collected_at)))
     logo = cfg.get("main", "general", "logo", "")
     files, notes = write_all(document, formats, outdir, base, run=run, logo=logo)
+    keep_source(notes, outdir, base, "standard", [document], files, logo, run=run)
     return document, outdir, files, notes
 
 
@@ -154,4 +166,15 @@ def generate_fleet(runs, cfg, paths, formats, report_type="technical", errors=No
     outdir = output_dir(paths.report_dir, "_fleet", "fleet")
     base = "fleet_%s" % time.strftime("%Y%m%d_%H%M")
     files, notes = write_all(document, formats, outdir, base, runs=runs, logo=cfg.get("main", "general", "logo", ""))
+    keep_source(notes, outdir, base, "standard", [document], files, cfg.get("main", "general", "logo", ""), runs=runs)
     return document, outdir, files, notes
+
+
+def keep_source(notes, outdir, base, kind, docs, files, logo, run=None, runs=None):
+    """Store the report's source so removed files can be rebuilt exactly. A failure only means the files are kept."""
+    from lshme.reports import snapshot
+    try:
+        snapshot.save(outdir, base, kind, docs, files, logo, run=run, runs=runs)
+    except Exception as e:
+        logs.get().exception("report source not stored")
+        notes.append("Report source not stored (%s); these files will be kept as they are." % e)

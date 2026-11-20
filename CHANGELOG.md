@@ -15,6 +15,8 @@
 - **HTTPS certificate for the web interface:** self-signed by default (`tls_source = self-signed`). Optional genuine Let's Encrypt certificate (`tls_source = letsencrypt`, never a self-signed fallback in that mode): ACME client with the HTTP check (port 80 or webroot) or the DNS check (Cloudflare, DuckDNS or a hook script; works for servers on private addresses), automatic renewal with live reload, `vitals web cert status|issue|renew`, an Operations card.
 - **Licence:** strict proprietary licence, no use by anyone except the owner.
 - **Compressed, indexed report archive:** reports older than a day are gzip-compressed file by file (`name.html.gz`, readable with `zcat`, `zless`, `zgrep`), shown, downloaded, searched and e-mailed without unpacking (`vitals archive list|files|cat|tail|grep|search|email|compress|reindex|stats`, web search box and "send by email"). Full-text index of every stored report. Old folder tarballs are converted.
+- **Keep the data, rebuild the files:** each report keeps its full source (`.source.json.gz`) and fingerprints. After `keep_rendered_days` (default 7) the PDF, Excel, HTML, PowerPoint, CSV and text files are removed once they are verified to rebuild byte for byte; they are rebuilt identically whenever opened, downloaded or e-mailed. Report files are now repeatable (fixed dates inside PDF and Office files). The web report view lists every format with View, Download and Email.
+- **SLA achieved** section and tile in the daily, weekly and monthly reports (availability against the target, downtime allowance, incidents, MTTR, coverage, per component).
 
 ## 1.3.0
 

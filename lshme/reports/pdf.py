@@ -47,6 +47,13 @@ def render(doc, path, logo=""):
         "muted": ParagraphStyle("m", parent=ss["Normal"], fontSize=7.5, textColor=colors.HexColor("#5b6876")),
         "code": ParagraphStyle("code", parent=ss["Code"], fontSize=6.5, leading=7.5),
     }
+    from reportlab.lib.utils import ImageReader
+
+    def picture(p):                      # from the bytes, so the PDF names the image by its content, not by where the file lives
+        import io
+        with open(p, "rb") as f:
+            return io.BytesIO(f.read())
+
     P = lambda s, style="cell": Paragraph(escape(str(s)).replace("\n", "<br/>"), st[style])
     page = A4
     W = page[0] - 30 * mm
@@ -60,7 +67,7 @@ def render(doc, path, logo=""):
         canvas.drawCentredString(page[0] / 2.0, 5 * mm, doc.copyright)
         if doc.brand_logo:
             try:
-                canvas.drawImage(doc.brand_logo, page[0] - 15 * mm - 30 * mm, page[1] - 9 * mm, width=30 * mm, height=7 * mm,
+                canvas.drawImage(ImageReader(picture(doc.brand_logo)), page[0] - 15 * mm - 30 * mm, page[1] - 9 * mm, width=30 * mm, height=7 * mm,
                                  preserveAspectRatio=True, mask="auto", anchor="ne")
             except Exception:
                 pass
@@ -129,7 +136,7 @@ def render(doc, path, logo=""):
     cells = []
     for p in logos:
         try:
-            cells.append(Image(p, width=60 * mm, height=18 * mm, kind="proportional"))
+            cells.append(Image(picture(p), width=60 * mm, height=18 * mm, kind="proportional"))
         except Exception:
             pass
     if cells:
@@ -240,6 +247,6 @@ def render(doc, path, logo=""):
         story += [PageBreak(), Paragraph("Appendix — %s" % escape(title), st["h2"]), Preformatted(text[:60000], st["code"])]
     story += [Spacer(1, 12), Paragraph(escape(doc.copyright), st["muted"])]
     sd = SimpleDocTemplate(path, pagesize=page, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=15 * mm, bottomMargin=17 * mm,
-                           title=doc.title, author=doc.copyright, subject=doc.subtitle)
+                           title=doc.title, author=doc.copyright, subject=doc.subtitle, invariant=1)   # same data, same file
     sd.build(story, onFirstPage=footer, onLaterPages=footer)
     return path, "reportlab"
