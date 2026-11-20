@@ -30,12 +30,13 @@ def run(ctx, res):
         for ext in ("crt", "pem", "cer", "cert"):
             files += ctx.runner.glob("%s/*.%s" % (d.rstrip("/"), ext))
     endpoints = ctx.cfg.getlist("certificates", "certificates", "endpoints", "")
-    if not files and not endpoints:
+    licences = ctx.cfg.section("certificates", "licences")
+    if not files and not endpoints and not licences:
         res.status = "SKIPPED"
         res.summary = "no certificates configured"
         res.skip("configure files/endpoints in certificates.conf")
         return
-    if not ctx.has("openssl"):
+    if (files or endpoints) and not ctx.has("openssl"):
         res.status = "ERROR"
         res.add("UNKNOWN", "OPENSSL_MISSING", "openssl", "openssl is required for certificate checks")
         return
@@ -76,6 +77,25 @@ def run(ctx, res):
                     recommendation="Plan certificate renewal.")
         res.metric("cert.days_left:" + target, days)
         rows.append([target, kind, info["subject"][:80], time.strftime("%Y-%m-%d", time.gmtime(info["expires"])), "%.0f" % days, status])
-    res.table("Certificates", ["Target", "Type", "Subject", "Expires", "Days left", "Status"], rows, kind="summary")
+    for name, date in licences.items():                  # licences and other expiry dates, listed by hand as name = YYYY-MM-DD
+        try:
+            exp = time.mktime(time.strptime(date.strip(), "%Y-%m-%d"))
+        except ValueError:
+            rows.append([name, "licence", "", date, "", "ERROR: use YYYY-MM-DD"])
+            continue
+        days = (exp - time.time()) / 86400
+        status = "OK"
+        if days < 0:
+            status = "EXPIRED"
+            res.add("CRITICAL", "LICENCE_EXPIRED", name, "Licence %s expired %.0f days ago" % (name, -days), recommendation="Renew it.")
+        elif days <= cc:
+            status = "CRITICAL"
+            res.add("CRITICAL", "LICENCE_EXPIRING", name, "Licence %s expires in %.0f days" % (name, days), recommendation="Renew it now.")
+        elif days <= cw:
+            status = "WARNING"
+            res.add("WARNING", "LICENCE_EXPIRING", name, "Licence %s expires in %.0f days" % (name, days), recommendation="Plan the renewal.")
+        res.metric("licence.days_left:" + name, days)
+        rows.append([name, "licence", "", time.strftime("%Y-%m-%d", time.localtime(exp)), "%.0f" % days, status])
+    res.table("Certificates and licences", ["Target", "Type", "Subject", "Expires", "Days left", "Status"], rows, kind="summary")
     res.data = {"checked": len(rows)}
     res.summary = "%d certificate(s) checked" % len(rows)

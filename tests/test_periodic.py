@@ -40,9 +40,21 @@ def make_run(now):
     fo = ModuleResult("folders", "Folders", 0)
     fo.metric("folder.bytes:/u01/oradata", 148 * GB)
     fo.metric("folder.bytes:/tmp", 1024)
+    bk = ModuleResult("backup", "Backup", 8)
+    bk.metric("backup.age_hours:nightly", 30.0)
+    bk.metric("backup.size_bytes:nightly", 40 * GB)
+    ce = ModuleResult("certificates", "Certificates", 4)
+    ce.metric("cert.days_left:/etc/pki/web.crt", 20.0)
+    ce.metric("licence.days_left:Oracle support", 75.0)
+    lg = ModuleResult("logs", "Logs", 8)
+    lg.metric("logs.count:oom", 2)
+    se = ModuleResult("security", "Security", 8)
+    se.data = {"selinux": "enforcing", "firewall": {"tool": "firewalld", "active": True}, "sshd": {"permitrootlogin": "yes"}, "uid0_accounts": ["root"],
+               "empty_passwords": [], "sudo_nopasswd": [], "auditd": "active", "updates": {"security": 7, "total": 20}, "last_patch": "2020-01-01"}
+    se.metric("security.pending_security_updates", 7)
     cp = ModuleResult("cpu_memory", "CPU", 12)
     cp.metric("cpu.cores", 2)
-    r.modules = [sy, st, db, fo, cp]
+    r.modules = [sy, st, db, fo, cp, bk, ce, lg, se]
     scoring.score_run(r)
     return r
 
@@ -58,7 +70,9 @@ def seed(paths, run, days=30):
                   ("db01", ts, "daily", 90, "WARNING", 0, 1, 0, 5.0, "t", ""))
         rid = c.lastrowid
         c.executemany("INSERT INTO metrics VALUES(?,?,?,?,?)",
-                      [(rid, "db01", ts, k, v - back * 0.5 * GB) for k, v in cur.items() if k.startswith(("fs.used", "oracle.", "folder.bytes:/u01"))])
+                      [(rid, "db01", ts, k, (v - back * 0.5 * GB) if k.startswith(("fs.used", "oracle.", "folder.bytes:/u01")) else
+                        (v * (1.0 if back < 5 else 1.8) if k.startswith("backup.size") else v + (back % 3)))
+                       for k, v in cur.items() if k.startswith(("fs.used", "oracle.", "folder.bytes:/u01", "backup.", "logs.count", "security.pending"))])
     for hr in range(days * 24, 0, -1):
         h.add_hourly("db01", now - hr * 3600, 10 + (hr % 24), 60.0, 3.0, 0.3)
     for hr in range(days * 24, 0, -1):
@@ -129,6 +143,34 @@ class PeriodicTest(unittest.TestCase):
         daily2 = self.doc("daily")
         self.assertIn("Capacity forecast", self.titles(daily2))
         self.assertNotIn("Capacity forecast", self.titles(self.doc("weekly")))
+
+    def test_weekly_has_comparison_log_digest_compliance_backups_and_calendar(self):
+        d = self.doc("weekly")
+        titles = self.titles(d)
+        for want in ("This period against the last one", "Repeating problems and log errors", "Patch and compliance", "Backup verification",
+                     "Certificate and licence calendar"):
+            self.assertIn(want, titles)
+        self.assertNotIn("Patch and compliance", self.titles(self.doc("daily")))
+        tables = dict((b["title"], b) for t, bl in d.sections for b in bl if b["type"] == "table")
+        comp = tables["Patch and compliance checks"]["rows"]
+        by = dict((r[0], r) for r in comp)
+        self.assertEqual(by["SSH root login"][3].style, "chip-wn")            # PermitRootLogin yes
+        self.assertEqual(by["Pending security updates"][3].style, "chip-wn")  # 7 pending
+        self.assertEqual(by["Last package change"][3].style, "chip-wn")       # patched in 2020
+        self.assertEqual(by["SELinux"][3].style, "chip-ok")
+        bk = tables["Backups: how old, how big"]["rows"][0]
+        self.assertEqual(str(bk[0]), "nightly")
+        self.assertEqual(bk[4].style, "chip-cr")                              # 30 h old and 44 % smaller than a week ago
+        cal = tables["Certificate and licence expiry calendar"]["rows"]
+        self.assertEqual([str(r[0]) for r in cal], ["/etc/pki/web.crt", "Oracle support"])   # soonest first
+        self.assertEqual(cal[0][4].style, "chip-cr")                          # 20 days: within 30
+        self.assertEqual(cal[1][4].style, "chip-wn")                          # 75 days: within 90
+        cmp = [b for t, bl in d.sections if t == "This period against the last one" for b in bl][0]
+        self.assertTrue(any(str(r[0]).startswith("CPU used") for r in cmp["rows"]))
+        self.assertTrue(any(str(r[0]) == "Filesystem space added" for r in cmp["rows"]))
+
+    def test_monthly_compares_with_last_month(self):
+        self.assertIn("This month against last month", self.titles(self.doc("monthly")))
 
     def test_plain_english_and_no_recommendations(self):
         d = self.doc("daily")

@@ -210,6 +210,8 @@ def generic_jobs(ctx, res):
             res.add("WARNING", "BACKUP_LOG_ERROR", name, "Error in backup log: %s" % e[:200])
         if age is not None:
             res.metric("backup.age_hours:" + name, age)
+            if kind != "logfile" and info.get("newest_size"):
+                res.metric("backup.size_bytes:" + name, info["newest_size"])
         rows.append([name, kind, s.get("path", ""), "%.1f h" % age if age is not None else "never",
                      info["files"], fmt_bytes(info["total_bytes"]), status])
     if rows:
