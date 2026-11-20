@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Cockpit web console: packages, socket/service, listener, HTTPS reachability,
 TLS certificate and security-relevant configuration."""
 import re

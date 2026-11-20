@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """The web interface: accounts, sign-in security, every API route, the settings editor and a real HTTP server."""
 import http.client
 import json

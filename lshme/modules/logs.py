@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Log analysis over the configured window (journald or classic syslog files).
 
 Lines are classified by pattern, counted, and turned into findings with sample

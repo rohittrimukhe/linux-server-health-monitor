@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Self-contained HTML report (inline CSS + SVG charts, no external assets)."""
 import base64
 import html

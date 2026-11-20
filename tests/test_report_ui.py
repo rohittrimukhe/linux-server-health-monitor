@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """The HTML report: plain-language summary, navigation, controls, and that absent modules are not reported."""
 import os
 import re

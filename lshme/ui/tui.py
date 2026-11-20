@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Full-screen configuration (healthcheck setup), in the style of nmtui.
 
 Every setting is edited in a form: arrow keys to move, Enter to edit, Space to switch yes/no,

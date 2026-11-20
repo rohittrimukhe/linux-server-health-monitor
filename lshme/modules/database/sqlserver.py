@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Microsoft SQL Server on Linux adapter: availability, database states,
 backup freshness (msdb) and failed SQL Agent jobs."""
 from lshme.core.util import fmt_bytes, to_float, to_int

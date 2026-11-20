@@ -54,7 +54,7 @@
   - The watcher restarts itself if its memory grows.
 - **LRS Services branding.**
   - The logo appears in HTML, PDF, XLSX and PPTX reports.
-  - "© 2026 Rohit Santosh Trimukhe. All rights reserved." appears in every report, email, the console, and every source file; a LICENSE file is added.
+  - "© 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved." appears in every report, email, the console, and every source file; a LICENSE file is added.
 - **Fixes found by testing against real software.**
   - MariaDB/MySQL replication status was not read (the `-N` option dropped the column names), so stopped replication went unreported.
   - The KVM module raised CRITICAL on hosts with only the `virsh` client and no libvirt daemon; it now skips.

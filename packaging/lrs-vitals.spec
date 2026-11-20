@@ -134,10 +134,10 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 %changelog
-* Fri Nov 20 2026 Rohit Santosh Trimukhe <rohittrimukhe2@gmail.com> - 1.4.0-1
+* Fri Nov 20 2026 LRS Services <support@lrsservices.example> - 1.4.0-1
 - Daily, weekly and monthly reports, alert rules, Servers page, Linux sign-in, customer portal, tool self-check (see CHANGELOG.md)
 
-* Fri Nov 20 2026 Rohit Santosh Trimukhe <rohittrimukhe2@gmail.com> - 1.3.0-1
+* Fri Nov 20 2026 LRS Services <support@lrsservices.example> - 1.3.0-1
 - Renamed to LRS Vitals; the command is now 'vitals' (systemhealth and healthcheck still work)
 - Full-screen live dashboard, report browser, run-now, server scan and first-time setup
 - Web interface with sign-in, live dashboard, reports and a settings editor

@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Real-time watcher: alert state machine, probes and delivery rules."""
 import os
 import time
@@ -88,7 +88,7 @@ class ProbeTest(unittest.TestCase):
         self.assertEqual(watch.Watcher(app).state["problems"]["proc:ghost"]["alerted"], "CRITICAL")
         subject, body, status = watch.format_alert("db01", alerts, [])
         self.assertTrue(subject.startswith("[LSHME ALERT] db01:"))
-        self.assertIn("Rohit Santosh Trimukhe", body)
+        self.assertIn("LRS Services Pvt Ltd", body)
         self.assertEqual(status, "CRITICAL")
         home.cleanup()
 

@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Email delivery over SMTP (plain, STARTTLS or implicit TLS) or local sendmail.
 
 Features: To/Cc/Bcc, extra recipients for critical reports, send policy

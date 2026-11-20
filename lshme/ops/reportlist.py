@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Browse the reports that have been written (newest first) and summarise one for the screen.
 
 Used by the terminal home screen and the web interface. Reports live in

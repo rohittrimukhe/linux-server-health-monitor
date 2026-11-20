@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Run the web interface as a systemd service (lshme-web.service).
 
 Like the scheduler, this module manages only its own unit and only when asked: it never touches any other

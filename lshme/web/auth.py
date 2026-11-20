@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Accounts, sessions and sign-in rate limiting for the web interface.
 
 Passwords are stored only as salted PBKDF2-HMAC-SHA256 hashes in web.conf [users]. Sessions are random

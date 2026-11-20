@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 # Build the RPM:   ./packaging/build_rpm.sh        (needs rpm-build; result in ./dist)
 set -euo pipefail
 cd "$(dirname "$0")/.."

@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Extra sections of the weekly and monthly reports: this period against the last one, repeating log errors,
 patch and compliance, backup verification, and the certificate and licence calendar."""
 import re

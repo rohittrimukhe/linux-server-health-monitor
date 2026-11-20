@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """HTML renderer for the daily, weekly and monthly reports: colour-coded tables, usage bars and
 interactive charts (hover shows value, date and time). One self-contained file, no external resources."""
 import base64

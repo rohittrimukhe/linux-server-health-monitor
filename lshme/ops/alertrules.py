@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Alert rules and channels for the real-time watcher: quiet hours, minimum duration, routing to different
 people by area (database, storage ...), acknowledgement, a daily digest, and Slack / Microsoft Teams messages.
 

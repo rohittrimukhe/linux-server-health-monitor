@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Capacity forecast section: when each filesystem fills up, by what date to act, and whether growth is speeding up.
 
 Shown in the weekly and monthly reports by default (web.conf-free: [reports] capacity_forecast_in = weekly, monthly)."""

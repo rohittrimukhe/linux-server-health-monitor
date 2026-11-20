@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Full-screen text-UI toolkit in the style of nmtui (Python curses, standard library only).
 
 Everything except CursesBackend is plain Python that talks to a small Backend interface, so every

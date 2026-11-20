@@ -2,11 +2,11 @@
 
 ![LRS Services](lshme/reports/lrs_logo.png)
 
-**© 2026 Rohit Santosh Trimukhe. All rights reserved.**
+**© 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.**
 
 > **Private and proprietary.** No licence is granted to anyone except the owner. You may not install, run, copy, modify or share this software without written permission. See [LICENSE](LICENSE).
 >
-> Owner and copyright holder: **Rohit Santosh Trimukhe** - rohittrimukhe2@gmail.com
+> Author: **Rohit Santosh Trimukhe** (rohittrimukhe2@gmail.com). Rights assigned to and held by LRS Services Pvt Ltd.
 
 Read-only health monitoring, reporting and alerting for Linux servers. LSHME is
 a menu-driven application with a full command-line interface. It checks the
@@ -22,7 +22,7 @@ whole fleet of servers from one central host.
 ```
  ==========================================================================
    Linux Server Health Monitor Enterprise  v1.4.0
-   © 2026 Rohit Santosh Trimukhe. All rights reserved.
+   © 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
    Host: db01   2026-11-12 09:00
  ==========================================================================
   Load 0.42 / 0.51 / 0.48   Memory 63%   Fullest filesystem 81%

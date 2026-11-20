@@ -1,4 +1,4 @@
-/* Linux Server Health Monitor Enterprise - web interface. Copyright (c) 2026 Rohit Santosh Trimukhe.
+/* Linux Server Health Monitor Enterprise - web interface. Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai.
  * Builds the page with DOM calls only (no innerHTML, no inline styles), so it runs under a strict CSP. */
 (function () {
     "use strict";
@@ -204,7 +204,7 @@
         main = h("main");
         root.appendChild(top);
         root.appendChild(main);
-        root.appendChild(h("footer", { text: S.me.app + " " + S.me.version + " - Rohit Santosh Trimukhe" + (S.me.tls ? "" : " - not encrypted (local access only)") }));
+        root.appendChild(h("footer", { text: S.me.app + " " + S.me.version + " - LRS Services Pvt Ltd, Mumbai" + (S.me.tls ? "" : " - not encrypted (local access only)") }));
         route();
     }
     function route() {

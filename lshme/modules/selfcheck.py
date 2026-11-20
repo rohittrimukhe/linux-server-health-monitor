@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """Health of LRS Vitals itself: watcher, schedules, report freshness, e-mail delivery, disk space."""
 from lshme.ops import selfhealth
 
