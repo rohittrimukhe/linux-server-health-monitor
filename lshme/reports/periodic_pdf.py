@@ -363,7 +363,7 @@ class PeriodicPDF(MiniPDF):
                 kx += tw(label, 7.5) + 22
             key_h = 10
         px0, px1, py1, py0 = x + 36, x + w - 10, top - 24 - key_h, top - h + 20
-        t0, t1 = P[0][0], max(P[-1][0], P[0][0] + 1)
+        t0, t1 = P[0][0], max(max(se["pts"][-1][0] for se in S if se["pts"]), P[0][0] + 1)
         X = lambda t: px0 + (t - t0) * (px1 - px0) / float(t1 - t0)
         Y = lambda v: py0 + (v - mn) * (py1 - py0) / float(mx - mn)
         for g in range(5):

@@ -103,7 +103,7 @@ var L=46,R=12,T=12,B=28;
 document.querySelectorAll(".chart").forEach(function(box){
   var wide=box.classList.contains("wide"),W=wide?1060:520,H=wide?300:250;
   var c=DATA.charts[+box.dataset.i],S=c.series,P=S[0].pts;if(!P.length)return;
-  var t0=P[0][0],t1=P[P.length-1][0];if(t1<=t0)t1=t0+1;
+  var t0=P[0][0],t1=P[P.length-1][0];S.forEach(function(se){se.pts.forEach(function(p){if(p[0]>t1)t1=p[0];if(p[0]<t0)t0=p[0]})});if(t1<=t0)t1=t0+1;
   var all=[];S.forEach(function(s){s.pts.forEach(function(p){all.push(p[1])})});
   var mx=c.max||Math.max.apply(null,all)*1.1||1,mn=c.min!==undefined&&c.min!==null?c.min:(c.max?0:Math.min.apply(null,all)-(Math.max.apply(null,all)-Math.min.apply(null,all))*0.1);
   if(mn<0&&c.max)mn=0;if(mx<=mn)mx=mn+1;
