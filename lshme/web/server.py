@@ -135,7 +135,7 @@ class WebApp(object):
                 return Resp(200, f.read(), "image/png", {"Cache-Control": "max-age=86400"})
         if req.method == "GET" and path == "/favicon.ico":
             return Resp(204, b"", "image/x-icon")
-        if not (path.startswith("/api/") or path.startswith("/reports/")):
+        if not (path.startswith("/api/") or path.startswith("/reports/") or path == "/brand/logo"):
             return err("not found", 404)
         sess = self.sessions.get(req.cookie(COOKIE))
         if path == "/api/login" and req.method == "POST":
@@ -152,6 +152,17 @@ class WebApp(object):
             self.sessions.drop(req.cookie(COOKIE))
             self.audit("web-logout", sess)
             return jr({"ok": True}, headers={"Set-Cookie": self.cookie_header("", 0)})
+        if path == "/brand/logo":
+            logo = self.branding(sess.get("group", "")).get("logo_path", "")
+            if logo and os.path.isfile(logo) and os.path.getsize(logo) < 2 * 1024 * 1024:
+                with open(logo, "rb") as f:
+                    return Resp(200, f.read(), mimetypes.guess_type(logo)[0] or "image/png", {"Cache-Control": "max-age=3600"})
+            return err("not found", 404)
+        if sess.get("group"):                                  # a customer account: only its own servers and reports
+            if path.startswith("/api/") and path[len("/api/"):] not in ("fleet", "reports", "report", "help", "password"):
+                raise PermissionError("this account only sees its own servers and reports")
+            if path.startswith("/reports/") and path[len("/reports/"):].split("/")[0] not in self.group_hosts(sess["group"]):
+                return err("not found", 404)
         if path.startswith("/reports/"):
             return self.report_file(path)
         name = path[len("/api/"):]
@@ -189,13 +200,43 @@ class WebApp(object):
             return err("Wrong user name or password.", 401)
         self.limiter.success(req.ip)
         token, sess = self.sessions.create(user, role, req.ip)
+        grp = self.users.group(user)
+        if grp:
+            sess["group"], sess["role"] = grp, "viewer"          # a customer account is always read-only
         self.audit("web-login", sess)
         return jr(self.me_data(sess), headers={"Set-Cookie": self.cookie_header(token, self.sessions.ttl)})
 
     def me_data(self, sess):
         import socket
         return {"user": sess["user"], "role": sess["role"], "csrf": sess["csrf"], "host": socket.gethostname(), "version": VERSION, "app": APP_NAME,
-                "tls": self.secure}
+                "tls": self.secure, "group": sess.get("group", ""), "branding": self.branding(sess.get("group", ""), public=True)}
+
+    def branding(self, group, public=False):
+        """Customer name, colour and logo for a group ([branding:group] in servers.conf)."""
+        if not group:
+            return {}
+        s = self.app.cfg.section("servers", "branding:" + group)
+        if not s:
+            return {"customer": group}
+        logo = s.get("logo", "")
+        out = {"customer": s.get("customer") or group, "color": s.get("color", "") if re.match(r"^#[0-9a-fA-F]{6}$", s.get("color", "")) else "",
+               "logo": bool(logo and os.path.isfile(logo))}
+        if not public:
+            out["logo_path"] = logo
+        return out
+
+    def group_hosts(self, group):
+        """Names and host names of the servers in a customer group."""
+        from lshme.ops import dashboard, fleet
+        hosts = set()
+        for sv in fleet.servers(self.app.cfg):
+            if sv.group == group:
+                hosts.update((sv.name, sv.host))
+        runs, _ = dashboard.load_results(self.app.paths)
+        for r in runs:
+            if (r.meta or {}).get("group") == group:
+                hosts.add(r.host)
+        return hosts
 
     def me(self, sess):
         return jr(self.me_data(sess)) if sess else err("sign in required", 401)
@@ -252,7 +293,7 @@ class WebApp(object):
                     "min_minutes": s("min_minutes"), "digest": as_bool(s("alert_digest"), True) and s("alert_digest_time")}
         return jr({"active": active, "events": list(reversed(events))[:40], "channels": channels})
 
-    def fleet_view(self):
+    def fleet_view(self, group=""):
         import socket as _socket
         from lshme.ops import dashboard, fleet
         cfg = self.app.cfg
@@ -275,11 +316,13 @@ class WebApp(object):
                          "critical": 0, "warning": 0, "collected": 0, "age": 0, "cpu": None, "mem": None, "disk": None, "top": str(e)[:200], "local": False})
         order = {"CRITICAL": 0, "UNREACHABLE": 1, "WARNING": 2, "STALE": 3, "UNKNOWN": 4, "HEALTHY": 5}
         rows.sort(key=lambda r: (order.get(r["status"], 4), r["name"]))
-        return {"servers": rows, "configured": [{"name": s.name, "host": s.host} for s in fleet.servers(cfg)], "job": self.fleet_job}
+        if group:
+            rows = [r for r in rows if r["group"] == group]
+        return {"servers": rows, "configured": [] if group else [{"name": s.name, "host": s.host} for s in fleet.servers(cfg)], "job": self.fleet_job}
 
     def api_fleet(self, req, sess):
         if req.method == "GET":
-            return jr(self.fleet_view())
+            return jr(self.fleet_view(sess.get("group", "")))
         from lshme.ops import fleet
         if not fleet.servers(self.app.cfg):
             return err("No servers are configured yet. Add them in Settings > servers (host and user), with SSH key login from this server.", 400)
@@ -319,6 +362,9 @@ class WebApp(object):
 
     def api_reports(self, req, sess):
         items = reportlist.list_reports(self.app.paths, 300)
+        if sess.get("group"):
+            allowed = self.group_hosts(sess["group"])
+            items = [r for r in items if r["host"] in allowed]
         out = [{"id": self.rel(r), "ts": r["ts"], "when": r["when"], "host": r["host"], "category": r["category"], "files": r["files"],
                 "score": r["score"], "status": r["status"], "critical": r["critical"], "warning": r["warning"], "unknown": r["unknown"]} for r in items]
         return jr({"reports": out, "series": reportlist.score_series(self.app.paths, 365)})
@@ -335,6 +381,8 @@ class WebApp(object):
 
     def api_report(self, req, sess):
         rid = (req.query.get("id") or [""])[0]
+        if sess.get("group") and rid.split("/")[0] not in self.group_hosts(sess["group"]):
+            raise ValueError("unknown report")
         d = self.report_dir(rid)
         files = sorted(f for f in os.listdir(d) if os.path.isfile(os.path.join(d, f)))
         detail = {"id": rid, "files": [{"name": f, "url": "/reports/%s/%s" % (rid, f), "size": os.path.getsize(os.path.join(d, f))} for f in files]}

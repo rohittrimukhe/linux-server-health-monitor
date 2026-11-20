@@ -172,6 +172,7 @@
         root.appendChild(h("div", { class: "login" }, h("div", { class: "card" }, h("img", { src: "/lrs_logo.png", alt: "LRS Services" }), h("h1", { text: "LRS Vitals" }), form)));
         user.focus();
     }
+    function allowed(p) { return (!p.admin || S.me.role === "admin") && (!S.me.group || ["fleet", "reports", "account", "help"].indexOf(p.id) >= 0); }
     var PAGES = [
         { id: "dashboard", title: "Dashboard", draw: drawDashboard },
         { id: "fleet", title: "Servers", draw: drawFleet },
@@ -188,12 +189,15 @@
         try { theme(localStorage.getItem("lshme-theme")); } catch (e) { /* ignore */ }
         clear(root);
         var nav = h("nav");
+        if (S.me.branding && S.me.branding.color) document.documentElement.style.setProperty("--accent", S.me.branding.color);
         PAGES.forEach(function (p) {
-            if (p.admin && S.me.role !== "admin") return;
+            if (!allowed(p)) return;
             nav.appendChild(h("a", { href: "#/" + p.id, "data-page": p.id, text: p.title }));
         });
         var dark = function () { return document.documentElement.getAttribute("data-theme") === "dark" || (!document.documentElement.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches); };
-        var top = h("header", { class: "top" }, h("div", { class: "in" }, h("img", { src: "/lrs_logo.png", alt: "LRS Services" }), nav,
+        var br = S.me.branding || {};
+        var top = h("header", { class: "top" }, h("div", { class: "in" }, h("img", { src: "/lrs_logo.png", alt: "LRS Services" }),
+            br.logo ? h("img", { src: "/brand/logo", alt: br.customer || "", class: "cust" }) : (br.customer ? h("span", { class: "cust", text: br.customer }) : null), nav,
             h("div", { class: "who" }, h("span", { class: "host", text: S.me.host }), h("span", { text: S.me.user + " (" + S.me.role + ")" }),
                 h("button", { class: "small", text: "Light / dark", onclick: function () { theme(dark() ? "light" : "dark"); } }),
                 h("button", { class: "small", text: "Sign out", onclick: function () { api("POST", "/api/logout").then(showLogin, showLogin); } }))));
@@ -206,7 +210,7 @@
     function route() {
         if (!S.me) return;
         var parts = (location.hash || "#/dashboard").replace(/^#\//, "").split("/");
-        var page = PAGES.filter(function (p) { return p.id === parts[0] && (!p.admin || S.me.role === "admin"); })[0] || PAGES[0];
+        var page = PAGES.filter(function (p) { return p.id === parts[0] && allowed(p); })[0] || PAGES.filter(allowed)[0];
         stopPage();
         Array.prototype.forEach.call(document.querySelectorAll(".top nav a"), function (a) { a.className = a.getAttribute("data-page") === page.id ? "on" : ""; });
         clear(main);
