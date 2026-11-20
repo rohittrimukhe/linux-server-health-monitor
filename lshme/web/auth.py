@@ -14,6 +14,7 @@ import secrets
 import threading
 import time
 
+SHADOW = "/etc/shadow"
 ITERATIONS = 200000
 ROLES = ("admin", "viewer")
 USER_RX = re.compile(r"^[A-Za-z0-9_.@-]{1,40}$")
@@ -40,6 +41,45 @@ def verify_password(password, stored):
         return hmac.compare_digest(calc, base64.b64decode(digest))
     except (ValueError, TypeError):
         return False
+
+
+def system_users(cfg):
+    """Linux accounts allowed to sign in with their own Linux password (web.conf [web] system_users, default root)."""
+    return [u.strip() for u in (cfg.get("web", "web", "system_users", "root") or "").replace(";", ",").split(",") if u.strip()]
+
+
+def system_password_ok(user, password, shadow=SHADOW):
+    """True when the Linux account exists, is not locked and the password is right. Reads /etc/shadow, so the
+    application must run as root. The password is never written anywhere."""
+    try:
+        with open(shadow, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return False
+    stored = None
+    for line in lines:
+        parts = line.split(":")
+        if len(parts) > 1 and parts[0] == user:
+            stored = parts[1]
+            break
+    if not stored or stored[0] in "!*" or not stored.startswith("$"):     # no such account, locked, or no password
+        return False
+    try:
+        import crypt
+        calc = crypt.crypt(password, stored)
+        return bool(calc) and hmac.compare_digest(calc, stored)
+    except ImportError:                                                  # newer Pythons dropped the crypt module: use openssl
+        import subprocess
+        parts = stored.split("$")
+        algo = {"1": "-1", "5": "-5", "6": "-6"}.get(parts[1] if len(parts) > 1 else "")
+        if not algo or len(parts) < 4 or parts[2].startswith("rounds="):
+            return False
+        try:
+            out = subprocess.run(["openssl", "passwd", algo, "-salt", parts[2], "-stdin"], input=(password + chr(10)).encode("utf-8"), stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL, timeout=10).stdout.decode("utf-8", "replace").strip()
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return bool(out) and hmac.compare_digest(out, stored)
 
 
 def password_problem(password):
@@ -83,6 +123,8 @@ class Users(object):
 
     def verify(self, name, password):
         """The role when the name and password are right, else None. Unknown names cost the same time as wrong passwords."""
+        if name in system_users(self.app.cfg):         # a Linux account: its own Linux password, full access
+            return "admin" if system_password_ok(name, password) else None
         p = self._p()
         stored = p.get("users", name) if p.has_section("users") and p.has_option("users", name) else None
         if stored is None:

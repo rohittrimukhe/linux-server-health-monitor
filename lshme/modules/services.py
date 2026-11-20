@@ -63,6 +63,12 @@ def run(ctx, res):
     systemd = ctx.has("systemctl") and ctx.runner.isdir("/run/systemd/system")
     units, files = (systemd_units(ctx) if systemd else ([], {}))
     critical = ctx.cfg.getlist("services", "critical", "services", "sshd, crond")
+    auto = []
+    if ctx.cfg.getbool("services", "critical", "auto_detect", True):      # KVM and database services found on this server
+        from lshme.ops import roles
+        have = set(unit_name(c) for c in critical)
+        auto = [u for u in roles.auto_critical(ctx.runner) if unit_name(u) not in have]
+        critical = critical + auto
     ignore = set(ctx.cfg.getlist("services", "ignore", "failed_units", ""))
     known = set(u["unit"] for u in units) | set(files)
     restart_warn = ctx.t("services", "restart_warning", 3)
@@ -161,7 +167,7 @@ def run(ctx, res):
     running = sum(1 for u in units if u["active"] == "active")
     res.metric("services.failed", len(failed))
     res.metric("services.running", running)
-    res.summary = "%d services (%d running, %d failed), %d critical monitored" % (
-        len(units), running, len(failed), len(critical))
+    res.summary = "%d services (%d running, %d failed), %d critical monitored%s" % (
+        len(units), running, len(failed), len(critical), (" (%d found automatically: %s)" % (len(auto), ", ".join(auto))) if auto else "")
     if not systemd:
         res.skip("systemd not detected; using SysV service status")

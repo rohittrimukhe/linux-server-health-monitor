@@ -127,9 +127,13 @@ class PeriodicPDF(MiniPDF):
             lines = wrap(label, 148, 11, True, 2)
             for i, line in enumerate(lines):
                 self.put(cx + 80 - tw(line, 11, True) / 2, by + bh / 2 + (len(lines) - 1) * 6 - 4 - i * 13, line, 11, "F2", INK if getattr(doc, "customer", "") else (0.6, 0.64, 0.7))
-        self.put(MARGIN, top - 86, doc.title, 23, "F2", (1, 1, 1))
-        for i, line in enumerate(wrap(doc.subtitle, USABLE - 150, 9.5, False, 2)):
-            self.put(MARGIN, top - 102 - i * 12, line, 9.5, "F1", (0.84, 0.9, 1.0))
+        base = getattr(doc, "title_plain", "") or doc.title
+        suffix = doc.title[len(base):].strip() if doc.title.startswith(base) else ""
+        self.put(MARGIN, top - 82, base, 22, "F2", (1, 1, 1))
+        if suffix:
+            self.put(MARGIN, top - 96, wrap(suffix, USABLE - 150, 10.5, True, 1)[0], 10.5, "F2", (0.75, 0.86, 1.0))
+        for i, line in enumerate(wrap(doc.subtitle, USABLE - 150, 8.8, False, 1)):
+            self.put(MARGIN, top - 110 - i * 11, line, 8.8, "F1", (0.84, 0.9, 1.0))
         col = SOLID.get(doc.status, (0.4, 0.4, 0.4))
         sx = PAGE_W - MARGIN - 130
         self.fill(sx, top - 112, 130, 40, col)

@@ -98,7 +98,7 @@ HELP = {
     "tls": "Encrypt with HTTPS (a self-signed certificate is created if none is given).", "cert": "TLS certificate file (PEM).", "key": "TLS private key file (PEM).",
     "session_minutes": "Minutes of inactivity before signing out.", "max_login_failures": "Wrong passwords allowed per address in 5 minutes.",
     "allow_plain_http": "Allow HTTP (no encryption) on a network address. Not recommended.", "code": "Finding code, wildcards allowed.", "reason": "Why this is accepted.",
-    "until": "Expiry date YYYY-MM-DD.", "target_percent": "Availability target used by the SLA report.", "title": "Title shown on pages and reports.",
+    "until": "Expiry date YYYY-MM-DD.", "target_percent": "Availability target used by the SLA report.", "title": "Title shown on pages and reports. Server name, IP address and role are added in brackets.",
 }
 KEY_RX = re.compile(r"^[A-Za-z0-9_.:/@*\- ]{1,100}$")
 SECTION_RX = re.compile(r"^[A-Za-z0-9_.:@\-]{1,80}$")

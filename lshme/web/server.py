@@ -86,6 +86,7 @@ class WebApp(object):
         self.sampler = sysstats.Sampler()
         self.sample, self.sample_at, self.sample_lock = None, 0.0, threading.Lock()
         self.job = {"running": False, "progress": 0, "total": 0, "title": "", "started": 0, "finished": 0, "result": None, "error": ""}
+        self.fleet_job = {"running": False, "title": "", "started": 0, "finished": 0, "result": None, "error": ""}
         self.pending_profile = None
 
     # -- helpers ------------------------------------------------------------------------------------
@@ -206,6 +207,91 @@ class WebApp(object):
                    "limits": {"cpu": [th("cpu", "warning", 85), th("cpu", "critical", 95)], "mem": [th("memory", "warning", 85), th("memory", "critical", 95)],
                               "swap": [th("swap", "warning", 50), th("swap", "critical", 80)], "disk": [th("disk", "warning", 80), th("disk", "critical", 90)],
                               "inode": [th("inode", "warning", 80), th("inode", "critical", 90)]}})
+
+    # -- alerts and central monitoring ---------------------------------------------------------------------------------
+    def api_alerts(self, req, sess):
+        from lshme.core.config import as_bool
+        from lshme.ops import watch as W
+        d, cfg = self.app.paths.data_dir, self.app.cfg
+        events, active = [], []
+        try:
+            with open(os.path.join(d, "watch_events.jsonl"), encoding="utf-8") as f:
+                for line in f.read().splitlines()[-200:]:
+                    try:
+                        events.append(json.loads(line))
+                    except ValueError:
+                        pass
+        except OSError:
+            pass
+        last = {}
+        for e in events:
+            last[e.get("key")] = e
+        try:
+            with open(os.path.join(d, "watch_state.json"), encoding="utf-8") as f:
+                problems = json.load(f).get("problems") or {}
+        except (OSError, ValueError):
+            problems = {}
+        for key, p in problems.items():
+            e = last.get(key) or {}
+            active.append({"severity": p.get("severity"), "component": e.get("component") or key, "message": e.get("message") or key,
+                           "since": p.get("since"), "count": p.get("count"), "alerted": p.get("alerted")})
+        active.sort(key=lambda a: (0 if a["severity"] == "CRITICAL" else 1, -(a["since"] or 0)))
+        s = lambda k: W.setting(cfg, k)
+        channels = {"email": as_bool(s("alert_email"), True), "to": s("alert_to"), "syslog": as_bool(s("syslog"), True), "webhook": bool(s("webhook_url")),
+                    "min_severity": s("alert_min_severity"), "confirm": s("confirm"), "interval": s("interval")}
+        return jr({"active": active, "events": list(reversed(events))[:40], "channels": channels})
+
+    def fleet_view(self):
+        import socket as _socket
+        from lshme.ops import dashboard, fleet
+        cfg = self.app.cfg
+        runs, errors = dashboard.load_results(self.app.paths)
+        try:
+            stale = float(cfg.get("main", "dashboard", "stale_hours", "26") or 26) * 3600
+        except ValueError:
+            stale = 26 * 3600
+        now, rows, me = time.time(), [], _socket.gethostname()
+        for r in runs:
+            m, top, age = r.metrics(), r.findings("WARNING")[:1], now - r.collected_at
+            real = r.health.get("status", "UNKNOWN")
+            c = r.health.get("counts", {})
+            rows.append({"name": r.meta.get("fleet_name") or r.host, "host": r.host, "ip": r.ip, "roles": r.meta.get("roles") or [], "group": r.meta.get("group", ""),
+                         "environment": r.meta.get("environment", ""), "status": "STALE" if age > stale else real, "real_status": real, "score": r.health.get("score"),
+                         "critical": c.get("CRITICAL", 0), "warning": c.get("WARNING", 0), "collected": r.collected_at, "age": age, "cpu": m.get("cpu.usage_percent"),
+                         "mem": m.get("memory.used_percent"), "disk": m.get("fs.max_used_percent"), "top": top[0].message[:160] if top else "", "local": r.host == me})
+        for name, e in errors.items():
+            rows.append({"name": name, "host": name, "ip": "", "roles": [], "group": "", "environment": "", "status": "UNREACHABLE", "real_status": "UNREACHABLE", "score": None,
+                         "critical": 0, "warning": 0, "collected": 0, "age": 0, "cpu": None, "mem": None, "disk": None, "top": str(e)[:200], "local": False})
+        order = {"CRITICAL": 0, "UNREACHABLE": 1, "WARNING": 2, "STALE": 3, "UNKNOWN": 4, "HEALTHY": 5}
+        rows.sort(key=lambda r: (order.get(r["status"], 4), r["name"]))
+        return {"servers": rows, "configured": [{"name": s.name, "host": s.host} for s in fleet.servers(cfg)], "job": self.fleet_job}
+
+    def api_fleet(self, req, sess):
+        if req.method == "GET":
+            return jr(self.fleet_view())
+        from lshme.ops import fleet
+        if not fleet.servers(self.app.cfg):
+            return err("No servers are configured yet. Add them in Settings > servers (host and user), with SSH key login from this server.", 400)
+        with self.lock:
+            if self.fleet_job["running"]:
+                return err("The servers are already being checked.", 409)
+            self.fleet_job.update(running=True, title="Starting", started=time.time(), finished=0, result=None, error="")
+        self.audit("web-fleet-run", sess)
+
+        def progress(name, e):
+            self.fleet_job["title"] = name
+
+        def work():
+            try:
+                runs, errors, files, notes, mail = self.app.fleet_run(None, "html", "executive", False, 1, None, progress)
+                self.fleet_job["result"] = {"ok": len(runs), "failed": len(errors)}
+            except Exception as e:
+                self.app.log.exception("web-started fleet check failed")
+                self.fleet_job["error"] = "The server check failed: %s" % e
+            finally:
+                self.fleet_job.update(running=False, finished=time.time())
+        threading.Thread(target=work, daemon=True).start()
+        return jr(self.fleet_job, 202)
 
     # -- reports -----------------------------------------------------------------------------------------------
     def rel(self, entry):
@@ -477,6 +563,8 @@ class WebApp(object):
 
     def api_password(self, req, sess):
         data = req.json()
+        if sess["user"] in auth.system_users(self.app.cfg):
+            raise ValueError("this is a Linux account: change its password with the passwd command on the server")
         if not self.users.verify(sess["user"], str(data.get("old", ""))):
             raise ValueError("the current password is wrong")
         with self.lock:
@@ -567,8 +655,8 @@ def make_server(app, bind=None, port=None):
     if not tls and not loopback and not cfg.getbool("web", "web", "allow_plain_http", False):
         raise ValueError("refusing to serve passwords over plain HTTP on the network: turn TLS on, or bind to 127.0.0.1")
     web = WebApp(app, secure=tls)
-    if not web.users.names():
-        raise ValueError("there are no web users yet: run  systemhealth web passwd admin")
+    if not web.users.names() and not auth.system_users(app.cfg):
+        raise ValueError("there are no web users yet: run  vitals web passwd admin (or allow a Linux account with system_users in web.conf)")
     server = Threaded((bind, port), make_handler(web))
     if tls:
         cert, key = ensure_certificate(app)

@@ -93,6 +93,7 @@ class PDoc(object):
         self.sections = []                # [(title, [block, ...])]
         self.growth_rows = []             # raw rows for Excel / CSV: [date, kind, name, bytes, change_bytes]
         self.tz_offset = 0
+        self.title_plain = ""
         self.customer = ""
         self.company = ""
         self.details = []
@@ -684,7 +685,9 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
     d.report_type = ptype
     meta = run.meta or {}
     custom = cfg.get("reports", "reports", "title", "") if cfg else ""
-    d.title = (custom + " - " if custom else "") + d.title
+    from lshme.ops import roles as _roles
+    d.title_plain = (custom + " - " if custom else "") + d.title
+    d.title = _roles.default_title(d.title_plain, run)
     start = stamp(now - days * DAY, "%d %b %H:%M") if days <= 1 else stamp(now - days * DAY, "%d %b %Y")
     d.subtitle = "%s - %s - period %s to %s (%s)" % (
         run.fqdn or run.host, (run.module("system").data.get("distribution", "") if run.module("system") else ""), start,

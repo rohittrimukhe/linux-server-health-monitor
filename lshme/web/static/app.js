@@ -174,6 +174,7 @@
     }
     var PAGES = [
         { id: "dashboard", title: "Dashboard", draw: drawDashboard },
+        { id: "fleet", title: "Servers", draw: drawFleet },
         { id: "reports", title: "Reports", draw: drawReports },
         { id: "scan", title: "Server scan", draw: drawScan },
         { id: "settings", title: "Settings", draw: drawSettings, admin: true },
@@ -246,7 +247,8 @@
     }
     function drawDashboard(box) {
         var bannerBox = h("div"), live = h("div", { class: "stack" });
-        box.appendChild(h("div", { class: "stack" }, bannerBox, live));
+        var alerts = alertsCard();
+        box.appendChild(h("div", { class: "stack" }, bannerBox, alerts.el, live));
         var run = runWidget(function () { tick(); });
         var stopped = false, timer = null;
         function paintBanner(hl) {
@@ -313,7 +315,99 @@
         }
         tick();
         timer = setInterval(tick, 2000);
-        S.cleanup = function () { stopped = true; clearInterval(timer); run.stop(); };
+        var atimer = setInterval(alerts.load, 10000);
+        S.cleanup = function () { stopped = true; clearInterval(timer); clearInterval(atimer); run.stop(); };
+    }
+
+    /* ---------------------------------------------------------------- alerts */
+    function ago(ts) {
+        if (!ts) return "-";
+        var s = Math.max(0, Date.now() / 1000 - ts);
+        return s < 90 ? "just now" : s < 5400 ? Math.round(s / 60) + " min ago" : s < 172800 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " days ago";
+    }
+    function alertsCard() {
+        var box = h("div");
+        function paint(d) {
+            clear(box);
+            var ch = d.channels, how = [];
+            if (ch.email) how.push("email" + (ch.to ? " to " + ch.to : ""));
+            if (ch.syslog) how.push("syslog");
+            if (ch.webhook) how.push("webhook");
+            var info = h("span", { class: "muted", text: how.length ? "Sent by " + how.join(", ") + " - from " + ch.min_severity + " up, after " + ch.confirm + " bad checks in a row" : "No alert channel is switched on (Settings > main > watch)" });
+            var body = h("div", { class: "stack" });
+            body.appendChild(d.active.length ? table(["Level", "Problem", "Since", "Checks", "Alert"], d.active.map(function (a) {
+                return [badge(a.severity), h("div", null, h("b", { text: a.component }), h("div", { class: "muted", text: a.message })), ago(a.since), a.count, a.alerted ? "sent" : "waiting"];
+            }), [3]) : h("p", { class: "muted", text: "No active problems. CPU, memory, disks, services and ports are within their limits." }));
+            if (d.events.length) {
+                body.appendChild(h("h3", { text: "Recent alerts and recoveries" }));
+                body.appendChild(table(["When", "Event", "Level", "Message"], d.events.slice(0, 10).map(function (e) {
+                    return [ago(e.ts), e.event, e.severity ? badge(e.severity) : "", e.message || e.component];
+                })));
+            }
+            box.appendChild(card("Alerts", info, body));
+        }
+        function load() { api("GET", "/api/alerts").then(paint).catch(function () { /* signed out */ }); }
+        load();
+        return { el: box, load: load };
+    }
+
+    /* ---------------------------------------------------------------- all servers */
+    function drawFleet(box) {
+        var wrap = h("div", { class: "stack" });
+        box.appendChild(wrap);
+        var timer = null, stopped = false, busy = false;
+        function tile(label, value, cls) { return h("div", { class: "card tile " + (cls || "") }, h("div", { class: "big", text: String(value) }), h("div", { class: "muted", text: label })); }
+        function paint(d) {
+            clear(wrap);
+            var c = { HEALTHY: 0, WARNING: 0, CRITICAL: 0, UNREACHABLE: 0, STALE: 0, UNKNOWN: 0 };
+            d.servers.forEach(function (s) { c[s.status] = (c[s.status] || 0) + 1; });
+            wrap.appendChild(h("div", { class: "grid g4" }, tile("Servers", d.servers.length), tile("Healthy", c.HEALTHY, "ok"), tile("Warning", c.WARNING, c.WARNING ? "warn" : ""),
+                tile("Critical or unreachable", c.CRITICAL + c.UNREACHABLE, c.CRITICAL + c.UNREACHABLE ? "crit" : "")));
+            var j = d.job, btn = h("button", { class: "primary", text: j.running ? "Checking " + (j.title || "...") : "Check all servers now", disabled: j.running || busy,
+                onclick: function () {
+                    busy = true;
+                    api("POST", "/api/fleet", { action: "run" }).then(function () { toast("Checking all servers...", "good"); load(); }).catch(function (e) { busy = false; fail(e); });
+                } });
+            if (S.me.role !== "admin") btn.style.display = "none";
+            var grid = h("div", { class: "fleet" });
+            d.servers.forEach(function (s) {
+                var cardEl = h("div", { class: "srv st-" + s.status }, h("div", { class: "row space" }, h("b", { class: "nm", text: s.name }), badge(s.status)));
+                cardEl.appendChild(h("div", { class: "muted", text: [s.ip, s.environment, s.group].filter(Boolean).join(" - ") || s.host }));
+                if (s.roles.length) cardEl.appendChild(h("div", null, s.roles.map(function (r) { return h("span", { class: "chip", text: r }); })));
+                if (s.status === "UNREACHABLE") {
+                    cardEl.appendChild(h("p", { class: "err", text: s.top || "Could not connect." }));
+                } else {
+                    cardEl.appendChild(h("div", { class: "row space" }, h("span", { class: "score", text: s.score === null ? "-" : s.score + "/100" }),
+                        h("span", null, h("span", { class: "chip crit", text: s.critical + " critical" }), h("span", { class: "chip warn", text: s.warning + " warning" }))));
+                    [["CPU", s.cpu], ["Memory", s.mem], ["Fullest disk", s.disk]].forEach(function (m) {
+                        if (m[1] !== null && m[1] !== undefined) cardEl.appendChild(h("div", { class: "mini" }, h("span", { class: "muted", text: m[0] }), barrow(m[1], m[1] >= 90 ? "crit" : m[1] >= 80 ? "warn" : "ok")));
+                    });
+                    if (s.top) cardEl.appendChild(h("div", { class: "top", text: s.top }));
+                    cardEl.appendChild(h("div", { class: "muted", text: (s.local ? "This server - " : "") + "checked " + ago(s.collected) }));
+                }
+                grid.appendChild(cardEl);
+            });
+            wrap.appendChild(card("All servers", btn, d.servers.length ? grid : h("p", { class: "muted", text: "No results yet." })));
+            if (!d.configured.length) {
+                wrap.appendChild(card("Add more servers", null, h("div", { class: "stack" },
+                    h("p", { text: "This server is listed automatically. To watch other servers from here:" }),
+                    h("ol", null, h("li", { text: "Install LRS Vitals on each server (the same RPM)." }),
+                        h("li", { text: "Make sure this server can log in to them over SSH with a key (root or a user that can run vitals)." }),
+                        h("li", { text: "Add each one under Settings > servers: a name, the host and the user." }),
+                        h("li", { text: "Press Check all servers now. The central server asks every server for its health and shows it here." })),
+                    S.me.role === "admin" ? h("a", { class: "btn primary", href: "#/settings", text: "Open Settings" }) : null)));
+            }
+            busy = busy && j.running;
+        }
+        function load() {
+            api("GET", "/api/fleet").then(function (d) {
+                if (stopped) return;
+                paint(d);
+                if (d.job.running || busy) { clearTimeout(timer); timer = setTimeout(load, 2000); } else { clearTimeout(timer); timer = setTimeout(load, 15000); }
+            }).catch(function (e) { if (!stopped && e.message !== "Signed out") wrap.appendChild(h("p", { class: "err", text: e.message })); });
+        }
+        load();
+        S.cleanup = function () { stopped = true; clearTimeout(timer); };
     }
 
     /* ---------------------------------------------------------------- reports */

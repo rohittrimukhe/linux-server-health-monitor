@@ -95,7 +95,8 @@ def build(run, cfg, report_type="technical"):
     meta = run.meta or {}
     d.customer_logo = (cfg.get("main", "general", "logo", "") if cfg else "") or meta.get("logo", "")
     custom_title = cfg.get("reports", "reports", "title", "") if cfg else ""
-    d.title = custom_title or "Linux Server Health Report"
+    from lshme.ops import roles as _roles
+    d.title = _roles.default_title(custom_title or "Linux Server Health Report", run)
     d.subtitle = "%s — %s report" % (run.fqdn or run.host, report_type.capitalize())
     period = "last %d day%s" % (run.days, "s" if run.days != 1 else "")
     d.meta = [(k, v) for k, v in (

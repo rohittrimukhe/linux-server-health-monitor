@@ -187,7 +187,7 @@ class App(object):
             text = "%s\n%s\n\nStatus: %s   Score: %s/100\n" % (document.title, document.subtitle, status, run.health["score"]) + \
                    "\n".join("[%s] %s: %s" % (f["severity"], f["component"], f["message"]) for f in document.findings
                              if f["severity"] in ("CRITICAL", "WARNING"))[:20000]
-            subject = "%s %s %s - %s" % (ms.prefix, document.title, run.fqdn or run.host, status)
+            subject = "%s %s - %s" % (ms.prefix, document.title, status)
         else:
             body = htmlrep.email_body(document, files)
         msg, recipients, attached, skipped = mailer.build_message(ms, subject, text, body, files, status, to, cc)
