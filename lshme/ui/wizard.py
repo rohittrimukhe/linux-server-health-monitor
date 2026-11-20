@@ -68,7 +68,7 @@ class Wizard(object):
     def step_general(self):
         self.title("Organisation & report identity")
         for key, label in (("company", "Company name"), ("customer", "Customer name"), ("environment", "Environment (Production/DR/UAT/Development)"),
-                           ("location", "Location / data centre"), ("prepared_by", "Prepared by (name or team)"), ("logo", "Logo file for reports (PNG/JPG, optional)")):
+                           ("location", "Location / data centre"), ("prepared_by", "Prepared by (name or team)"), ("logo", "Customer logo file for reports (PNG/JPG, optional; the LRS Services logo is always included)")):
             self.cfg.set("main", "general", key, C.ask(label, self.cfg.get("main", "general", key, "")))
         self.save("main")
 
