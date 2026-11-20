@@ -293,6 +293,15 @@ class WebApp(object):
         threading.Thread(target=work, daemon=True).start()
         return jr(self.fleet_job, 202)
 
+    # -- health of the tool, retention, audit -----------------------------------------------------------------------
+    def api_toolhealth(self, req, sess):
+        from lshme.ops import selfhealth
+        return jr({"checks": selfhealth.check(self.app.cfg, self.app.paths, self.app.runner)})
+
+    def api_retention(self, req, sess):
+        from lshme.ops import selfhealth
+        return jr(selfhealth.retention_view(self.app.cfg, self.app.paths))
+
     # -- reports -----------------------------------------------------------------------------------------------
     def rel(self, entry):
         return os.path.relpath(entry["dir"], self.app.paths.report_dir).replace(os.sep, "/")
@@ -497,7 +506,19 @@ class WebApp(object):
         d = self.app.paths.config_backup_dir
         found = sorted((f for f in os.listdir(d) if f.startswith("config_") and f.endswith(".tar.gz")), reverse=True) if os.path.isdir(d) else []
         if req.method == "GET":
-            return jr({"backups": found})
+            dl = (req.query.get("download") or [""])[0]
+            if dl:
+                if dl not in found:
+                    raise ValueError("unknown backup")
+                with open(os.path.join(d, dl), "rb") as f:
+                    body = f.read()
+                self.audit("web-config-download", sess, archive=dl)
+                return Resp(200, body, "application/gzip", {"Content-Disposition": 'attachment; filename="%s"' % dl, "Content-Security-Policy": "default-src 'none'; sandbox"})
+            details = []
+            for f in found:
+                st = os.stat(os.path.join(d, f))
+                details.append({"name": f, "size": st.st_size, "time": st.st_mtime})
+            return jr({"backups": found, "details": details})
         archive = str(req.json().get("archive", ""))
         if archive not in found:
             raise ValueError("unknown backup")
@@ -525,8 +546,16 @@ class WebApp(object):
         lines = []
         if os.path.exists(path):
             with open(path, encoding="utf-8", errors="replace") as f:
-                lines = f.read().splitlines()[-300:]
-        return jr({"lines": lines})
+                lines = f.read().splitlines()[-600:]
+        records = []
+        for line in reversed(lines):
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            extra = ", ".join("%s=%s" % (k, v) for k, v in r.items() if k not in ("time", "user", "action"))
+            records.append({"time": r.get("time", ""), "user": r.get("user", ""), "action": r.get("action", ""), "detail": extra[:300]})
+        return jr({"lines": lines[-300:], "records": records[:400]})
 
     # -- accounts ------------------------------------------------------------------------------------------------------
     def api_users(self, req, sess):

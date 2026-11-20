@@ -10,7 +10,7 @@ import importlib
 MODULE_ORDER = (
     "system", "cpu_memory", "storage", "folders", "services", "network", "hardware", "kvm", "cockpit",
     "database", "backup", "logs", "security", "certificates", "containers", "cluster",
-    "applications", "custom",
+    "applications", "custom", "selfcheck",
 )
 
 

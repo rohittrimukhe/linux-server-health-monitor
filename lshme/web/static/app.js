@@ -611,9 +611,21 @@
         box.appendChild(wrap);
         function act(name, ok) { return function () { api("POST", "/api/action", { name: name }).then(ok || function (r) { toast("Done: " + JSON.stringify(r), "good"); load(); }).catch(fail); }; }
         function load() {
-            Promise.all([api("GET", "/api/watch"), api("GET", "/api/schedules"), api("GET", "/api/backups"), api("GET", "/api/logs")]).then(function (r) {
-                var w = r[0], sch = r[1], bk = r[2], logs = r[3];
+            Promise.all([api("GET", "/api/watch"), api("GET", "/api/schedules"), api("GET", "/api/backups"), api("GET", "/api/logs"), api("GET", "/api/toolhealth"), api("GET", "/api/retention")]).then(function (r) {
+                var w = r[0], sch = r[1], bk = r[2], logs = r[3], th = r[4], rt = r[5];
                 clear(wrap);
+                var bad = th.checks.filter(function (c) { return c.status !== "ok"; }).length;
+                wrap.appendChild(card("Health of LRS Vitals", badge(bad ? (th.checks.some(function (c) { return c.status === "critical"; }) ? "CRITICAL" : "WARNING") : "OK"),
+                    h("p", { class: "muted", text: bad ? bad + " problem(s) with the monitoring itself." : "The watcher, schedules, reports and e-mail are all working." }),
+                    table(["Check", "Status", "Detail"], th.checks.map(function (c) { return [h("b", { text: c.name }), badge(c.status === "ok" ? "OK" : c.status.toUpperCase()), c.detail]; }))));
+                var space = rt.space;
+                wrap.appendChild(card("Retention - what is kept and for how long", h("span", { class: "muted", text: space.total ? size(space.free) + " free of " + size(space.total) : "" }),
+                    table(["Report type", "Kept for", "Reports", "Disk used", "Oldest", "Newest", "Next removal"], rt.types.map(function (t) {
+                        return [h("b", { text: t.type }), t.keep_days + " days", t.count, size(t.bytes), t.oldest ? when(t.oldest) : "-", t.newest ? when(t.newest) : "-", t.next_removal ? when(t.next_removal) : "-"];
+                    }), [2, 3]),
+                    table(["Other data", "Kept"], rt.other.map(function (o) { return [o.name, o.keep]; })),
+                    h("p", { class: "muted", text: "Old reports are removed automatically" + (space.auto_apply ? "" : " (automatic cleanup is OFF)") + ". If free space drops below " + space.min_free_percent + "% the oldest reports go first" +
+                        (space.cleanup ? "" : " (space cleanup is OFF)") + (space.max_report_dir_gb ? ", and reports never use more than " + space.max_report_dir_gb + " GB" : "") + "." })));
                 var st = w.state;
                 wrap.appendChild(card("Real-time monitoring", badge(w.service === "active" ? "OK" : "UNKNOWN"),
                     h("p", { class: "muted", text: "A light watcher checks the server every minute and sends alerts. Service: " + w.service + (w.installed ? "" : " (not installed)") }),
@@ -627,19 +639,33 @@
                 wrap.appendChild(card("Email", null, h("p", { class: "muted", text: "Send a test message with the current email settings." }),
                     h("button", { text: "Send test email", onclick: act("email-test", function (x) { toast(x.ok ? "Test email sent to " + (x.recipients || []).join(", ") : "Failed: " + x.error, x.ok ? "good" : "bad"); }) })));
                 wrap.appendChild(card("Configuration backups", h("button", { class: "small primary", text: "Back up now", onclick: act("config-backup", function (x) { toast("Saved " + x.archive, "good"); load(); }) }),
-                    bk.backups.length ? table(["Backup", ""], bk.backups.slice(0, 15).map(function (b) {
-                        return [h("span", { class: "mono", text: b }), h("button", { class: "small", text: "Restore", onclick: function () {
-                            ask("Replace the current settings with " + b + "? The current settings are backed up first.", function () { api("POST", "/api/backups", { archive: b }).then(function () { toast("Restored", "good"); }).catch(fail); }, true);
-                        } })];
-                    })) : h("p", { class: "muted", text: "No backups yet. One is taken before every change." })));
+                    bk.backups.length ? table(["Backup", "Taken", "Size", ""], (bk.details || bk.backups.map(function (b) { return { name: b, size: 0, time: 0 }; })).slice(0, 15).map(function (d) {
+                        var b = d.name;
+                        return [h("span", { class: "mono", text: b }), d.time ? when(d.time) : "-", d.size ? size(d.size) : "-", h("div", { class: "row" },
+                            h("a", { class: "btn small", href: "/api/backups?download=" + encodeURIComponent(b), text: "Download" }),
+                            h("button", { class: "small", text: "Restore", onclick: function () {
+                                ask("Replace the current settings with " + b + "? The current settings are backed up first.", function () { api("POST", "/api/backups", { archive: b }).then(function () { toast("Restored", "good"); load(); }).catch(fail); }, true);
+                            } }))];
+                    }), [2]) : h("p", { class: "muted", text: "No backups yet. One is taken before every change." })));
                 var logBox = h("pre", { class: "logs", text: "Choose a log." }), sel = h("select", { onchange: function (e) {
                     if (!e.target.value) return;
                     api("GET", "/api/logs?name=" + encodeURIComponent(e.target.value) + "&lines=300").then(function (j) { logBox.textContent = j.lines.join("\n") || "(empty)"; logBox.scrollTop = logBox.scrollHeight; }).catch(fail);
                 } }, h("option", { value: "", text: "Select a log file..." }), logs.logs.map(function (l) { return h("option", { value: l, text: l }); }));
                 wrap.appendChild(card("Logs", sel, logBox));
-                var audit = h("pre", { class: "logs", text: "Loading..." });
-                api("GET", "/api/audit").then(function (j) { audit.textContent = j.lines.join("\n") || "(empty)"; audit.scrollTop = audit.scrollHeight; });
-                wrap.appendChild(card("Audit log - who changed what", null, audit));
+                var auditBox = h("div", null, h("p", { class: "muted", text: "Loading..." }));
+                var filter = h("input", { type: "search", placeholder: "Filter by user, action or text", "class": "filter" });
+                api("GET", "/api/audit").then(function (j) {
+                    function paintAudit() {
+                        var q = filter.value.toLowerCase();
+                        var rows = j.records.filter(function (x) { return !q || (x.user + " " + x.action + " " + x.detail).toLowerCase().indexOf(q) >= 0; }).slice(0, 150);
+                        clear(auditBox);
+                        auditBox.appendChild(rows.length ? table(["When", "Who", "What", "Details"], rows.map(function (x) { return [x.time, h("b", { text: x.user }), x.action, h("span", { class: "muted", text: x.detail })]; }))
+                            : h("p", { class: "muted", text: "Nothing matches." }));
+                    }
+                    filter.addEventListener("input", paintAudit);
+                    paintAudit();
+                });
+                wrap.appendChild(card("Audit log - who changed what", filter, auditBox));
             }).catch(fail);
         }
         load();

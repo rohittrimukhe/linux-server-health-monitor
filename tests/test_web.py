@@ -430,6 +430,27 @@ class AlertsAndFleetTests(WebCase):
         self.assertEqual(self.call("POST", "/api/fleet", {"action": "run"}, user="viewer").status, 403)  # read-only account
 
 
+class ToolHealthWebTests(WebCase):
+    def test_tool_health_retention_audit_and_backup_download(self):
+        r = self.call("GET", "/api/toolhealth", user="admin")
+        self.assertEqual(r.status, 200, r.json)
+        self.assertTrue(any(c["name"] == "Real-time watcher" for c in r.json["checks"]))
+        r = self.call("GET", "/api/retention", user="admin")
+        self.assertEqual(r.status, 200)
+        self.assertEqual([t["type"] for t in r.json["types"]][:3], ["daily", "weekly", "monthly"])
+        self.app.audit("test-action", detail="x")
+        r = self.call("GET", "/api/audit", user="admin")
+        self.assertEqual(r.json["records"][0]["action"], "test-action")
+        self.assertEqual(self.call("GET", "/api/toolhealth", user="viewer").status, 200)
+        self.call("POST", "/api/action", {"name": "config-backup"}, user="admin")
+        r = self.call("GET", "/api/backups", user="admin")
+        self.assertTrue(r.json["details"] and r.json["details"][0]["size"] > 0)
+        dl = self.call("GET", "/api/backups", user="admin", query={"download": [r.json["backups"][0]]})
+        self.assertEqual(dl.status, 200)
+        self.assertIn("gzip", dl.ctype)
+        self.assertEqual(self.call("GET", "/api/backups", user="admin", query={"download": ["../../etc/passwd"]}).status, 400)
+
+
 class ConfigApiTests(WebCase):
     def section(self, file, name):
         cat = self.call("GET", "/api/config", user="admin").json
