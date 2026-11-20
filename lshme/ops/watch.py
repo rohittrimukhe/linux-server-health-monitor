@@ -227,6 +227,15 @@ def fast_probes(cfg, state, prober):
 def service_probe(cfg, runner, state):
     out = {}
     services = cfg.getlist("services", "critical", "services", "sshd, crond")
+    if cfg.getbool("services", "critical", "auto_detect", True):          # KVM and database services, looked up every 15 minutes
+        cached = state.get("auto_critical")
+        if not cached or time.time() - cached[0] > 900:
+            try:
+                from lshme.ops import roles
+                cached = state["auto_critical"] = (time.time(), roles.auto_critical(runner))
+            except Exception:
+                cached = (time.time(), [])
+        services = services + [u for u in cached[1] if u not in services]
     if services and runner.has("systemctl") and os.path.isdir("/run/systemd/system"):
         units = [s if "." in s else s + ".service" for s in services]
         r = runner.run(["systemctl", "is-active"] + units, timeout=15)

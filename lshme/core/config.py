@@ -85,7 +85,7 @@ DEFAULTS = {
         "history": {"forecast_warning_days": "30", "forecast_critical_days": "7",
                     "forecast_min_samples": "3", "forecast_min_span_hours": "24"},
     },
-    "services": {"critical": {"services": "sshd, crond"}, "ports": {}, "processes": {},
+    "services": {"critical": {"services": "sshd, crond", "auto_detect": "yes"}, "ports": {}, "processes": {},
                  "ignore": {"failed_units": ""}},
     "database": {"discovery": {"oracle_autodiscover": "yes", "postgresql_autodiscover": "yes",
                                "mysql_autodiscover": "yes", "mongodb_autodiscover": "no"}},
@@ -129,7 +129,7 @@ DEFAULTS = {
     "exclusions": {},
     "credentials": {},
     "web": {"web": {"enabled": "no", "bind": "127.0.0.1", "port": "8443", "tls": "yes", "cert": "", "key": "",
-                    "session_minutes": "30", "max_login_failures": "5", "allow_plain_http": "no"},
+                    "session_minutes": "30", "max_login_failures": "5", "allow_plain_http": "no", "system_users": "root"},
             "users": {}, "roles": {}},
 }
 

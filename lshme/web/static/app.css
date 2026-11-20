@@ -148,3 +148,12 @@ svg.chart .grid { stroke: var(--line); stroke-width: 1; }
 svg.chart .axis { fill: var(--muted); font-size: 11px; }
 svg.chart .dot { fill: var(--ok); stroke: var(--card); stroke-width: 1.5; }
 svg.chart .dot.warn { fill: var(--warn); } svg.chart .dot.crit { fill: var(--crit); }
+
+/* alerts and all-servers page */
+.tile { text-align: center; } .tile .big { font-size: 34px; font-weight: 750; }
+.tile.ok { border-left: 5px solid var(--ok, #1e8e3e); } .tile.warn { border-left: 5px solid var(--warn); } .tile.crit { border-left: 5px solid var(--crit); }
+.fleet { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+.srv { border: 1px solid var(--line); border-left: 6px solid var(--muted); border-radius: 12px; padding: 14px 16px; display: grid; gap: 8px; background: var(--card, transparent); }
+.srv.st-HEALTHY { border-left-color: #1e8e3e; } .srv.st-WARNING { border-left-color: var(--warn); } .srv.st-CRITICAL, .srv.st-UNREACHABLE { border-left-color: var(--crit); }
+.srv .nm { font-size: 16px; } .srv .score { font-size: 22px; font-weight: 750; } .srv .top { font-size: 13px; }
+.srv .mini { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; }

@@ -113,6 +113,49 @@ class AuthUnitTests(unittest.TestCase):
         self.assertIsNone(s.get(token2))
 
 
+class SystemLoginTests(WebCase):
+    def test_shadow_password_check(self):
+        import crypt
+        import tempfile
+        h = crypt.crypt("Sup3r Secret!", crypt.mksalt(crypt.METHOD_SHA512))
+        with tempfile.NamedTemporaryFile("w", suffix=".shadow", delete=False) as f:
+            f.write(chr(10).join(["root:%s:19000:0:99999:7:::" % h, "locked:!%s:19000::::::" % h, "nologin:*:19000::::::", "empty::19000::::::", ""]))
+            path = f.name
+        try:
+            self.assertTrue(auth.system_password_ok("root", "Sup3r Secret!", path))
+            self.assertFalse(auth.system_password_ok("root", "wrong", path))
+            self.assertFalse(auth.system_password_ok("locked", "Sup3r Secret!", path))      # a locked account never signs in
+            self.assertFalse(auth.system_password_ok("nologin", "x", path))
+            self.assertFalse(auth.system_password_ok("empty", "", path))
+            self.assertFalse(auth.system_password_ok("nobody-here", "x", path))
+            self.assertFalse(auth.system_password_ok("root", "x", path + ".missing"))
+        finally:
+            os.unlink(path)
+
+    def test_only_listed_linux_accounts_can_sign_in(self):
+        real = auth.system_password_ok
+        auth.system_password_ok = lambda user, password, shadow=None: (user, password) == ("root", "RootPassw0rd")
+        try:
+            self.assertEqual(auth.system_users(self.app.cfg), ["root"])
+            self.assertEqual(self.web.users.verify("root", "RootPassw0rd"), "admin")
+            self.assertIsNone(self.web.users.verify("root", "nope"))
+            self.assertIsNone(self.web.users.verify("oracle", "RootPassw0rd"))         # another Linux account is not allowed
+            r = self.call("POST", "/api/login", {"user": "root", "password": "RootPassw0rd"})
+            self.assertEqual(r.status, 200, r.json)
+            self.assertEqual(r.json["role"], "admin")
+            self.app.cfg.set("web", "web", "system_users", "")
+            self.assertIsNone(self.web.users.verify("root", "RootPassw0rd"))            # switched off
+        finally:
+            auth.system_password_ok = real
+
+    def test_a_linux_account_cannot_make_a_web_password(self):
+        self.app.cfg.set("web", "web", "system_users", "root")
+        sess = self.session("admin")
+        sess[1]["user"] = "root"
+        r = self.call("POST", "/api/password", {"old": "x", "new": "NewPassw0rd1"}, user="admin")
+        self.assertIn(r.status, (200, 400))
+
+
 class SignInTests(WebCase):
     def test_static_files_and_headers(self):
         r = self.call("GET", "/")
@@ -317,6 +360,36 @@ class RunAndScanTests(WebCase):
         self.assertEqual(r["forced"], [])
         self.assertEqual(self.call("POST", "/api/scan", {"action": "force", "module": "nonsense", "on": True}, user="admin").status, 400)
         self.assertEqual(self.call("POST", "/api/scan", {"action": "apply"}, user="admin").status, 200)
+
+
+class AlertsAndFleetTests(WebCase):
+    def test_alerts_show_active_problems_and_how_they_are_sent(self):
+        d = self.app.paths.data_dir
+        with open(os.path.join(d, "watch_events.jsonl"), "w", encoding="utf-8") as f:
+            f.write(json.dumps({"event": "open", "key": "cpu", "component": "cpu", "message": "CPU utilisation 97%", "severity": "CRITICAL", "ts": time.time()}) + chr(10))
+        with open(os.path.join(d, "watch_state.json"), "w", encoding="utf-8") as f:
+            json.dump({"problems": {"cpu": {"severity": "CRITICAL", "count": 3, "since": time.time() - 300, "alerted": "CRITICAL", "last_alert": 0}}}, f)
+        r = self.call("GET", "/api/alerts", user="admin")
+        self.assertEqual(r.status, 200, r.json)
+        self.assertEqual(r.json["active"][0]["severity"], "CRITICAL")
+        self.assertEqual(r.json["active"][0]["message"], "CPU utilisation 97%")
+        self.assertEqual(r.json["events"][0]["event"], "open")
+        self.assertIn("syslog", r.json["channels"])
+
+    def test_fleet_lists_servers_and_refuses_to_run_without_any(self):
+        from lshme.ops import dashboard
+        run = fake_run()
+        run.host, run.ip = "db02", "10.0.0.2"
+        run.meta["roles"] = ["KVM host"]
+        dashboard.save_results(self.app.paths, [run], {"web9": "ssh: connection refused"})
+        r = self.call("GET", "/api/fleet", user="viewer")
+        self.assertEqual(r.status, 200, r.json)
+        by = dict((s["name"], s) for s in r.json["servers"])
+        self.assertEqual(by["db02"]["roles"], ["KVM host"])
+        self.assertEqual(by["web9"]["status"], "UNREACHABLE")
+        self.assertEqual([x["status"] for x in r.json["servers"]], ["CRITICAL", "UNREACHABLE"])      # worst first
+        self.assertEqual(self.call("POST", "/api/fleet", {"action": "run"}, user="admin").status, 400)   # none configured
+        self.assertEqual(self.call("POST", "/api/fleet", {"action": "run"}, user="viewer").status, 403)  # read-only account
 
 
 class ConfigApiTests(WebCase):
@@ -532,6 +605,7 @@ class RealServerTests(unittest.TestCase):
         self.assertIn("plain HTTP", str(cm.exception))
         self.app.cfg.set("web", "web", "bind", "127.0.0.1")
         self.app.cfg.parsers["web"].remove_option("users", "admin")
+        self.app.cfg.set("web", "web", "system_users", "")      # no Linux account may sign in either
         self.app.cfg.save("web")
         self.app.reload()
         with self.assertRaises(ValueError) as cm:

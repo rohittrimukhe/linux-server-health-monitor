@@ -73,6 +73,8 @@ class WebCliTests(unittest.TestCase):
         self.assertIn("passwd admin", out)
 
     def test_start_refuses_without_users(self):
+        self.home.cfg.set("web", "web", "system_users", "")
+        self.home.cfg.save("web")
         code, out = self.run_cli("start")
         self.assertEqual(code, 2)
         self.assertIn("no web users", out)

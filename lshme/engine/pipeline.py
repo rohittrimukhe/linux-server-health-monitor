@@ -22,6 +22,11 @@ def run_modules(ctx, modules, progress=None):
     run.meta = {"application": APP_NAME, "company": g.get("company", ""), "customer": g.get("customer", ""),
                 "environment": g.get("environment", ""), "prepared_by": g.get("prepared_by", ""),
                 "location": g.get("location", ""), "logo": g.get("logo", "")}
+    try:                                          # what the server is used for, shown in the report titles
+        from lshme.ops import roles
+        run.meta["roles"] = roles.detect(ctx.runner)
+    except Exception:
+        run.meta["roles"] = []
     log = logs.get()
     deadline = time.time() + ctx.cfg.getint("main", "general", "run_timeout", 1800)
     hide_absent = ctx.cfg.getbool("main", "modules", "hide_not_present", True)
