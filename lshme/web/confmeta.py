@@ -52,7 +52,7 @@ SECTION_LABELS = {"general": "General", "paths": "Folders", "modules": "Modules"
                   "retention": "Retention", "reports": "Reports", "web": "Web interface"}
 # what a new section of each kind starts with, and the keys that make sense in it
 SECTION_KINDS = {
-    "schedule": [{"prefix": "schedule:", "label": "Schedule", "keys": ["frequency", "time", "weekday", "monthday", "calendar", "days", "modules", "formats",
+    "schedule": [{"prefix": "schedule:", "label": "Schedule", "keys": ["frequency", "time", "weekdays", "weekday", "monthday", "calendar", "days", "modules", "formats",
                                                                    "report_type", "email", "to", "cc", "send_policy", "enabled"]}],
     "database": [{"prefix": "oracle:", "label": "Oracle instance", "keys": ["sid", "oracle_home", "os_user", "username", "connect_identifier", "backup_max_age_hours"]},
                  {"prefix": "mysql:", "label": "MySQL / MariaDB", "keys": ["defaults_file", "socket"]},
@@ -84,7 +84,7 @@ HELP = {
     "username": "Login name.", "from": "Sender address.", "to": "Recipients, comma-separated.", "cc": "Copy recipients, comma-separated.",
     "bcc": "Blind-copy recipients.", "critical_to": "Extra recipients told only about CRITICAL reports.", "send_policy": "always, issues (warnings or worse), critical, never.",
     "attach_formats": "Report files attached to emails.", "max_attachment_mb": "Total attachment size per email.", "formats": "Report files written.",
-    "time": "24-hour HH:MM.", "weekday": "Day of the week.", "monthday": "Day of the month, 1-28.", "days": "Days of data a report covers.",
+    "time": "24-hour HH:MM.", "weekdays": "Days a daily report runs, for example mon-sat. Leave empty for every day.", "weekday": "Day of the week.", "monthday": "Day of the month, 1-28.", "days": "Days of data a report covers.",
     "calendar": "systemd OnCalendar expression, for custom schedules.", "modules": "all, or a comma list of modules.", "frequency": "How often it runs.",
     "enabled": "Switch off to keep the settings but stop using them.", "password": "Stored write-only in credentials.conf.",
     "services": "Comma-separated service names that must be running.", "failed_units": "Units whose failure is expected.",
@@ -146,6 +146,9 @@ def validate_value(kind, key, value, choices=None, optional=True):
         return "is too long"
     if v == "" and kind not in ("bool",):
         return None if optional or kind in ("text", "path", "emails", "multi", "secret", "choice") else "is required"
+    if key == "weekdays":
+        from lshme.ops.scheduler import parse_days
+        return None if parse_days(v) is not None else "must look like mon-sat or mon,wed,fri"
     if kind == "bool":
         return None if v in ("yes", "no") else "must be yes or no"
     if kind in ("int", "float"):

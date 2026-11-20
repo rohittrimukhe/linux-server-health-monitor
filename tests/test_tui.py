@@ -305,7 +305,7 @@ class CollectionTests(TuiCase):
         ctx = self.ctx(["DOWN", "ENTER", "CTRL_U"] + typed("25:99") + ["ENTER", "ESC", "ESC", "y"])
         tui.schedule_form(ctx, "daily")
         self.assertTrue(self.be.saw("use HH:MM"))
-        self.assertEqual(self.app.cfg.get("schedule", "schedule:daily", "time"), "07:00")
+        self.assertEqual(self.app.cfg.get("schedule", "schedule:daily", "time"), "09:00")
 
     def test_server_added(self):
         keys = ["a", "CTRL_U"] + typed("web01") + ["ENTER", "F10", "ESC"]  # the name box starts with a suggestion

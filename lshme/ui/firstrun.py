@@ -218,7 +218,8 @@ class Setup(object):
         scan = lambda label, opt, kind="text", **kw: tui.bound(ctx, label, "main", "scan", opt, kind, **kw)
         days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
         tui.settings(ctx, "Schedules", [
-            Heading("Daily report"), sch("Run every day", "daily", "enabled", "bool"), sch("Time (HH:MM)", "daily", "time", validate=tui.v_time),
+            Heading("Daily report"), sch("Run daily", "daily", "enabled", "bool"), sch("Days (mon-sat, or empty for every day)", "daily", "weekdays", validate=tui.v_weekdays),
+            sch("Time (HH:MM)", "daily", "time", validate=tui.v_time),
             Heading("Weekly report"), sch("Run every week", "weekly", "enabled", "bool"), sch("Weekday", "weekly", "weekday", "choice", choices=days),
             sch("Time (HH:MM)", "weekly", "time", validate=tui.v_time),
             Heading("Monthly report"), sch("Run every month", "monthly", "enabled", "bool"),
