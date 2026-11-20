@@ -33,6 +33,44 @@ def wrap(text, width):
 
 
 # ---------------------------------------------------------------------------------------------
+# keyboard: terminals send the same key in different ways (ESC [ A or ESC O A for Up, ESC [ 5 ~ for
+# PgUp, ...), and curses only knows the one in its terminfo. Reading raw characters and decoding the
+# sequences here works with PuTTY, plink, Windows Terminal, xterm and tmux alike.
+# ---------------------------------------------------------------------------------------------
+CSI_LETTERS = {"A": "UP", "B": "DOWN", "C": "RIGHT", "D": "LEFT", "H": "HOME", "F": "END", "Z": "BTAB"}
+CSI_NUMBERS = {"1": "HOME", "2": "INSERT", "3": "DELETE", "4": "END", "5": "PGUP", "6": "PGDN", "7": "HOME", "8": "END",
+               "11": "F1", "12": "F2", "13": "F3", "14": "F4", "15": "F5", "17": "F6", "18": "F7", "19": "F8",
+               "20": "F9", "21": "F10", "23": "F11", "24": "F12"}
+SS3_LETTERS = {"A": "UP", "B": "DOWN", "C": "RIGHT", "D": "LEFT", "H": "HOME", "F": "END", "M": "ENTER",
+               "P": "F1", "Q": "F2", "R": "F3", "S": "F4"}
+
+
+def parse_escape(read, unread):
+    """Decode what follows an ESC byte. read() returns the next character or None if nothing more arrives
+    straight away; unread(ch) puts one back. Returns a key name ("ESC" when ESC was pressed on its own)."""
+    c = read()
+    if c is None:
+        return "ESC"
+    if c == "[":  # CSI: ESC [ <digits and ;> <final letter or ~>
+        seq = ""
+        while len(seq) < 12:
+            c = read()
+            if c is None:
+                return "ESC"
+            seq += c
+            if c.isalpha() or c == "~":
+                break
+        if seq.endswith("~"):
+            return CSI_NUMBERS.get(seq[:-1].split(";")[0], "UNKNOWN")
+        return CSI_LETTERS.get(seq[-1], "UNKNOWN")  # also covers modified keys such as ESC [ 1 ; 2 B
+    if c == "O":  # SS3: ESC O <letter> (application cursor mode, F1-F4)
+        c = read()
+        return "ESC" if c is None else SS3_LETTERS.get(c, "UNKNOWN")
+    unread(c)  # ESC followed by an ordinary key (Alt+key): treat as Esc, then deliver the key
+    return "ESC"
+
+
+# ---------------------------------------------------------------------------------------------
 # curses backend
 # ---------------------------------------------------------------------------------------------
 class CursesBackend(object):
@@ -55,7 +93,7 @@ class CursesBackend(object):
         self.curses = curses
         self.scr = scr
         self.cursor = None
-        scr.keypad(True)
+        scr.keypad(False)  # raw characters: parse_escape decodes the keys, whatever the terminal sends
         try:
             curses.curs_set(0)
         except curses.error:
@@ -130,32 +168,43 @@ class CursesBackend(object):
 
     def key(self):
         c = self.curses
-        names = {c.KEY_UP: "UP", c.KEY_DOWN: "DOWN", c.KEY_LEFT: "LEFT", c.KEY_RIGHT: "RIGHT", c.KEY_HOME: "HOME",
-                 c.KEY_END: "END", c.KEY_PPAGE: "PGUP", c.KEY_NPAGE: "PGDN", c.KEY_ENTER: "ENTER",
-                 c.KEY_BACKSPACE: "BACKSPACE", c.KEY_DC: "DELETE", c.KEY_BTAB: "BTAB", c.KEY_RESIZE: "RESIZE",
-                 c.KEY_IC: "INSERT"}
         while True:
             try:
+                self.scr.timeout(-1)
                 k = self.scr.get_wch()
             except KeyboardInterrupt:
                 return "ESC"
             except c.error:
                 continue
             if isinstance(k, int):
-                if c.KEY_F0 < k <= c.KEY_F0 + 12:
-                    return "F%d" % (k - c.KEY_F0)
-                return names.get(k, "?")
+                return "RESIZE" if k == c.KEY_RESIZE else "UNKNOWN"
             if k in ("\n", "\r"):
                 return "ENTER"
             if k == "\t":
                 return "TAB"
             if k == "\x1b":
-                return "ESC"
+                return self.escape_key()
             if k in ("\x7f", "\b"):
                 return "BACKSPACE"
             if len(k) == 1 and ord(k) < 32:
                 return "CTRL_" + chr(ord(k) + 64)
             return k
+
+    def escape_key(self):
+        """After an ESC byte: wait a moment for the rest of a key sequence (they arrive together)."""
+        c = self.curses
+
+        def read():
+            self.scr.timeout(60)  # a lone Esc is recognised after this long
+            try:
+                k = self.scr.get_wch()
+            except c.error:
+                return None
+            return k if isinstance(k, str) else None
+        try:
+            return parse_escape(read, lambda ch: c.unget_wch(ch))
+        finally:
+            self.scr.timeout(-1)
 
     @contextlib.contextmanager
     def suspend(self):

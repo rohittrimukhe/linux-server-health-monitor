@@ -9,7 +9,7 @@ from unittest import mock
 from fakes import ROOT, TempHome
 from lshme.app import App
 from lshme.ui import tui
-from lshme.ui.tui_kit import UI, Field, Form, LineEdit
+from lshme.ui.tui_kit import UI, Field, Form, LineEdit, parse_escape
 
 
 def typed(text):
@@ -88,6 +88,35 @@ class TuiCase(unittest.TestCase):
     def read(self, name):
         with open(self.app.cfg.path(name), encoding="utf-8") as f:
             return f.read()
+
+
+class KeyDecodingTests(unittest.TestCase):
+    """Terminals send the same key in different ways; all of them must work."""
+
+    @staticmethod
+    def decode(after_esc):
+        chars, back = list(after_esc), []
+        key = parse_escape(lambda: chars.pop(0) if chars else None, back.append)
+        return key, back
+
+    def test_arrows_in_normal_and_application_mode(self):
+        for name, plain, app in (("UP", "[A", "OA"), ("DOWN", "[B", "OB"), ("RIGHT", "[C", "OC"), ("LEFT", "[D", "OD")):
+            self.assertEqual(self.decode(plain)[0], name, plain)  # PuTTY, plink, Windows Terminal, xterm
+            self.assertEqual(self.decode(app)[0], name, app)      # application cursor mode
+
+    def test_navigation_and_function_keys(self):
+        for seq, name in (("[5~", "PGUP"), ("[6~", "PGDN"), ("[H", "HOME"), ("[F", "END"), ("[1~", "HOME"), ("[4~", "END"),
+                          ("OH", "HOME"), ("OF", "END"), ("[3~", "DELETE"), ("[Z", "BTAB"), ("[21~", "F10"), ("[15~", "F5"),
+                          ("OP", "F1"), ("[1;5A", "UP"), ("[1;2B", "DOWN"), ("[5;5~", "PGUP")):
+            self.assertEqual(self.decode(seq)[0], name, seq)
+
+    def test_lone_escape_and_alt_key(self):
+        self.assertEqual(self.decode("")[0], "ESC")
+        self.assertEqual(self.decode("["), ("ESC", []))  # an incomplete sequence is just Esc
+        self.assertEqual(self.decode("x"), ("ESC", ["x"]))  # Alt+x: Esc, and x is delivered afterwards
+
+    def test_unknown_sequence_is_ignored_not_misread(self):
+        self.assertEqual(self.decode("[99~")[0], "UNKNOWN")
 
 
 class LineEditTests(unittest.TestCase):
@@ -274,6 +303,17 @@ class CollectionTests(TuiCase):
         tui.page_fleet(ctx)
         self.assertEqual(self.app.cfg.get("servers", "server:web01", "host"), "web01")
         self.assertEqual(self.app.cfg.get("servers", "server:web01", "enabled"), "yes")
+
+
+class HelpTextTests(unittest.TestCase):
+    def test_every_help_line_fits_an_80_column_screen(self):
+        import re
+        with open(tui.__file__.replace(".pyc", ".py"), encoding="utf-8") as f:
+            source = f.read()
+        texts = re.findall(r'help(?:_)?="([^"]+)"', source) + [h for _, _, h, _ in tui.PAGES]
+        self.assertGreater(len(texts), 100)
+        too_long = [t for t in texts if len(t) > 76]
+        self.assertEqual(too_long, [], "help lines wider than the footer would be cut off")
 
 
 class NavigationTests(TuiCase):
