@@ -24,6 +24,7 @@ class MiniPDF(object):
         self.footer = footer
         self.pages = []
         self.images = []   # (name, width, height, colourspace, filter, data, alpha_data)
+        self.wm_alpha = 0.08   # opacity of the washed-out watermark (graphics state GS1)
         self.ops = None
         self.y = 0
         self.new_page()
@@ -127,7 +128,8 @@ class MiniPDF(object):
             i_id = add("<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /%s /BitsPerComponent 8 /Filter /%s%s /Length %d >>\nstream\n%s\nendstream" % (
                 w, h, cs, flt, smask, len(data), data.decode("latin-1")))
             xobj += "/%s %d 0 R " % (name, i_id)
-        res = "<< /Font << /F1 %d 0 R /F2 %d 0 R /F3 %d 0 R /F4 %d 0 R >> %s >>" % (tuple(fonts) + (("/XObject << %s>>" % xobj) if xobj else "",))
+        res = "<< /Font << /F1 %d 0 R /F2 %d 0 R /F3 %d 0 R /F4 %d 0 R >> /ExtGState << /GS1 << /ca %.2f /CA %.2f >> >> %s >>" % (
+            tuple(fonts) + (self.wm_alpha, self.wm_alpha) + (("/XObject << %s>>" % xobj) if xobj else "",))
         kids = []
         total = len(self.pages)
         for i, ops in enumerate(self.pages, 1):

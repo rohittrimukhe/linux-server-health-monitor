@@ -74,6 +74,21 @@ class PeriodicPDF(MiniPDF):
         path = "%.1f %.1f m " % pts[0] + " ".join("%.1f %.1f l" % p for p in pts[1:])
         self.ops.append("%.3f %.3f %.3f RG %.2f w %s %s S [] 0 d" % (color + (width, "[%s] 0 d" % dash if dash else "[] 0 d", path)))
 
+    def stamp_watermark(self, ops):
+        """Put the faded logo at the start of a page's drawing commands so everything else is drawn over it."""
+        wm = getattr(self, "watermark", None)
+        if not wm:
+            return
+        name, iw, ih = wm
+        w = USABLE * 0.78
+        h = w * ih / float(iw)
+        x, y = (PAGE_W - w) / 2.0, (PAGE_H - h) / 2.0 - 20
+        ops.insert(0, "q /GS1 gs q %.1f 0 0 %.1f %.1f %.1f cm /%s Do Q Q" % (w, h, x, y, name))
+
+    def new_page(self):
+        MiniPDF.new_page(self)
+        self.stamp_watermark(self.ops)
+
     def need(self, h):
         if self.y - h < MARGIN + 18:
             self.new_page()
@@ -94,7 +109,7 @@ class PeriodicPDF(MiniPDF):
         self.fill(0, top - 124, PAGE_W, 4, BLUE)
         bw, bh, by = 130, 40, top - 56
         self.fill(MARGIN, by, bw, bh, (1, 1, 1))
-        lrs = self.add_image(logo) if logo else None
+        lrs = getattr(self, "watermark", None) or (self.add_image(logo) if logo else None)
         if lrs:
             self.fit_image(lrs, MARGIN + 6, by + 4, bw - 12, bh - 8)
         else:
@@ -414,7 +429,10 @@ class PeriodicPDF(MiniPDF):
 def render(doc, path, logo=""):
     foot = "%s - %s - %s" % (doc.title, time.strftime("%Y-%m-%d %H:%M", time.localtime(doc.generated)), doc.copyright)
     p = PeriodicPDF(doc.title, foot)
-    p.header(doc, doc.brand_logo or logo)
+    mark = doc.brand_logo or logo
+    p.watermark = p.add_image(mark) if mark and os.path.isfile(mark) else None
+    p.stamp_watermark(p.ops)                    # the first page was made before the logo was loaded
+    p.header(doc, mark)
     for n, (title, blocks) in enumerate(doc.sections, 1):
         p.section(n, title)
         for b in blocks:
