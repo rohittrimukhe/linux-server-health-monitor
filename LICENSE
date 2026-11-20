@@ -1,10 +1,41 @@
-Linux Server Health Monitor Enterprise
+LRS Vitals (Linux Server Health Monitor)
 Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai, India. All rights reserved.
 
-This software and its documentation are the proprietary property of
-LRS Services Pvt Ltd. No part of it may be copied, modified, distributed,
-sublicensed or used except as permitted in writing by LRS Services Pvt Ltd.
+PRIVATE AND PROPRIETARY. NOT LICENSED FOR USE BY ANYONE EXCEPT THE OWNER.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED. IN NO EVENT SHALL LRS SERVICES PVT LTD BE LIABLE FOR ANY CLAIM,
-DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+1. Owner. This software, its source code, documentation, reports, logos and
+   packages (together, "the Software") are the exclusive property of
+   LRS Services Pvt Ltd ("the Owner").
+
+2. No licence. No licence of any kind is granted to any person or company
+   other than the Owner. Nothing in this repository, on this website, or in any
+   package, release or file grants permission to anyone else.
+
+3. What is not allowed without the Owner's prior written permission. You may
+   not install, run, use, test, copy, reproduce, modify, translate, adapt,
+   merge, publish, distribute, sublicense, sell, rent, lend, host, make
+   available as a service, or create derivative works from the Software, in
+   whole or in part. You may not decompile, reverse engineer or extract the
+   source code of any package. You may not remove or change this notice, the
+   copyright notices or the logos.
+
+4. Public visibility is not permission. If the Software can be seen or
+   downloaded from a public website, that is not a licence. Viewing a file is
+   not permission to use it. Forking or cloning for the purpose allowed by the
+   hosting site's own terms does not give any right to use the Software.
+
+5. Permission. Any permission must be written, signed by an authorised person
+   of the Owner, name the person who receives it, and state what is allowed
+   and for how long. Such permission may be withdrawn at any time. Requests:
+   write to the Owner at LRS Services Pvt Ltd, Mumbai, India.
+
+6. Enforcement. Use in breach of this notice is unauthorised. The Owner may
+   take any action the law allows, including claiming damages and obtaining
+   an order to stop the use and to remove copies.
+
+7. No warranty. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+   KIND, EXPRESS OR IMPLIED. IN NO EVENT SHALL LRS SERVICES PVT LTD BE LIABLE
+   FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE SOFTWARE.
+
+8. Law. This notice is governed by the laws of India. The courts at Mumbai
+   have exclusive jurisdiction.

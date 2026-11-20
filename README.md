@@ -2,7 +2,9 @@
 
 ![LRS Services](lshme/reports/lrs_logo.png)
 
-**© 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.** See [LICENSE](LICENSE).
+**© 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.**
+
+> **Private and proprietary.** No licence is granted to anyone except the owner. You may not install, run, copy, modify or share this software without written permission. See [LICENSE](LICENSE).
 
 Read-only health monitoring, reporting and alerting for Linux servers. LSHME is
 a menu-driven application with a full command-line interface. It checks the
