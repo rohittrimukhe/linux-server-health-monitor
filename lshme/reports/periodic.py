@@ -781,6 +781,12 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
     else:
         d.add("Top folders and growth", [note("No folder sizes recorded yet. The next health check measures the folders listed under [folders] in main.conf.")])
 
+    try:
+        from lshme.reports import periodic_top
+        d.add("Top 10 resource users", periodic_top.blocks(cfg))
+    except Exception as e:  # the report must never fail because of this optional section
+        d.add("Top 10 resource users", [note("The top-10 lists could not be collected: %s" % e)])
+
     if ptype != "daily":
         dates = data.dates()
         pieces = []

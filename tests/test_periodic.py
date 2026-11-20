@@ -12,7 +12,7 @@ from lshme import reports
 from lshme.core.model import ModuleResult, RunResult
 from lshme.engine import scoring
 from lshme.engine.history import History
-from lshme.reports import periodic, periodic_html
+from lshme.reports import periodic, periodic_html, periodic_top
 
 GB = 1024 ** 3
 
@@ -86,7 +86,7 @@ class PeriodicTest(unittest.TestCase):
     def test_daily_has_every_section(self):
         d = self.doc("daily")
         for want in ("Overall status", "Daily checklist", "CPU and memory", "Filesystem usage and growth", "Database size and growth",
-                     "Top folders and growth", "Server overview", "What needs attention", "In short"):
+                     "Top folders and growth", "Server overview", "What needs attention", "In short", "Top 10 resource users"):
             self.assertIn(want, self.titles(d))
         self.assertNotIn("Data growth by date", self.titles(d))
 
@@ -168,6 +168,34 @@ class PeriodicTest(unittest.TestCase):
             self.assertTrue(d.sections)
         finally:
             home.cleanup()
+
+
+SS = """State  Recv-Q Send-Q Local Address:Port Peer Address:Port Process
+LISTEN 0      128    0.0.0.0:22      0.0.0.0:*     users:(("sshd",pid=10,fd=3))
+ESTAB  0      0      10.0.0.1:22     10.0.0.9:5000 users:(("sshd",pid=11,fd=4))
+	 cubic wscale:7,7 bytes_sent:1000 bytes_acked:1000 bytes_received:5000 segs_out:10
+ESTAB  0      0      10.0.0.1:5432   10.0.0.7:6000 users:(("postgres",pid=20,fd=5))
+	 cubic bytes_sent:200 bytes_received:300
+ESTAB  0      0      10.0.0.1:5432   10.0.0.8:6001 users:(("postgres",pid=21,fd=5))
+	 cubic bytes_sent:100 bytes_received:50
+"""
+
+
+class TopUsersTest(unittest.TestCase):
+    def test_ss_totals_per_program(self):
+        by = dict((g["name"], g) for g in periodic_top.parse_ss(SS))
+        self.assertEqual(by["sshd"]["listen"], 1)
+        self.assertEqual((by["sshd"]["sent"], by["sshd"]["recv"]), (1000, 5000))
+        self.assertEqual((by["postgres"]["conns"], by["postgres"]["sent"], by["postgres"]["recv"]), (2, 300, 350))
+
+    def test_cpu_and_memory_are_summed_per_program(self):
+        first = {"1": ("db", 100, 10), "2": ("db", 100, 10), "3": ("web", 0, 5)}
+        second = {"1": ("db", 150, 20), "2": ("db", 150, 20), "3": ("web", 10, 5)}
+        g = dict((x["name"], x) for x in periodic_top.group(first, second, 1.0, 100, 2, 1000))
+        self.assertEqual(g["db"]["procs"], 2)
+        self.assertAlmostEqual(g["db"]["cpu"], 50.0)      # 100 ticks of 200 available
+        self.assertEqual(g["db"]["rss"], 40)
+        self.assertAlmostEqual(g["db"]["mem_pct"], 4.0)
 
 
 if __name__ == "__main__":
