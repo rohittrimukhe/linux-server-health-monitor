@@ -47,6 +47,44 @@ class SchedulerTest(unittest.TestCase):
         self.assertEqual(scheduler.days_cron(scheduler.parse_days("fri-sun")), "5,6,0")
         self.assertIsNone(scheduler.parse_days("monday-xyz"))
 
+    def test_central_collection_is_a_schedule_of_its_own(self):
+        home = TempHome()
+        sd = os.path.join(home.dir, "systemd")
+        home.cfg.set("schedule", "scheduler", "backend", "systemd")
+        home.cfg.set("schedule", "scheduler", "systemd_dir", sd)
+        r = FakeRunner({"systemctl": (0, "")})
+        scheduler.install(home.cfg, r, "/opt/lshme/healthcheck", ["--config-dir", "/etc/lshme"])
+        self.assertFalse(any("fleet" in f for f in os.listdir(sd)))                    # off by default
+        home.cfg.set("main", "fleet", "enabled", "yes")
+        home.cfg.set("main", "fleet", "minutes", "5")
+        rep = scheduler.install(home.cfg, r, "/opt/lshme/healthcheck", ["--config-dir", "/etc/lshme"])
+        self.assertEqual(rep["errors"], [])
+        self.assertIn("OnCalendar=*:0/5", slurp(os.path.join(sd, "lshme-fleet.timer")))
+        self.assertIn("fleet run --formats none", slurp(os.path.join(sd, "lshme-fleet.service")))
+        self.assertEqual(scheduler.FleetJob(home.cfg).cron(), "*/5 * * * *")
+        home.cfg.set("main", "fleet", "minutes", "0")
+        self.assertTrue(scheduler.install(home.cfg, r, "/opt/lshme/healthcheck", [])["errors"])
+        home.cleanup()
+
+    def test_collect_only_fleet_run_writes_no_report_files(self):
+        import json
+        from fakes import ROOT
+        from lshme.app import App
+        from lshme.core.model import RunResult
+        home = TempHome()
+        app = App(ROOT, home=home.dir)
+        drop = os.path.join(home.dir, "drop")
+        os.makedirs(drop)
+        run = RunResult("h1", days=1, schedule="x")
+        run.health = {"score": 91, "status": "HEALTHY", "counts": {"CRITICAL": 0, "WARNING": 0, "UNKNOWN": 0, "INFO": 0}, "modules": []}
+        with open(os.path.join(drop, "h1.json"), "w") as f:
+            json.dump(run.to_dict(), f)
+        runs, errors, files, notes, mail = app.fleet_run(None, "none", "executive", False, 1, drop, None)
+        self.assertEqual((len(runs), files), (1, []))
+        self.assertFalse(os.path.exists(os.path.join(app.paths.report_dir, "_fleet")))     # nothing written under reports
+        self.assertTrue(os.path.exists(os.path.join(app.paths.data_dir, "fleet", "h1.json")))    # but the dashboard has the result
+        home.cleanup()
+
     def test_install_systemd_and_cron(self):
         home = TempHome()
         sd = os.path.join(home.dir, "systemd")

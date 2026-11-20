@@ -234,8 +234,12 @@ class App(object):
                 dashboard.build(self.cfg, self.paths)
             except Exception:
                 self.log.exception("dashboard build failed")
-        formats = reports.parse_formats(formats or self.cfg.get("reports", "reports", "formats", "html,pdf,json"))
-        document, outdir, files, notes = reports.generate_fleet(runs, self.cfg, self.paths, formats, report_type, errors)
+        if (formats or "").strip().lower() == "none":        # collect only (the scheduled central collection): no report files
+            formats = []
+            document, outdir, files, notes = docmod.build_fleet(runs, self.cfg, report_type, errors), "", [], []
+        else:
+            formats = reports.parse_formats(formats or self.cfg.get("reports", "reports", "formats", "html,pdf,json"))
+            document, outdir, files, notes = reports.generate_fleet(runs, self.cfg, self.paths, formats, report_type, errors)
         mail = None
         if email:
             class _R(object):

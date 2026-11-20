@@ -1,10 +1,13 @@
 %global debug_package %{nil}
+# gzip payload, so the package installs on Oracle Linux 7 (rpm 4.11) as well as 8, 9 and 10
+%global _binary_payload w9.gzdio
+%global _source_payload w9.gzdio
 %global __os_install_post %{nil}
 %global _python_bytecompile_errors_terminate_build 0
 
 Name:           lrs-vitals
 Version:        1.4.0
-Release:        1%{?dist}
+Release:        2
 Summary:        LRS Vitals - Linux server health monitor
 License:        Proprietary
 URL:            https://github.com/rohittrimukhe/linux-server-health-monitor
@@ -134,6 +137,9 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 %changelog
+* Sat Nov 21 2026 LRS Services <support@lrsservices.example> - 1.4.0-2
+- gzip payload so the same package installs on Oracle Linux 7 to 10; fleet collection schedule
+
 * Fri Nov 20 2026 LRS Services <support@lrsservices.example> - 1.4.0-1
 - Daily, weekly and monthly reports, alert rules, Servers page, Linux sign-in, customer portal, tool self-check (see CHANGELOG.md)
 

@@ -187,6 +187,32 @@ class ScanJob(object):
         return "server scan every %s at %s" % (WEEKDAYS[self.weekday][1], self.time)
 
 
+class FleetJob(object):
+    """Central monitoring: ask every server in servers.conf for its health every few minutes, without writing report files,
+    so the Servers page of the web dashboard stays fresh. Off until [main] [fleet] enabled = yes."""
+    name = "fleet"
+    label = "fleet collection"
+    frequency = "minutes"
+
+    def __init__(self, cfg):
+        self.enabled = as_bool(cfg.get("main", "fleet", "enabled", "no"), False)
+        self.minutes = str(cfg.get("main", "fleet", "minutes", "10"))
+
+    def validate(self):
+        if not (self.minutes.isdigit() and 1 <= int(self.minutes) <= 59):
+            return ["fleet minutes must be 1-59"]
+        return []
+
+    def on_calendar(self):
+        return "*:0/%d" % int(self.minutes)
+
+    def cron(self):
+        return "*/%d * * * *" % int(self.minutes)
+
+    def describe(self):
+        return "ask every server in servers.conf every %s minutes" % self.minutes
+
+
 def schedules(cfg):
     out = []
     for section in cfg.sections("schedule", "schedule:"):
@@ -211,6 +237,8 @@ def backend(cfg, runner):
 def command_line(launcher, global_args, sched, retries):
     if isinstance(sched, ScanJob):
         args = [launcher] + list(global_args) + ["scan", "--apply", "--quiet"]
+    elif isinstance(sched, FleetJob):
+        args = [launcher] + list(global_args) + ["fleet", "run", "--formats", "none"]
     else:
         args = [launcher] + list(global_args) + ["run", "--schedule", sched.name, "--quiet", "--retries", str(retries)]
     return " ".join(shlex.quote(a) for a in args)
@@ -240,7 +268,7 @@ def install(cfg, runner, launcher, global_args, dry_run=False):
     be = backend(cfg, runner)
     retries = cfg.getint("schedule", "scheduler", "retries", 2)
     report = {"backend": be, "installed": [], "removed": [], "errors": [], "files": {}}
-    all_s = schedules(cfg) + [ScanJob(cfg)]  # the weekly server scan is scheduled alongside the reports
+    all_s = schedules(cfg) + [ScanJob(cfg), FleetJob(cfg)]  # the weekly server scan and central collection are scheduled alongside the reports
     for s in all_s:
         for e in s.validate():
             report["errors"].append("%s: %s" % (s.name, e))
