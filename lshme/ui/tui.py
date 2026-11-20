@@ -800,7 +800,7 @@ def page_web(ctx):
         b("Wrong passwords allowed", "max_login_failures", "int", lo=1, hi=100, help="Per address in 5 minutes, then it is locked out for a while."),
         b("Allow plain HTTP on the network", "allow_plain_http", "bool", help="Not recommended: passwords would travel unencrypted."),
         Heading("HTTPS certificate - this web interface only"),
-        b("Certificate", "tls_source", "choice", choices=["letsencrypt", "self-signed", "custom"], help="letsencrypt = genuine, free, never self-signed (default)."),
+        b("Certificate", "tls_source", "choice", choices=["letsencrypt", "self-signed", "custom"], help="self-signed (default), letsencrypt (needs a public domain), custom."),
         b("Names", "acme_domains", help="Empty = this server's public FQDN, or a list: a.example.com"),
         b("E-mail for expiry notices", "acme_email", help="Let's Encrypt writes here before a certificate expires."),
         b("Check domain by", "acme_challenge", "choice", choices=["http", "dns"], help="http = port 80 open to the internet; dns = works for private servers."),

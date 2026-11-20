@@ -443,12 +443,15 @@ without the logo image.
 | Schedules not running | `healthcheck schedule status`; `systemctl list-timers 'lshme-*'`; `journalctl -u lshme-daily` |
 | Reports too large | Use `report_type = executive`, reduce `formats`, set `max_attachment_mb` |
 
-## 20. Genuine HTTPS certificate for the web interface (Let's Encrypt)
+## 20. HTTPS certificate for the web interface
 
-By default the web interface uses a **genuine, publicly trusted Let's Encrypt certificate and never a self-signed one**
-(`tls_source = letsencrypt`). Until the certificate exists, the HTTPS web interface does not start and `vitals web cert status`
-tells you what is missing. The certificate is used by the web interface only; no other service and no system setting changes.
-A self-signed certificate is possible only if you choose it yourself (`tls_source = self-signed`).
+By default the web interface creates and uses a **self-signed certificate** (`tls_source = self-signed`). The connection is encrypted;
+browsers show a one-time warning because no public authority vouches for it. Nothing needs to be set up.
+
+Optionally (`tls_source = letsencrypt`) it can use a **genuine, free, publicly trusted Let's Encrypt certificate** instead. In that
+mode a self-signed certificate is never used: the HTTPS web interface waits until the real one is issued, and
+`vitals web cert status` shows what is missing. `tls_source = custom` uses your own certificate and key (`cert` and `key`).
+The certificate is used by the web interface only; no other service and no system setting changes.
 
 **What Let's Encrypt needs: a public DNS name.** An IP address, a LAN-only host name such as `oraclelinux9`, and names ending in
 `.local`, `.lan` or `.internal` cannot get a certificate. Then prove you control the name, in one of two ways:

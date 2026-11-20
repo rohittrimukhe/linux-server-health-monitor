@@ -506,8 +506,8 @@ class WebCertificateTests(WebCase):
         from lshme.web import certs
         r = self.call("GET", "/api/cert", user="viewer")
         self.assertEqual(r.status, 200, r.json)
-        self.assertEqual(r.json["status"]["source"], "letsencrypt")           # genuine certificates are the default
-        self.assertTrue(r.json["status"]["problem"])                          # ... and it says why none can be had yet (no public name)
+        self.assertEqual(r.json["status"]["source"], "self-signed")           # the default: a self-signed certificate, Let's Encrypt is optional
+        self.assertFalse(r.json["status"]["enabled"])
         self.assertIsNone(r.json["status"]["certificate"])
         calls = []
         real = certs.issue

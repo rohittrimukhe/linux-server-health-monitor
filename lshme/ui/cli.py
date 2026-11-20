@@ -343,10 +343,10 @@ def web_command(app, args):
                 if name == "status":
                     st = certs.status(app)
                     c = st["certificate"]
-                    C.table(["Item", "Value"], [["Certificate source", {"letsencrypt": "Let's Encrypt (genuine; self-signed is never used)", "self-signed": "self-signed (tls_source = self-signed)", "custom": "your own certificate (tls_source = custom)"}[st["source"]]],
+                    C.table(["Item", "Value"], [["Certificate source", {"letsencrypt": "Let's Encrypt (genuine; self-signed is never used)", "self-signed": "self-signed (the default)", "custom": "your own certificate (tls_source = custom)"}[st["source"]]],
                                                 ["Let's Encrypt", ("on (%s, check by %s)" % (st["directory"], st["challenge"] + (" via " + st["dns_provider"] if st["dns_provider"] else ""))) if st["enabled"] else "off"], ["Names", ", ".join(st["domains"]) or "none found"],
                                                 ["Certificate", ("expires %s (%d days left)" % (time.strftime("%Y-%m-%d", time.localtime(c["expires"])), c["days_left"])) if c else "none yet"],
-                                                ["Used by the web interface", "yes" if c and c["in_use"] else ("no - HTTPS waits for a genuine certificate" if st["source"] == "letsencrypt" else "no")],
+                                                ["Used by the web interface", "yes" if c and c["in_use"] else ("no - HTTPS waits for a genuine certificate" if st["source"] == "letsencrypt" else "no (the web interface uses its own certificate)")],
                                                 ["Last error", st["last_error"] or "-"]])
                     if st["problem"]:
                         C.out(C.c(st["problem"], "yellow"))

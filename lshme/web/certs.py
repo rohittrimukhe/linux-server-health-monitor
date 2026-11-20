@@ -25,8 +25,8 @@ _lock = threading.Lock()
 def settings(cfg):
     g = lambda k, d="": (cfg.get("web", "web", k, d) or "").strip()
     directory = g("acme_directory", "production")
-    source = g("tls_source", "letsencrypt").lower()
-    source = source if source in ("letsencrypt", "self-signed", "custom") else "letsencrypt"
+    source = g("tls_source", "self-signed").lower()
+    source = source if source in ("letsencrypt", "self-signed", "custom") else "self-signed"
     return {"source": source, "enabled": as_bool(g("acme", "no"), False) or source == "letsencrypt", "dns_provider": g("acme_dns_provider").lower(), "dns_api": g("acme_dns_api"),
             "domains": [d.lower() for d in as_list(g("acme_domains"))], "email": g("acme_email"),
             "directory": {"production": acme.PRODUCTION, "staging": acme.STAGING}.get(directory.lower(), directory), "directory_name": directory,

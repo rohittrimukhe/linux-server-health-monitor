@@ -70,8 +70,8 @@ class WebCliTests(unittest.TestCase):
     def test_certificate_status_explains_a_private_name(self):
         code, out = self.run_cli("cert", "status")
         self.assertEqual(code, 0, out)
-        self.assertIn("genuine", out)
-        self.assertIn("No public name", out)
+        self.assertIn("self-signed", out)
+        self.home.cfg.set("web", "web", "tls_source", "letsencrypt")
         self.home.cfg.set("web", "web", "acme_domains", "")
         self.home.cfg.save("web")
         code, out = self.run_cli("cert", "issue")

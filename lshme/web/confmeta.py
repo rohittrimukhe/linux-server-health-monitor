@@ -98,7 +98,7 @@ HELP = {
     "tls": "Encrypt with HTTPS (a self-signed certificate is created if none is given).", "cert": "TLS certificate file (PEM).", "key": "TLS private key file (PEM).",
     "session_minutes": "Minutes of inactivity before signing out.", "max_login_failures": "Wrong passwords allowed per address in 5 minutes.",
     "allow_plain_http": "Allow HTTP (no encryption) on a network address. Not recommended.", "code": "Finding code, wildcards allowed.", "reason": "Why this is accepted.",
-    "until": "Expiry date YYYY-MM-DD.", "target_percent": "Availability target used by the SLA report.", "tls_source": "Certificate for HTTPS: letsencrypt (genuine, the default; never self-signed), self-signed, or custom (your own cert and key).",
+    "until": "Expiry date YYYY-MM-DD.", "target_percent": "Availability target used by the SLA report.", "tls_source": "Certificate for HTTPS: self-signed (the default, created automatically), letsencrypt (genuine, free; needs a public domain name), or custom (your own cert and key).",
     "acme_dns_provider": "For the DNS check: cloudflare or duckdns (token in credentials.conf, section [acme]) or hook (your own script).",
     "acme": "Get a free Let's Encrypt certificate for the web interface (needs a public name and port 80).", "acme_domains": "Names for the certificate. Empty = this server's FQDN.",
     "acme_email": "Where Let's Encrypt sends expiry notices.", "acme_directory": "production, staging (for testing) or a full ACME directory URL.",
