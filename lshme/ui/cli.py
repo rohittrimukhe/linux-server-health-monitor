@@ -118,7 +118,10 @@ def build_parser():
     a.add_argument("--modules")
 
     sub.add_parser("modules", help="list monitoring modules")
-    sub.add_parser("setup", help="interactive configuration wizard")
+    sp = sub.add_parser("setup", help="configuration: full-screen forms (like nmtui), or plain prompts with --text")
+    sp.add_argument("--text", action="store_true", help="use plain text prompts instead of the full-screen forms")
+    sp.add_argument("--page", help="open one screen directly (identity, modules, thresholds, services, databases, reports, "
+                                   "smtp, schedules, retention, watch, backups, fleet, policy, tools, validate, backup)")
     sub.add_parser("menu", help="interactive DOS-style menu")
     sub.add_parser("doctor", help="self-diagnostics: dependencies, permissions, config")
     sub.add_parser("version")
@@ -258,6 +261,12 @@ def dispatch(app, cmd, args):
         Menu(app).loop()
     elif cmd == "setup":
         from lshme.ui.wizard import Wizard
+        if not args.text:
+            from lshme.ui import tui
+            ran, why = tui.run(app, args.page)
+            if ran:
+                return 0
+            C.out(C.c("Full-screen forms are not available here (%s); using plain prompts." % why, "yellow"))
         Wizard(app).run()
     elif cmd == "modules":
         C.table(["Module", "Title", "Weight"], [[m.NAME, m.TITLE, m.WEIGHT] for m in modreg.all_modules()])

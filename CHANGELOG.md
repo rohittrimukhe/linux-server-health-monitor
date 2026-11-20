@@ -2,6 +2,14 @@
 
 ## 1.2.0
 
+- **Full-screen configuration forms** (`healthcheck setup`, menu option 17), in the style of `nmtui`.
+  - Move with the arrow keys, Enter to edit, Space to switch yes/no, F10 to save, Esc to go back.
+  - Covers identity, modules, thresholds, services/ports/processes, databases, reports, email (with a test-email button), schedules (with an install button), retention, real-time monitoring and alerts (status, run once, install, remove), backup jobs, fleet servers, security/network/certificate policy, and validate/back up/restore tools.
+  - Every value is validated before it is written; saves keep file comments, use mode 600, back up the configuration first and are audit-logged. Passwords go to `credentials.conf` only.
+  - Uses the Python standard `curses` module (no new dependency). `healthcheck setup --text` keeps the plain prompts, and they are also the fallback when there is no terminal; `--page NAME` opens one screen.
+- **Installer fixes.**
+  - `install.sh` now resets the SELinux labels of the installed program (`restorecon`). Files copied from a home directory kept the `admin_home_t` label, which systemd may not execute, so the real-time watcher failed to start (`203/EXEC`) on hosts with SELinux enforcing.
+  - `install.sh` restarts a running real-time watcher that belongs to the installation, so it runs the new code and unit.
 - **Real-time monitoring** (`healthcheck watch`).
   - Probes every minute read `/proc` and `statvfs` directly; heavier modules run one at a time in rotation.
   - Alerts go out by email, syslog and webhook, with confirmation (no flapping), escalation, reminders and recovery messages.

@@ -120,6 +120,11 @@ find "$PREFIX/lshme" -name '__pycache__' -prune -exec rm -rf {} +
 chmod 755 "$PREFIX" "$PREFIX/healthcheck" "$PREFIX/install.sh" "$PREFIX/uninstall.sh"
 chown -R root:root "$PREFIX"
 chmod -R go-w "$PREFIX"
+# cp -a keeps the SELinux label of the source (admin_home_t under /root), which systemd
+# may not execute. Reset the installed tree to the policy default for its location.
+if command -v restorecon >/dev/null 2>&1; then
+  restorecon -R "$PREFIX" 2>/dev/null || warn "could not reset SELinux labels on $PREFIX: run 'restorecon -R $PREFIX'"
+fi
 
 # config: copy templates only where no file exists yet
 NEWCONF=0
@@ -144,6 +149,14 @@ if [ $UPGRADE -eq 1 ]; then
   if grep -qs -- "--config-dir $CONFIG " /etc/cron.d/lshme /etc/systemd/system/lshme-*.service; then
     if "$BIN" --config-dir "$CONFIG" schedule install >/dev/null; then ok "schedules refreshed"; else warn "schedule refresh failed: run 'healthcheck schedule install'"; fi
   fi
+fi
+
+# A running real-time watcher keeps the old code in memory (and may still run an old unit):
+# restart it, but only when it belongs to this installation.
+if grep -qs -- "--config-dir $CONFIG " /etc/systemd/system/lshme-watch.service \
+   && systemctl is-active --quiet lshme-watch.service 2>/dev/null; then
+  systemctl daemon-reload 2>/dev/null || true
+  if systemctl restart lshme-watch.service 2>/dev/null; then ok "real-time watcher restarted"; else warn "could not restart lshme-watch: run 'systemctl restart lshme-watch'"; fi
 fi
 
 # Cockpit page (static files only) when Cockpit is present
