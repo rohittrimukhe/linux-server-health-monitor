@@ -15,7 +15,7 @@ and monthly reports by email with the same settings.
 
 ## 0. Before you start
 
-- Root access on all four servers, and the package `lrs-vitals-1.4.0-2.noarch.rpm` (from `releases/` on GitHub).
+- Root access on all four servers, and the package `lrs-vitals-1.4.0-3.noarch.rpm` (from `releases/` on GitHub).
 - The package is a plain gzip RPM that also installs on Oracle Linux 7 (needs `python3` 3.6 or newer and `openssl`; `yum` installs them).
 - Servers reach the mail server, and KVM1 can reach the other three on SSH (port 22).
 - Oracle servers: you know the Oracle owner (usually `oracle`) and `/etc/oratab` lists the instance.
@@ -23,7 +23,7 @@ and monthly reports by email with the same settings.
 ## 1. Set up the central server (KVM1) first
 
 ```bash
-sudo dnf install ./lrs-vitals-1.4.0-2.noarch.rpm
+sudo dnf install ./lrs-vitals-1.4.0-3.noarch.rpm
 sudo vitals
 ```
 
@@ -52,7 +52,7 @@ sudo ssh-copy-id root@db2.example.com
 ## 3. Roll out to the other three, same settings
 
 ```bash
-sudo tools/deploy_fleet.sh --rpm lrs-vitals-1.4.0-2.noarch.rpm --dry-run \
+sudo tools/deploy_fleet.sh --rpm lrs-vitals-1.4.0-3.noarch.rpm --dry-run \
      kvm2.example.com:Production db1.example.com:Production db2.example.com:Production
 ```
 

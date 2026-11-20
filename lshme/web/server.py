@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from lshme import APP_NAME, BRAND_LOGO, VERSION
 from lshme.core.config import backup_config, restore_config
 from lshme.core.lock import LockBusy
-from lshme.ops import discover, reportlist, sysstats
+from lshme.ops import archive, discover, reportlist, sysstats
 from lshme.web import auth, confmeta
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -395,6 +395,37 @@ class WebApp(object):
                 "score": r["score"], "status": r["status"], "critical": r["critical"], "warning": r["warning"], "unknown": r["unknown"]} for r in items]
         return jr({"reports": out, "series": reportlist.score_series(self.app.paths, 365)})
 
+    def api_reports_search(self, req, sess):
+        text = (req.query.get("q") or [""])[0]
+        host = (req.query.get("host") or [""])[0]
+        cat = (req.query.get("category") or [""])[0]
+        if sess.get("group"):
+            allowed = self.group_hosts(sess["group"])
+            if host and host not in allowed:
+                return jr({"results": [], "stats": {}})
+        ix = archive.Index(self.app.paths)
+        try:
+            rows = ix.search(text, 60, host, cat)
+            if sess.get("group"):
+                rows = [r for r in rows if r["rid"].split("/")[0] in allowed]
+            for r in rows:
+                r["when"] = reportlist.iso(r["ts"])
+            return jr({"results": rows, "stats": ix.stats()})
+        finally:
+            ix.close()
+
+    def api_reports_email(self, req, sess):
+        data = req.json()
+        rid = str(data.get("id", ""))
+        if sess.get("group") and rid.split("/")[0] not in self.group_hosts(sess["group"]):
+            raise ValueError("unknown report")
+        d = self.report_dir(rid)
+        to = [x.strip() for x in re.split(r"[,; ]+", str(data.get("to", ""))) if x.strip()]
+        names = data.get("files") or None
+        res = archive.email_report(self.app, d, to or None, names)
+        self.audit("report-email", sess, report=rid, to=",".join(to))
+        return jr(res)
+
     def report_dir(self, rid):
         root = os.path.realpath(self.app.paths.report_dir)
         parts = [p for p in rid.split("/") if p]
@@ -410,8 +441,10 @@ class WebApp(object):
         if sess.get("group") and rid.split("/")[0] not in self.group_hosts(sess["group"]):
             raise ValueError("unknown report")
         d = self.report_dir(rid)
-        files = sorted(f for f in os.listdir(d) if os.path.isfile(os.path.join(d, f)))
-        detail = {"id": rid, "files": [{"name": f, "url": "/reports/%s/%s" % (rid, f), "size": os.path.getsize(os.path.join(d, f))} for f in files]}
+        listing = archive.list_files(d)
+        files = [f[0] for f in listing]
+        detail = {"id": rid, "files": [{"name": n, "url": "/reports/%s/%s" % (rid, n), "size": size, "stored": stored, "compressed": gz}
+                                       for n, stored, size, gz in listing]}
         j = next((f for f in files if f.endswith(".json")), None)
         if j:
             try:
@@ -433,12 +466,13 @@ class WebApp(object):
         name = parts[3]
         if not name or name in (".", "..") or "/" in name or "\\" in name:
             return err("not found", 404)
-        full = os.path.realpath(os.path.join(d, name))
+        if name.endswith(".gz"):                          # old links to the stored name still work
+            name = name[:-3]
+        full = os.path.realpath(archive.real_path(os.path.join(d, name)))
         if os.path.dirname(full) != d or not os.path.isfile(full):
             return err("not found", 404)
         ext = os.path.splitext(name)[1].lower()
-        with open(full, "rb") as f:
-            body = f.read()
+        body = archive.read_bytes(full)                   # compressed reports are shown as they were, no unpacking on disk
         if ext in INLINE_TYPES:
             return Resp(200, body, INLINE_TYPES[ext], {"Content-Security-Policy": REPORT_CSP})
         ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"

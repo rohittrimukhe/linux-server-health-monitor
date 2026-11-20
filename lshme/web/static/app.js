@@ -444,11 +444,40 @@
             body.appendChild(h("h3", { text: "Files" }));
             body.appendChild(h("div", { class: "row" }, d.files.map(function (f) {
                 var viewable = /\.(html|pdf)$/i.test(f.name);
-                return h("a", { class: "btn", href: f.url, target: "_blank", rel: "noopener", text: (viewable ? "Open " : "Download ") + f.name + " (" + size(f.size) + ")" });
+                return h("a", { class: "btn", href: f.url, target: "_blank", rel: "noopener", text: (viewable ? "Open " : "Download ") + f.name + " (" + size(f.size) + (f.compressed ? ", stored " + size(f.stored) + " compressed" : "") + ")" });
             })));
+            if (S.me.role === "admin") {
+                var to = h("input", { type: "text", placeholder: "recipients (empty = the configured ones)", style: "min-width:280px" });
+                var kinds = h("input", { type: "text", placeholder: "files, e.g. pdf,html (empty = usual formats)", style: "min-width:220px" });
+                body.appendChild(h("h3", { text: "Send this report by email" }));
+                body.appendChild(h("div", { class: "row" }, to, kinds, h("button", { class: "primary", text: "Send", onclick: function () {
+                    var files = kinds.value.split(/[ ,;]+/).filter(function (x) { return x; });
+                    api("POST", "/api/reports/email", { id: id, to: to.value, files: files }).then(function (r) {
+                        if (r.ok) toast("Sent " + r.attached.join(", ") + " to " + r.recipients.join(", "), "good");
+                        else toast("Not sent: " + r.error, "bad");
+                    }).catch(fail);
+                } })));
+            }
         }).catch(function (e) { clear(body); body.appendChild(h("p", { class: "err", text: e.message })); });
     }
     function drawReports(box) {
+        var found = h("div");
+        var q = h("input", { type: "search", placeholder: "words to find in every stored report, e.g. tablespace USERS", style: "min-width:320px;flex:1" });
+        function search() {
+            if (!q.value.trim()) { clear(found); return; }
+            api("GET", "/api/reports/search?q=" + encodeURIComponent(q.value)).then(function (d) {
+                clear(found);
+                if (!d.results.length) { found.appendChild(h("p", { class: "muted", text: "Nothing found." })); return; }
+                found.appendChild(table(["When", "Report", "File", "Where it appears", ""], d.results.map(function (r) {
+                    return [r.when.slice(0, 16), r.rid, r.name, r.snippet, h("div", { class: "row" },
+                        h("button", { class: "small", text: "Summary", onclick: function () { showReport(r.rid); } }),
+                        h("a", { class: "btn small", href: "/reports/" + r.rid + "/" + r.name, target: "_blank", rel: "noopener", text: "Open" }))];
+                })));
+            }).catch(fail);
+        }
+        q.addEventListener("keydown", function (e) { if (e.key === "Enter") search(); });
+        box.appendChild(card("Search stored reports", h("span", { class: "muted", text: "older reports are kept compressed and are searched and opened as they are" }),
+            h("div", { class: "row" }, q, h("button", { class: "primary", text: "Search", onclick: search })), found));
         var wrap = h("div", { class: "stack" });
         box.appendChild(wrap);
         function load() {

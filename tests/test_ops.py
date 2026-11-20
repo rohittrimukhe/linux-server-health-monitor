@@ -190,7 +190,8 @@ class RetentionTest(unittest.TestCase):
         self.assertTrue(os.path.exists(old1))       # plan is a dry run
         retention.apply(home.cfg, home.paths, acts)
         self.assertFalse(os.path.exists(old1))
-        self.assertTrue(os.path.exists(mid + ".tar.gz") and not os.path.exists(mid))
+        self.assertTrue(os.path.exists(os.path.join(mid, "r.html.gz")) and not os.path.exists(os.path.join(mid, "r.html")))
+        self.assertEqual(retention.plan(home.cfg, home.paths) and [a for a in retention.plan(home.cfg, home.paths) if a["path"] == mid], [])
         self.assertTrue(os.path.exists(new) and os.path.exists(lonely))
         with open(os.path.join(home.paths.log_dir, "email.log")) as f:
             self.assertEqual(len(f.readlines()), 1)

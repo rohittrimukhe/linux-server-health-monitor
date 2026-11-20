@@ -633,7 +633,7 @@ def page_retention(ctx):
         days("Audit logs", "audit_logs_days", "Who changed what."), days("Email delivery log", "email_log_days", "Record of emails sent."),
         days("Historical metrics", "history_days", "Scores and trend data used for forecasts."),
         b("Config backups to keep", "config_backups_keep", lo=1, hi=1000, help="Copies of the settings taken before each change."),
-        b("Compress after (days)", "compress_after_days", lo=0, hi=36500, help="Zip older reports; 0 never compresses."),
+        b("Compress after (days)", "compress_after_days", lo=0, hi=36500, help="gzip older reports; 0 = never."),
         Heading("Free space"),
         b("Space-based cleanup", "space_cleanup", "bool", help="Also delete the oldest reports when space runs low."),
         b("Start below free (%)", "min_free_percent", lo=0, hi=100, help="Cleanup begins when free space on the report disk drops below this."),

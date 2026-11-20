@@ -7,7 +7,7 @@
 
 Name:           lrs-vitals
 Version:        1.4.0
-Release:        2
+Release:        3
 Summary:        LRS Vitals - Linux server health monitor
 License:        Proprietary
 URL:            https://github.com/rohittrimukhe/linux-server-health-monitor
@@ -137,6 +137,9 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 %changelog
+* Sat Nov 21 2026 LRS Services <support@lrsservices.example> - 1.4.0-3
+- compressed, indexed report archive (vitals archive ...), web search and e-mail of stored reports
+
 * Sat Nov 21 2026 LRS Services <support@lrsservices.example> - 1.4.0-2
 - gzip payload so the same package installs on Oracle Linux 7 to 10; fleet collection schedule
 

@@ -148,7 +148,7 @@ def retention_view(cfg, paths, now=None):
              {"name": "Audit log (who changed what)", "keep": "%d days" % g("audit_logs_days", 365)}, {"name": "E-mail log", "keep": "%d days" % g("email_log_days", 90)},
              {"name": "History database (trends, growth)", "keep": "%d days" % g("history_days", 365)},
              {"name": "Configuration backups", "keep": "the newest %d" % g("config_backups_keep", 30)},
-             {"name": "Compression", "keep": "reports older than %d days are compressed" % g("compress_after_days", 7)},
+             {"name": "Compression", "keep": "reports older than %d days are gzip-compressed file by file" % g("compress_after_days", 1)},
              {"name": "Newest report of each type", "keep": "always kept" if cfg.getbool("retention", "retention", "keep_latest", True) else "not protected"}]
     space = {"cleanup": cfg.getbool("retention", "retention", "space_cleanup", True), "min_free_percent": g("min_free_percent", 10), "free_target_percent": g("free_target_percent", 15),
              "max_report_dir_gb": g("max_report_dir_gb", 0), "auto_apply": cfg.getbool("retention", "retention", "auto_apply", True)}

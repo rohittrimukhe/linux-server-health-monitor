@@ -184,8 +184,35 @@ does it. Scheduled runs apply it automatically.
 **Age rules.** Report folders older than their category limit (`daily_days`,
 `weekly_days`, `monthly_days`, `adhoc_days`, ...) are deleted, or moved to
 `archive_dir` if one is set. Older folders are compressed after
-`compress_after_days`. Execution and error logs, email and audit logs, history
+`compress_after_days` (see below). Execution and error logs, email and audit logs, history
 and configuration backups are trimmed as well.
+
+**Compressed report archive.** Reports older than `compress_after_days` (default 1;
+0 = never) are gzip-compressed file by file, the same way Linux rotates its logs:
+`report.html` becomes `report.html.gz`, the folder keeps its name and its age. The
+newest report of each type is never compressed. Excel files are already compressed
+and stay as they are. Text reports usually shrink to a tenth of their size.
+
+Nothing has to be unpacked to use them:
+
+| What | How |
+|---|---|
+| Standard Linux tools | `zcat`, `zless`, `zgrep`, `zcat file.gz \| tail` work directly on the `.gz` files |
+| List stored reports, size saved | `vitals archive list`, `vitals archive stats` |
+| Files of one report | `vitals archive files latest:daily` |
+| Print / tail a report | `vitals archive cat 20261110 txt`, `vitals archive tail latest:weekly txt -n 40` |
+| Search lines (like zgrep) | `vitals archive grep "tablespace.*9[0-9]%" --category daily` |
+| Indexed word search | `vitals archive search tablespace USERS` |
+| Email a stored report | `vitals archive email 20261110 pdf,html --to dba@example.com` |
+| Compress now / rebuild the index | `vitals archive compress [--days N]`, `vitals archive reindex` |
+
+A report is named by `host/category/stamp`, `latest`, `latest:daily`, or any part of
+the stamp that is unique (`20261110`). The web dashboard opens and downloads compressed
+reports as normal files, has a **Search stored reports** box on the Reports page, and
+administrators can send any stored report by email from its summary. Every report file
+and its text are kept in an index (`data/reports_index.sqlite3`, full-text search when
+SQLite supports it) that is updated after every run and every cleanup. Older installations
+that compressed whole folders into `<stamp>.tar.gz` are converted automatically.
 
 **Space rules.** These delete reports early when space matters:
 

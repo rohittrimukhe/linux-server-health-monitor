@@ -18,6 +18,7 @@ import time
 from email.message import EmailMessage
 
 from lshme.core.config import as_list
+from lshme.ops import archive
 
 MIME = {"pdf": "application/pdf", "html": "text/html", "json": "application/json", "csv": "text/csv", "txt": "text/plain",
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -102,19 +103,19 @@ def build_message(ms, subject, text, html_body, attachments, status="HEALTHY", t
     budget = ms.max_mb * 1024 * 1024
     used = 0
     for path in attachments:
-        ext = path.rsplit(".", 1)[-1].lower()
+        shown = archive.display_name(os.path.basename(path))      # a stored name.gz goes out as the original name
+        ext = shown.rsplit(".", 1)[-1].lower()
         if ms.attach_formats and ext not in ms.attach_formats and "all" not in ms.attach_formats:
             continue
-        size = os.path.getsize(path)
+        size = archive.original_size(path)
         if used + size > budget:
-            skipped.append("%s (%.1f MB exceeds the %.0f MB limit)" % (os.path.basename(path), size / 1048576.0, ms.max_mb))
+            skipped.append("%s (%.1f MB exceeds the %.0f MB limit)" % (shown, size / 1048576.0, ms.max_mb))
             continue
-        ctype = MIME.get(ext) or mimetypes.guess_type(path)[0] or "application/octet-stream"
+        ctype = MIME.get(ext) or mimetypes.guess_type(shown)[0] or "application/octet-stream"
         maintype, subtype = ctype.split("/", 1)
-        with open(path, "rb") as f:
-            msg.add_attachment(f.read(), maintype=maintype, subtype=subtype, filename=os.path.basename(path))
+        msg.add_attachment(archive.read_bytes(path), maintype=maintype, subtype=subtype, filename=shown)
         used += size
-        attached.append(os.path.basename(path))
+        attached.append(shown)
     recipients = to + cc + list(ms.bcc)
     return msg, recipients, attached, skipped
 

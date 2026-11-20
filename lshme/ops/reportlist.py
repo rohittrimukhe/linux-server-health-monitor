@@ -11,6 +11,7 @@ import textwrap
 import time
 
 from lshme.core.model import SEV_RANK, RunResult, iso
+from lshme.ops import archive
 
 STAMP = re.compile(r"^(\d{8})_(\d{6})")
 _cache = {}
@@ -29,14 +30,15 @@ def _summary(path):
     if hit and hit[0] == mtime:
         return hit[1]
     try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
+        data = json.loads(archive.read_text(path))
         h = data.get("health", {}) if isinstance(data, dict) else {}
-        counts = h.get("counts", {})
+        if not h and isinstance(data, dict) and "score" in data:     # daily / weekly / monthly reports keep these at the top
+            h = {"score": data.get("score"), "status": data.get("status", ""), "counts": data.get("counts") or {}}
+        counts = h.get("counts", {}) or {}
         info = {"score": h.get("score"), "status": h.get("status", ""), "critical": counts.get("CRITICAL", 0),
                 "warning": counts.get("WARNING", 0), "unknown": counts.get("UNKNOWN", 0),
                 "modules": len(data.get("modules", [])) if isinstance(data, dict) else 0}
-    except (OSError, ValueError):
+    except (OSError, ValueError, EOFError):
         info = dict(EMPTY)
     _cache[path] = (mtime, info)
     return info
@@ -65,8 +67,8 @@ def list_reports(paths, limit=300):
                     ts = time.mktime(time.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")) if m else os.path.getmtime(d)
                 except (ValueError, OverflowError, OSError):
                     ts = 0
-                files = sorted(f for f in os.listdir(d) if os.path.isfile(os.path.join(d, f)))
-                jpath = next((os.path.join(d, f) for f in files if f.endswith(".json")), "")
+                files = [f[0] for f in archive.list_files(d)]          # original names, whether stored plain or as name.gz
+                jpath = next((archive.real_path(os.path.join(d, f)) for f in files if f.endswith(".json")), "")
                 entry = {"ts": ts, "when": iso(ts) if ts else "?", "host": host, "category": cat, "dir": d, "files": files, "json": jpath}
                 entry.update(_summary(jpath) if jpath else EMPTY)
                 out.append(entry)
@@ -75,8 +77,7 @@ def list_reports(paths, limit=300):
 
 
 def load_run(json_path):
-    with open(json_path, encoding="utf-8") as f:
-        return RunResult.from_dict(json.load(f))
+    return RunResult.from_dict(json.loads(archive.read_text(json_path)))
 
 
 def latest_summary(paths):

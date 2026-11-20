@@ -14,6 +14,7 @@
 - **Customer document pack** in `docs/customer`: one-page install guide, "what we monitor" sheet and sample reports (`tools/demo_reports.py` regenerates them).
 - **HTTPS certificate for the web interface:** self-signed by default (`tls_source = self-signed`). Optional genuine Let's Encrypt certificate (`tls_source = letsencrypt`, never a self-signed fallback in that mode): ACME client with the HTTP check (port 80 or webroot) or the DNS check (Cloudflare, DuckDNS or a hook script; works for servers on private addresses), automatic renewal with live reload, `vitals web cert status|issue|renew`, an Operations card.
 - **Licence:** strict proprietary licence, no use by anyone except the owner.
+- **Compressed, indexed report archive:** reports older than a day are gzip-compressed file by file (`name.html.gz`, readable with `zcat`, `zless`, `zgrep`), shown, downloaded, searched and e-mailed without unpacking (`vitals archive list|files|cat|tail|grep|search|email|compress|reindex|stats`, web search box and "send by email"). Full-text index of every stored report. Old folder tarballs are converted.
 
 ## 1.3.0
 

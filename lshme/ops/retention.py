@@ -14,12 +14,12 @@ newer than space_min_keep_days, and never the newest report per host/category.""
 import json
 import os
 import shutil
-import tarfile
 import time
 
 from lshme.core import logs
 from lshme.core.config import as_bool
 from lshme.core.util import fmt_bytes
+from lshme.ops import archive
 
 CATEGORY_KEYS = {"daily": "daily_days", "weekly": "weekly_days", "monthly": "monthly_days", "adhoc": "adhoc_days",
                  "fleet": "fleet_days"}
@@ -63,7 +63,7 @@ def plan(cfg, paths, now=None, usage=None):
     r = cfg.section("retention", "retention")
     num = lambda k, d: float(r.get(k) or d)
     keep_latest = as_bool(r.get("keep_latest", "yes"), True)
-    compress_after = num("compress_after_days", 7)
+    compress_after = num("compress_after_days", 1)
     archive_dir = r.get("archive_dir", "")
     actions = []
     candidates = []  # report items eligible for space cleanup
@@ -90,9 +90,9 @@ def plan(cfg, paths, now=None, usage=None):
                         actions.append({"action": "archive" if archive_dir else "delete", "path": p, "age_days": round(age, 1),
                                         "bytes": size, "reason": "%s report older than %g days" % (cat, days)})
                         continue
-                    if os.path.isdir(p) and compress_after and age > compress_after:
+                    if compress_after and age > compress_after and ((os.path.isdir(p) and archive.needs_compress(p)) or p.endswith(".tar.gz")):
                         actions.append({"action": "compress", "path": p, "age_days": round(age, 1), "bytes": size,
-                                        "reason": "older than %g days" % compress_after})
+                                        "reason": "older than %g days: each file is gzip-compressed in place (readable with zcat/zless)" % compress_after})
                     candidates.append({"path": p, "category": cat, "age_days": age, "bytes": size})
     if os.path.isdir(paths.log_dir):
         for f in sorted(os.listdir(paths.log_dir)):
@@ -248,12 +248,12 @@ def apply(cfg, paths, actions, now=None):
                 shutil.move(p, dest)
                 a["destination"] = dest
             elif a["action"] == "compress":
-                tgz = p.rstrip("/") + ".tar.gz"
-                with tarfile.open(tgz, "w:gz") as tar:
-                    tar.add(p, arcname=os.path.basename(p))
-                os.utime(tgz, (os.path.getmtime(p), os.path.getmtime(p)))
-                shutil.rmtree(p)
-                a["destination"] = tgz
+                if p.endswith(".tar.gz") and os.path.isfile(p):
+                    a["destination"] = archive.convert_tarball(p)
+                else:
+                    n, saved = archive.compress_dir(p)
+                    a["files"], a["saved"] = n, saved
+                    a["destination"] = p
             elif a["action"] == "trim":
                 a["removed_entries"] = _trim_jsonl(p, a["days"], now)
             elif a["action"] in ("skip", "space-warning"):
@@ -276,4 +276,6 @@ def apply(cfg, paths, actions, now=None):
                        bytes=a.get("bytes"), result=a["result"], destination=a.get("destination", ""),
                        reason=a.get("reason", ""))
         done.append(a)
+    if any(a["action"] in ("delete", "archive", "compress") and a.get("result") == "ok" and a["path"].startswith(paths.report_dir) for a in done):
+        archive.refresh(paths, full=True)
     return done

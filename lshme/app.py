@@ -13,7 +13,7 @@ from lshme.core.runner import Runner
 from lshme.delivery import mailer
 from lshme.engine import pipeline
 from lshme.engine.history import History
-from lshme.ops import exporters, fleet, retention, scheduler
+from lshme.ops import archive, exporters, fleet, retention, scheduler
 from lshme.reports import doc as docmod
 from lshme.reports import html as htmlrep
 
@@ -103,6 +103,7 @@ class App(object):
                         result["notes"].append("space cleanup removed %s (%s)" % (a["path"], a["reason"]))
                     elif a["action"] == "space-warning":
                         result["notes"].append(a["reason"])
+                archive.refresh(self.paths, outdir)
                 if getattr(run, "run_id", None):
                     h = History(self.paths.history_db)
                     h.set_report_dir(run.run_id, outdir)

@@ -47,7 +47,7 @@ whole fleet of servers from one central host.
 **LRS Vitals** installs as an RPM and is run with one command, `vitals` (the older names `systemhealth` and `healthcheck` still work):
 
 ```bash
-sudo dnf install ./lrs-vitals-1.4.0-2.noarch.rpm   # shows a getting-started guide
+sudo dnf install ./lrs-vitals-1.4.0-3.noarch.rpm   # shows a getting-started guide
 sudo vitals                    # first time: scans the server, then a few setup pages, one at a time
 vitals                         # afterwards: live graphs, reports, settings (full-screen, like nmtui)
 vitals run                     # a complete health check now

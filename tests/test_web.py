@@ -323,6 +323,29 @@ class ReportTests(WebCase):
         xlsx = self.call("GET", urls["h1_x.xlsx"], user="viewer")
         self.assertIn("attachment", xlsx.headers["Content-Disposition"])
 
+    def test_compressed_reports_are_shown_searched_and_mailed(self):
+        from lshme.ops import archive
+        rid = self.write_report()
+        d = os.path.join(self.app.paths.report_dir, rid)
+        archive.compress_dir(d)
+        self.assertTrue(os.path.exists(os.path.join(d, "h1_x.html.gz")))
+        detail = self.call("GET", "/api/report", user="viewer", query={"id": [rid]}).json
+        self.assertEqual(detail["health"]["status"], "CRITICAL")              # JSON read from h1_x.json.gz
+        files = dict((f["name"], f) for f in detail["files"])
+        self.assertTrue(files["h1_x.html"]["compressed"])
+        for url in (files["h1_x.html"]["url"], files["h1_x.html"]["url"] + ".gz"):
+            html = self.call("GET", url, user="viewer")
+            self.assertEqual((html.status, html.ctype), (200, "text/html; charset=utf-8"))
+            self.assertIn(b"<", html.body[:20])                               # sent unpacked
+        self.assertFalse(any(f.endswith(".gz") for f in self.call("GET", "/api/reports", user="viewer").json["reports"][0]["files"]))
+        archive.refresh(self.app.paths, full=True)
+        found = self.call("GET", "/api/reports/search", user="viewer", query={"q": ["Storage"]}).json
+        self.assertTrue(found["results"] and found["results"][0]["rid"] == rid)
+        self.assertEqual(self.call("POST", "/api/reports/email", user="viewer", body={"id": rid}).status, 403)
+        r = self.call("POST", "/api/reports/email", user="admin", body={"id": rid}).json
+        self.assertFalse(r["ok"])                                               # no SMTP configured: a clear message, no crash
+        self.assertIn("SMTP", r["error"])
+
     def test_nothing_outside_the_report_folder_is_served(self):
         self.write_report()
         outside = os.path.join(self.home.dir, "secret.txt")
