@@ -212,6 +212,15 @@ class WebApp(object):
     def api_alerts(self, req, sess):
         from lshme.core.config import as_bool
         from lshme.ops import watch as W
+        if req.method == "POST":                                 # acknowledge a problem: its reminders stop until it gets worse or ends
+            data = req.json()
+            if data.get("action") != "ack":
+                raise ValueError("unknown action")
+            key = str(data.get("key", ""))[:300]
+            W.acknowledge(self.app.paths, key, sess["user"])
+            self.audit("web-alert-ack", sess, key=key)
+            return jr({"ok": True})
+        acks = W.load_acks(self.app.paths)
         d, cfg = self.app.paths.data_dir, self.app.cfg
         events, active = [], []
         try:
@@ -233,12 +242,14 @@ class WebApp(object):
             problems = {}
         for key, p in problems.items():
             e = last.get(key) or {}
-            active.append({"severity": p.get("severity"), "component": e.get("component") or key, "message": e.get("message") or key,
-                           "since": p.get("since"), "count": p.get("count"), "alerted": p.get("alerted")})
+            active.append({"key": key, "severity": p.get("severity"), "component": e.get("component") or key, "message": e.get("message") or key,
+                           "since": p.get("since"), "count": p.get("count"), "alerted": p.get("alerted"), "ack": acks.get(key)})
         active.sort(key=lambda a: (0 if a["severity"] == "CRITICAL" else 1, -(a["since"] or 0)))
         s = lambda k: W.setting(cfg, k)
         channels = {"email": as_bool(s("alert_email"), True), "to": s("alert_to"), "syslog": as_bool(s("syslog"), True), "webhook": bool(s("webhook_url")),
-                    "min_severity": s("alert_min_severity"), "confirm": s("confirm"), "interval": s("interval")}
+                    "min_severity": s("alert_min_severity"), "confirm": s("confirm"), "interval": s("interval"),
+                    "slack": bool(s("slack_webhook_url")), "teams": bool(s("teams_webhook_url")), "quiet_hours": s("quiet_hours"),
+                    "min_minutes": s("min_minutes"), "digest": as_bool(s("alert_digest"), True) and s("alert_digest_time")}
         return jr({"active": active, "events": list(reversed(events))[:40], "channels": channels})
 
     def fleet_view(self):

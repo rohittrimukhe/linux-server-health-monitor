@@ -333,10 +333,16 @@
             if (ch.email) how.push("email" + (ch.to ? " to " + ch.to : ""));
             if (ch.syslog) how.push("syslog");
             if (ch.webhook) how.push("webhook");
-            var info = h("span", { class: "muted", text: how.length ? "Sent by " + how.join(", ") + " - from " + ch.min_severity + " up, after " + ch.confirm + " bad checks in a row" : "No alert channel is switched on (Settings > main > watch)" });
+            if (ch.slack) how.push("Slack");
+            if (ch.teams) how.push("Teams");
+            var info = h("span", { class: "muted", text: how.length ? "Sent by " + how.join(", ") + " - from " + ch.min_severity + " up, after " + ch.confirm + " bad checks in a row" + (ch.quiet_hours ? " - quiet hours " + ch.quiet_hours : "") + (ch.digest ? " - daily digest at " + ch.digest : "") : "No alert channel is switched on (Settings > main > watch)" });
             var body = h("div", { class: "stack" });
-            body.appendChild(d.active.length ? table(["Level", "Problem", "Since", "Checks", "Alert"], d.active.map(function (a) {
-                return [badge(a.severity), h("div", null, h("b", { text: a.component }), h("div", { class: "muted", text: a.message })), ago(a.since), a.count, a.alerted ? "sent" : "waiting"];
+            body.appendChild(d.active.length ? table(["Level", "Problem", "Since", "Checks", "Alert", ""], d.active.map(function (a) {
+                return [badge(a.severity), h("div", null, h("b", { text: a.component }), h("div", { class: "muted", text: a.message })), ago(a.since), a.count, a.alerted ? "sent" : "waiting",
+                    a.ack ? h("span", { class: "muted", text: "acknowledged by " + a.ack.by + " " + ago(a.ack.at) })
+                        : (S.me.role === "admin" ? h("button", { class: "small", text: "Acknowledge", onclick: function () {
+                            api("POST", "/api/alerts", { action: "ack", key: a.key }).then(function () { toast("Acknowledged: reminders stop until it gets worse or ends", "good"); load(); }).catch(fail);
+                        } }) : "")];
             }), [3]) : h("p", { class: "muted", text: "No active problems. CPU, memory, disks, services and ports are within their limits." }));
             if (d.events.length) {
                 body.appendChild(h("h3", { text: "Recent alerts and recoveries" }));

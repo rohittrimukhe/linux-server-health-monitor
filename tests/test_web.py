@@ -413,6 +413,11 @@ class AlertsAndFleetTests(WebCase):
         self.assertEqual(r.json["active"][0]["message"], "CPU utilisation 97%")
         self.assertEqual(r.json["events"][0]["event"], "open")
         self.assertIn("syslog", r.json["channels"])
+        key = r.json["active"][0]["key"]
+        self.assertEqual(self.call("POST", "/api/alerts", {"action": "ack", "key": key}, user="viewer").status, 403)
+        self.assertEqual(self.call("POST", "/api/alerts", {"action": "ack", "key": key}, user="admin").status, 200)
+        r = self.call("GET", "/api/alerts", user="admin")
+        self.assertEqual(r.json["active"][0]["ack"]["by"], "admin")
 
     def test_fleet_lists_servers_and_refuses_to_run_without_any(self):
         from lshme.ops import dashboard
