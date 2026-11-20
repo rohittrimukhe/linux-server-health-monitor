@@ -209,6 +209,14 @@ class TopUsersTest(unittest.TestCase):
         self.assertEqual((by["sshd"]["sent"], by["sshd"]["recv"]), (1000, 5000))
         self.assertEqual((by["postgres"]["conns"], by["postgres"]["sent"], by["postgres"]["recv"]), (2, 300, 350))
 
+    def test_services_group_all_processes_of_a_unit(self):
+        first = {"1": ("postgres", 0, 10, "postgresql"), "2": ("postgres", 0, 10, "postgresql"), "3": ("bash", 0, 5, None)}
+        second = {"1": ("postgres", 40, 20, "postgresql"), "2": ("postgres", 40, 20, "postgresql"), "3": ("bash", 9, 5, None)}
+        g = periodic_top.group(first, second, 1.0, 100, 2, 1000, True)
+        self.assertEqual([x["name"] for x in g], ["postgresql"])          # processes outside a service are left out
+        self.assertEqual((g[0]["procs"], g[0]["rss"]), (2, 40))
+        self.assertAlmostEqual(g[0]["cpu"], 40.0)
+
     def test_cpu_and_memory_are_summed_per_program(self):
         first = {"1": ("db", 100, 10), "2": ("db", 100, 10), "3": ("web", 0, 5)}
         second = {"1": ("db", 150, 20), "2": ("db", 150, 20), "3": ("web", 10, 5)}
