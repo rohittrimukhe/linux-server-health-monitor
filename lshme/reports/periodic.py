@@ -82,7 +82,7 @@ class PDoc(object):
     def __init__(self, ptype, variant="summary"):
         self.ptype = ptype
         self.variant = variant            # summary | comprehensive
-        self.title = TITLES[ptype] + (" (comprehensive)" if variant == "comprehensive" else "")
+        self.title = TITLES[ptype] + {"comprehensive": " (comprehensive)", "database": " (database)"}.get(variant, "")
         self.subtitle = ""
         self.host = ""
         self.status = "UNKNOWN"
@@ -108,7 +108,7 @@ class PDoc(object):
         self.sections.append((title, [b for b in blocks if b]))
 
     def basename_suffix(self):
-        return "_comprehensive" if self.variant == "comprehensive" else ""
+        return {"comprehensive": "_comprehensive", "database": "_database"}.get(self.variant, "")
 
 
 # -- block constructors ----------------------------------------------------------
@@ -836,6 +836,16 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
         except Exception as e:
             d.add("More checks", [note("These sections could not be built: %s" % e)])
     d.add("Server overview", [{"type": "kv", "rows": overview_rows(run)}])
+    if variant == "database":
+        keep = ("In short", "Overall status", "Database size and growth", "Database health", "Capacity forecast", "Backup verification", "Top folders and growth",
+                "Repeating problems and log errors", "This period against the last one", "This month against last month", "Server overview")
+        dbm = run.module("database")
+        dfind = [f for f in (dbm.findings if dbm else []) if f.severity in ("CRITICAL", "WARNING")]
+        d.add("Database health", [table("Database findings", ["Level", "Where", "Finding"], [
+            [Cell("CRIT" if f.severity == "CRITICAL" else "WARN", "chip-cr" if f.severity == "CRITICAL" else "chip-wn"), f.component, redact(f.message)[:160]] for f in dfind])
+            if dfind else note("No warnings or critical findings from the database checks.")])
+        d.sections = [(t, b) for t, b in d.sections if t in keep]
+        return d
     if acts:
         d.add("What needs attention", [actions(acts[:10])])
     else:

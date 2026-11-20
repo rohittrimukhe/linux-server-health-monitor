@@ -113,6 +113,14 @@ class App(object):
                 result["files"] += self.schedule_extras(sched, result["notes"])
             if email or force_email:
                 result["email"] = self.email_report(run, document, result["files"], force_email, to, cc, policy)
+                if sched:                                                    # other people, other reports
+                    pick = (("summary", sched.to_summary, lambda n: "_comprehensive" not in n and "_database" not in n),
+                            ("database", sched.to_database, lambda n: "_database" in n))
+                    for name, people, keep in pick:
+                        if people:
+                            files = [f for f in result["files"] if keep(os.path.basename(f))]
+                            if files:
+                                result["email_" + name] = self.email_report(run, document, files, force_email, people, None, policy)
             prom = self.cfg.get("main", "integrations", "prometheus_textfile", "")
             if prom:
                 try:

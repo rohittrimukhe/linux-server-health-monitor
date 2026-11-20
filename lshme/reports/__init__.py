@@ -133,6 +133,10 @@ def generate(run, cfg, paths, formats, report_type=None, category=None):
     if report_type in PERIODIC:
         from lshme.reports import periodic
         docs = periodic.build_all(run, cfg, paths, report_type)
+        from lshme.ops import scheduler
+        sched = scheduler.get(cfg, category)
+        if sched is not None and sched.to_database:                      # the DBA team gets a database-only report
+            docs.append(periodic.build(run, cfg, paths, report_type, "database"))
         outdir = output_dir(paths.report_dir, run.host, category)
         base = "%s_%s_%s" % (safe(run.host), safe(category), time.strftime("%Y%m%d_%H%M", time.localtime(run.collected_at)))
         files, notes = write_periodic(docs, formats, outdir, base, cfg.get("main", "general", "logo", ""))

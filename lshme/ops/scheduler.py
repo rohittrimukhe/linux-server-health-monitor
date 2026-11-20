@@ -87,6 +87,8 @@ class Schedule(object):
         self.send_policy = s.get("send_policy", "")
         self.to = as_list(s.get("to"))
         self.cc = as_list(s.get("cc"))
+        self.to_summary = as_list(s.get("to_summary"))      # management: only the summary report, not the comprehensive one
+        self.to_database = as_list(s.get("to_database"))    # the DBA team: a database-only report
         self.sla_report = as_bool(s.get("sla_report", "no"), False)          # attach last month's SLA report
         self.inventory_report = as_bool(s.get("inventory_report", "no"), False)  # attach the asset inventory
 
