@@ -161,8 +161,7 @@ def blocks(data, runner):
                      align=["", "r", "r", "r", "r", "r", "", "r"],
                      legend="Mb/s = megabits per second. 'in' is data received, 'out' is data sent. Link use compares the busier direction with the adapter speed; "
                             "green is under 60 %, amber up to 85 %, red above."))
-    charts = [chart("Network traffic on %s" % k, use[k]["rx"], use[k]["tx"]) for k in order[:4]]
-    out.append(P.charts(charts))
+    out.append({"type": "wide_charts", "items": [chart("Network traffic on %s" % k, use[k]["rx"], use[k]["tx"]) for k in order[:4]]})
     # all adapters together
     tot_rx, tot_tx = {}, {}
     for k in order:

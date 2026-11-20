@@ -130,9 +130,9 @@ document.querySelectorAll(".chart").forEach(function(box){
     var t=t0+(f-L)/(W-L-R)*(t1-t0);if(t<t0)t=t0;if(t>t1)t=t1;var p=near(P,t);
     vl.setAttribute("x1",X(p[0]));vl.setAttribute("x2",X(p[0]));vl.setAttribute("visibility","visible");
     dot.setAttribute("cx",X(p[0]));dot.setAttribute("cy",Y(p[1]));dot.setAttribute("visibility","visible");
-    var st="";if(c.crit!==null&&c.crit!==undefined){st=" &middot; "+(p[1]>=c.crit?"CRITICAL":p[1]>=c.warn?"WARNING":"OK")}
-    var body="<b>"+p[1].toFixed(dec)+c.unit+"</b> &nbsp;"+S[0].name+st;
-    for(var k=1;k<S.length;k++){var q2=near(S[k].pts,p[0]);body+="<br>"+S[k].name+": <b>"+q2[1].toFixed(dec)+c.unit+"</b>"}
+    var body="";
+    for(var k=0;k<S.length;k++){var q2=k===0?p:near(S[k].pts,p[0]);body+="<div><span style='color:"+cols[k%cols.length]+"'>&#9679;</span> "+S[k].name+": <b>"+q2[1].toFixed(dec)+c.unit+"</b></div>"}
+    if(c.crit!==null&&c.crit!==undefined){body+="<div>Status: <b>"+(p[1]>=c.crit?"CRITICAL":p[1]>=c.warn?"WARNING":"OK")+"</b></div>"}
     tip.innerHTML="<small>"+fmt(p[0])+"</small>"+body;tip.style.display="block";
     var bx=box.getBoundingClientRect(),left=cx-bx.left+12;if(left>bx.width-200)left=cx-bx.left-200;
     tip.style.left=left+"px";tip.style.top=(rc.top-bx.top+10)+"px";

@@ -36,19 +36,37 @@ def scan_proc(root="/proc", pagesize=4096):
             continue
         rest = data[b + 2:].split()
         try:
-            out[pid] = (data[a + 1:b], int(rest[11]) + int(rest[12]), int(rest[21]) * pagesize)
+            out[pid] = (data[a + 1:b], int(rest[11]) + int(rest[12]), int(rest[21]) * pagesize, unit_of("%s/%s/cgroup" % (root, pid)))
         except (IndexError, ValueError):
             continue
     return out
 
 
-def group(first, second, seconds, clk, ncpu, mem_total):
-    """Per program: CPU % of the whole server over the interval, memory in bytes, process count."""
+UNIT_RE = re.compile(r"([^/]+\.service)")
+
+
+def unit_of(path):
+    """The systemd service a process belongs to (from its control group), or None."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            found = UNIT_RE.findall(f.read())
+    except OSError:
+        return None
+    return found[-1][:-8] if found else None
+
+
+def group(first, second, seconds, clk, ncpu, mem_total, by_unit=False):
+    """Per program (or per systemd service): CPU % of the whole server over the interval, memory in bytes, process count."""
     progs = {}
-    for pid, (name, ticks, rss) in second.items():
+    for pid, vals in second.items():
+        name, ticks, rss = vals[0], vals[1], vals[2]
+        if by_unit:
+            name = vals[3] if len(vals) > 3 else None
+            if not name:
+                continue
         g = progs.setdefault(name, {"name": name, "ticks": 0.0, "rss": 0, "procs": 0})
         before = first.get(pid)
-        g["ticks"] += max(0, ticks - before[1]) if before and before[0] == name else 0
+        g["ticks"] += max(0, ticks - before[1]) if before and before[0] == vals[0] else 0
         g["rss"] += rss
         g["procs"] += 1
     for g in progs.values():
@@ -119,7 +137,8 @@ def collect(runner, interval=1.0):
     progs = group(first, second, max(time.time() - t0, 0.1), clk, ncpu, mem_total())
     r = runner.run(["ss", "-tanpi"], timeout=20) if runner.has("ss") else None
     net = parse_ss(r.out) if r and r.out else []
-    return {"procs": progs, "net": net, "ncpu": ncpu, "ss": bool(r and r.out)}
+    return {"procs": progs, "units": group(first, second, max(time.time() - t0, 0.1), clk, ncpu, mem_total(), True), "net": net, "ncpu": ncpu,
+            "ss": bool(r and r.out)}
 
 
 def blocks(cfg, runner=None):
@@ -143,6 +162,13 @@ def blocks(cfg, runner=None):
                      [[i, Cell(g["name"], "b"), fmt_bytes(g["rss"]), "%.1f %%" % g["mem_pct"], Bar(min(g["mem_pct"], 100.0), mw, mc), g["procs"]]
                       for i, g in enumerate(by_mem, 1)], align=["", "", "r", "r", "", "r"],
                      legend="Memory that is really held in RAM by all processes of the program (shared memory is counted once per process)."))
+    units = [g for g in d["units"] if g["rss"] > 0]
+    if units:
+        by_use = sorted(units, key=lambda g: -(g["rss"] + g["cpu"] * 1e8))[:TOP]
+        out.append(table("Top 10 services by use (CPU and memory)", ["#", "Service", "CPU (% of server)", "Memory", "% of RAM", "", "Processes"],
+                         [[i, Cell(g["name"], "b"), "%.1f %%" % g["cpu"], fmt_bytes(g["rss"]), "%.1f %%" % g["mem_pct"], Bar(min(g["mem_pct"], 100.0), mw, mc), g["procs"]]
+                          for i, g in enumerate(by_use, 1)], align=["", "", "r", "r", "r", "", "r"],
+                         legend="Systemd services ranked by memory held in RAM, with the CPU they used in the sampled second. All processes of a service are added together."))
     net = d["net"]
     if not d["ss"]:
         out.append(P.note("Network figures are not available: the 'ss' command is missing or returned nothing."))
