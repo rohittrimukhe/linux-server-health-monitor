@@ -563,7 +563,7 @@ class WebApp(object):
 
     def api_password(self, req, sess):
         data = req.json()
-        if sess["user"] in auth.system_users(self.app.cfg):
+        if sess["user"] not in self.users.names():
             raise ValueError("this is a Linux account: change its password with the passwd command on the server")
         if not self.users.verify(sess["user"], str(data.get("old", ""))):
             raise ValueError("the current password is wrong")

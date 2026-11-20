@@ -43,9 +43,59 @@ def verify_password(password, stored):
         return False
 
 
+NO_LOGIN_SHELLS = ("nologin", "false", "sync", "halt", "shutdown")
+UID_MIN = 1000
+
+
 def system_users(cfg):
-    """Linux accounts allowed to sign in with their own Linux password (web.conf [web] system_users, default root)."""
-    return [u.strip() for u in (cfg.get("web", "web", "system_users", "root") or "").replace(";", ",").split(",") if u.strip()]
+    """Linux accounts allowed to sign in with their own Linux password (web.conf [web] system_users):
+    a list of names, or * for every normal account (root and users with UID 1000 or more that have a login shell)."""
+    return [u.strip() for u in (cfg.get("web", "web", "system_users", "*") or "").replace(";", ",").split(",") if u.strip()]
+
+
+def account_info(name):
+    """{'uid', 'gid', 'shell'} of a Linux account, or None."""
+    try:
+        import pwd
+        pw = pwd.getpwnam(name)
+    except (ImportError, KeyError):
+        return None
+    return {"uid": pw.pw_uid, "gid": pw.pw_gid, "shell": pw.pw_shell or ""}
+
+
+def group_info(group):
+    """(gid, [member names]) of a Linux group, or None."""
+    try:
+        import grp
+        g = grp.getgrnam(group)
+    except (ImportError, KeyError):
+        return None
+    return g.gr_gid, list(g.gr_mem)
+
+
+def system_role(cfg, name):
+    """The web role for a Linux account, or None when it may not sign in.
+    root and members of the admin groups (default wheel, sudo) are administrators; everyone else gets the
+    default role (viewer = read-only; none = refused)."""
+    allowed = system_users(cfg)
+    wildcard = "*" in allowed
+    if not wildcard and name not in allowed:
+        return None
+    info = account_info(name)
+    if info is None:
+        return None
+    if wildcard and name not in allowed:                     # * covers normal accounts only, not service accounts
+        shell = os.path.basename(info["shell"])
+        if info["uid"] != 0 and (info["uid"] < UID_MIN or not info["shell"] or shell in NO_LOGIN_SHELLS):
+            return None
+    if info["uid"] == 0:
+        return "admin"
+    for g in [x.strip() for x in (cfg.get("web", "web", "system_admin_groups", "wheel, sudo") or "").split(",") if x.strip()]:
+        gi = group_info(g)
+        if gi and (gi[0] == info["gid"] or name in gi[1]):
+            return "admin"
+    role = (cfg.get("web", "web", "system_default_role", "viewer") or "viewer").strip().lower()
+    return role if role in ROLES else None
 
 
 def system_password_ok(user, password, shadow=SHADOW):
@@ -123,11 +173,12 @@ class Users(object):
 
     def verify(self, name, password):
         """The role when the name and password are right, else None. Unknown names cost the same time as wrong passwords."""
-        if name in system_users(self.app.cfg):         # a Linux account: its own Linux password, full access
-            return "admin" if system_password_ok(name, password) else None
         p = self._p()
         stored = p.get("users", name) if p.has_section("users") and p.has_option("users", name) else None
         if stored is None:
+            role = system_role(self.app.cfg, name)     # a Linux account: its own Linux password, rights from its Linux groups
+            if role:
+                return role if system_password_ok(name, password) else None
             verify_password(password, _dummy_hash())
             return None
         return self.role(name) if verify_password(password, stored) else None

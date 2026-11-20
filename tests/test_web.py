@@ -132,28 +132,66 @@ class SystemLoginTests(WebCase):
         finally:
             os.unlink(path)
 
-    def test_only_listed_linux_accounts_can_sign_in(self):
-        real = auth.system_password_ok
-        auth.system_password_ok = lambda user, password, shadow=None: (user, password) == ("root", "RootPassw0rd")
-        try:
-            self.assertEqual(auth.system_users(self.app.cfg), ["root"])
-            self.assertEqual(self.web.users.verify("root", "RootPassw0rd"), "admin")
-            self.assertIsNone(self.web.users.verify("root", "nope"))
-            self.assertIsNone(self.web.users.verify("oracle", "RootPassw0rd"))         # another Linux account is not allowed
-            r = self.call("POST", "/api/login", {"user": "root", "password": "RootPassw0rd"})
-            self.assertEqual(r.status, 200, r.json)
-            self.assertEqual(r.json["role"], "admin")
-            self.app.cfg.set("web", "web", "system_users", "")
-            self.assertIsNone(self.web.users.verify("root", "RootPassw0rd"))            # switched off
-        finally:
-            auth.system_password_ok = real
+    ACCOUNTS = {"root": {"uid": 0, "gid": 0, "shell": "/bin/bash"}, "alice": {"uid": 1001, "gid": 1001, "shell": "/bin/bash"},
+                "bob": {"uid": 1002, "gid": 1002, "shell": "/bin/bash"}, "svc": {"uid": 998, "gid": 998, "shell": "/sbin/nologin"},
+                "carol": {"uid": 1003, "gid": 1003, "shell": "/sbin/nologin"}}
+    GROUPS = {"wheel": (10, ["alice"]), "sudo": (27, [])}
 
-    def test_a_linux_account_cannot_make_a_web_password(self):
-        self.app.cfg.set("web", "web", "system_users", "root")
-        sess = self.session("admin")
-        sess[1]["user"] = "root"
-        r = self.call("POST", "/api/password", {"old": "x", "new": "NewPassw0rd1"}, user="admin")
-        self.assertIn(r.status, (200, 400))
+    def with_linux(self, fn):
+        real = (auth.account_info, auth.group_info, auth.system_password_ok)
+        auth.account_info, auth.group_info = self.ACCOUNTS.get, self.GROUPS.get
+        auth.system_password_ok = lambda user, password, shadow=None: password == "LinuxPassw0rd"
+        try:
+            fn()
+        finally:
+            auth.account_info, auth.group_info, auth.system_password_ok = real
+
+    def test_rights_follow_linux_groups(self):
+        def check():
+            cfg = self.app.cfg
+            self.assertEqual(auth.system_users(cfg), ["*"])
+            role = lambda n: auth.system_role(cfg, n)
+            self.assertEqual(role("root"), "admin")
+            self.assertEqual(role("alice"), "admin")          # member of wheel
+            self.assertEqual(role("bob"), "viewer")           # an ordinary user: read-only
+            self.assertIsNone(role("svc"))                    # service account
+            self.assertIsNone(role("carol"))                  # no login shell
+            self.assertIsNone(role("ghost"))                  # not a Linux account
+            cfg.set("web", "web", "system_users", "bob")
+            self.assertEqual(role("bob"), "viewer")
+            self.assertIsNone(role("alice"))                  # not on the list
+            cfg.set("web", "web", "system_users", "*")
+            cfg.set("web", "web", "system_default_role", "none")
+            self.assertIsNone(role("bob"))
+            self.assertEqual(role("alice"), "admin")
+            cfg.set("web", "web", "system_users", "")
+            self.assertIsNone(role("root"))                   # switched off
+        self.with_linux(check)
+
+    def test_any_linux_user_can_sign_in_with_the_linux_password(self):
+        def check():
+            v = self.web.users.verify
+            self.assertEqual(v("alice", "LinuxPassw0rd"), "admin")
+            self.assertEqual(v("bob", "LinuxPassw0rd"), "viewer")
+            self.assertIsNone(v("bob", "wrong"))
+            self.assertIsNone(v("svc", "LinuxPassw0rd"))
+            r = self.call("POST", "/api/login", {"user": "bob", "password": "LinuxPassw0rd"})
+            self.assertEqual(r.status, 200, r.json)
+            self.assertEqual(r.json["role"], "viewer")
+            self.assertEqual(self.web.users.verify("admin", GOOD), "admin")     # web accounts still work
+        self.with_linux(check)
+
+    def test_a_viewer_from_linux_is_read_only_and_cannot_set_a_web_password(self):
+        def check():
+            token, sess = self.web.sessions.create("alice", "admin", "10.0.0.5")
+            self.sessions["alice"] = (token, sess)
+            r = self.call("POST", "/api/password", {"old": "x", "new": "NewPassw0rd1"}, user="alice")
+            self.assertEqual(r.status, 400)
+            self.assertIn("Linux account", r.json["error"])
+            token, sess = self.web.sessions.create("bob", "viewer", "10.0.0.5")
+            self.sessions["bob"] = (token, sess)
+            self.assertEqual(self.call("POST", "/api/run", {}, user="bob").status, 403)
+        self.with_linux(check)
 
 
 class SignInTests(WebCase):
