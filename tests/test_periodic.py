@@ -172,6 +172,24 @@ class PeriodicTest(unittest.TestCase):
     def test_monthly_compares_with_last_month(self):
         self.assertIn("This month against last month", self.titles(self.doc("monthly")))
 
+    def test_database_team_gets_a_database_only_report(self):
+        self.home.cfg.set("schedule", "schedule:weekly", "to_database", "dba@example.com")
+        self.home.cfg.set("schedule", "schedule:weekly", "to_summary", "boss@example.com")
+        _, outdir, files, notes = reports.generate(self.run, self.home.cfg, self.home.paths, ["html"], "weekly", "weekly")
+        names = [os.path.basename(f) for f in files]
+        self.assertEqual(len(names), 2, names)
+        self.assertTrue(any(n.endswith("_database.html") for n in names))
+        d = self.doc("weekly", "database")
+        titles = self.titles(d)
+        self.assertIn("Database size and growth", titles)
+        self.assertIn("Database health", titles)
+        self.assertNotIn("Network", titles)
+        self.assertNotIn("CPU and memory", titles)
+        self.assertTrue(d.title.endswith("(db01.example.com, 10.0.0.11) (database)") or "(database)" in d.title)
+        from lshme.ops import scheduler
+        sch = scheduler.get(self.home.cfg, "weekly")
+        self.assertEqual((sch.to_database, sch.to_summary), (["dba@example.com"], ["boss@example.com"]))
+
     def test_plain_english_and_no_recommendations(self):
         d = self.doc("daily")
         short = dict(d.sections)["In short"][0]["items"]
