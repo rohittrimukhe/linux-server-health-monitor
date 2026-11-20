@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """The real curses screens in a real pseudo-terminal: keys must work however the terminal sends them."""
 import os
 import select

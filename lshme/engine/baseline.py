@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Configuration baseline and drift detection.
 
 A baseline is a snapshot of things that should change only under change

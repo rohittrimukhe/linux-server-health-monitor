@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """What a server is used for, and which services deserve a critical watch.
 
 Both come from two cheap read-only calls (systemctl and ps), so they can run on every health check:

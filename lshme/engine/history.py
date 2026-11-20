@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Historical metrics (SQLite), trend comparison, recurring incidents and
 capacity forecasting. Timestamps are stored as epoch seconds."""
 import os

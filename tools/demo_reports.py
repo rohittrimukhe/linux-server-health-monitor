@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Make sample daily, weekly, monthly and database reports with made-up data (for the customer document pack).
 
 Usage:  python3 tools/demo_reports.py OUTPUT_DIR
@@ -31,7 +31,7 @@ app = App(APP_DIR, home=home)
 random.seed(11)
 run = app.check(None, 1, "adhoc", save_history=False)
 run.host, run.fqdn, run.ip = "db01", "db01.example.com", "10.0.0.21"
-run.meta.update({"customer": "Example Industries", "company": "LRS Services Pvt Ltd", "environment": "Production", "location": "Mumbai data centre",
+run.meta.update({"customer": "Example Industries", "company": "LRS Services", "environment": "Production", "location": "Mumbai data centre",
                  "prepared_by": "Infrastructure team", "roles": ["Oracle database server", "KVM host"]})
 now, host = run.collected_at, run.host
 

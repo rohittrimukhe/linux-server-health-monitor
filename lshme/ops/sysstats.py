@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Live system statistics for the terminal dashboard and the web dashboard.
 
 Reads /proc and /sys directly (no commands run), so a sample costs a few milliseconds. Rates (CPU %,

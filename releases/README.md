@@ -4,4 +4,4 @@
 
     sudo dnf install ./lrs-vitals-1.4.0-1.el9.noarch.rpm
 
-Private and proprietary to LRS Services Pvt Ltd. No licence is granted to anyone else (see ../LICENSE).
+Private and proprietary to Rohit Santosh Trimukhe. No licence is granted to anyone else (see ../LICENSE).

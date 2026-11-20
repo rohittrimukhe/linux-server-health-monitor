@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Server scan: find out what is actually present (KVM, databases, backup products, Cockpit, containers,
 clusters, ...) so only the modules that apply are run and reported.
 

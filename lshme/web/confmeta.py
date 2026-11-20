@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """The settings editor behind the web interface: every setting of every configuration file.
 
 The type of each setting (yes/no, number, choice, list, time, path, secret...) is worked out from its default

@@ -425,7 +425,7 @@ The monthly schedule attaches it as XLSX (`inventory_report = yes`).
 
 ## 18. Branding
 
-Reports carry the LRS Services logo and "© 2026 LRS Services Pvt Ltd,
+Reports carry the LRS Services logo and "© 2026 Rohit Santosh Trimukhe,
 Mumbai. All rights reserved." A customer logo set in `main.conf [general]
 logo` appears alongside it. The built-in PDF and PPTX writers, used when
 ReportLab or python-pptx are not installed, show the copyright as text

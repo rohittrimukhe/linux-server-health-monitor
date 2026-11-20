@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Plain-English parts of the daily, weekly and monthly reports: the short summary, what each problem means,
 CPU by core, and the server inventory (roles, services, hardware, software) of the comprehensive monthly report."""
 import json

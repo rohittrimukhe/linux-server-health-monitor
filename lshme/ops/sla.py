@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Availability / SLA reporting from the real-time incident log.
 
 Downtime is time with at least one confirmed CRITICAL problem; degraded time

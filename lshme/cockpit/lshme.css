@@ -1,4 +1,4 @@
-/* Linux Server Health Monitor Enterprise - Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved. */
+/* Linux Server Health Monitor Enterprise - Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved. */
 :root { --bg: #f0f0f0; --card: #fff; --ink: #151515; --muted: #6a6e73; --line: #d2d2d2; --accent: #0066cc;
         --crit: #c9190b; --warn: #c58c00; --ok: #3e8635; --unk: #6a6e73; }
 @media (prefers-color-scheme: dark) { :root:not(.pf-v5-theme-light) { --bg: #1b1d21; --card: #26292d; --ink: #e0e0e0; --muted: #a7aaad; --line: #3c3f42; --accent: #73bcf7; } }

@@ -1,6 +1,6 @@
 # Customer document pack
 
-Hand these to customers. All files are private and proprietary to LRS Services Pvt Ltd.
+Hand these to customers. All files are private and proprietary to Rohit Santosh Trimukhe.
 
 | File | What it is |
 |---|---|

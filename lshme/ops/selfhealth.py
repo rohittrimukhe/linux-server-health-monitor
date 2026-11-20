@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Health of LRS Vitals itself, and what is kept for how long.
 
 check() answers "is the monitoring working?": is the real-time watcher sampling, are the schedule timers installed,

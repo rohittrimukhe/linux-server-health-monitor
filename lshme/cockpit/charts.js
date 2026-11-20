@@ -1,5 +1,5 @@
 /* Linux Server Health Monitor Enterprise - SVG chart library (no dependencies)
- * Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+ * Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
  * Used by the Cockpit page and the standalone live page. Builds DOM nodes only
  * (no innerHTML, no inline style attributes), so it runs under a strict CSP. */
 var LshmeCharts = (function () {

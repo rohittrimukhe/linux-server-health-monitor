@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """PDF renderer for the daily, weekly and monthly reports (no dependencies): large readable type, coloured tables,
 usage bars, KPI tiles, line charts and logo slots, drawn directly with PDF operators."""
 import os

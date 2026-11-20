@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Dependency-free PDF writer used when ReportLab is not installed.
 
 Produces a clean multi-page A4 document with headings, wrapped paragraphs and

@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Scheduling: daily / weekly / monthly / hourly / custom runs via systemd timers
 (preferred) or /etc/cron.d. Each schedule has its own modules, lookback days,
 report formats, report type and recipients."""

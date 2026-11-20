@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Linux Server Health Monitor Enterprise (LSHME).
 
 Read-only health monitoring, reporting and alerting for Linux servers.
@@ -13,8 +13,9 @@ APP_TAGLINE = "Linux Server Health Monitor"
 APP_SHORT = "Vitals"
 COMMAND = "vitals"  # also installed as systemhealth and healthcheck
 VERSION = "1.4.0"
-VENDOR = "LRS Services Pvt Ltd"
+VENDOR = "Rohit Santosh Trimukhe"
 VENDOR_CITY = "Mumbai"
-COPYRIGHT = "© 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved."
-COPYRIGHT_ASCII = "(c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved."
+OWNER_EMAIL = "rohittrimukhe2@gmail.com"
+COPYRIGHT = "© 2026 Rohit Santosh Trimukhe. All rights reserved."
+COPYRIGHT_ASCII = "(c) 2026 Rohit Santosh Trimukhe. All rights reserved."
 BRAND_LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports", "lrs_logo.png")

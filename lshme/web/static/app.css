@@ -1,4 +1,4 @@
-/* Linux Server Health Monitor Enterprise - web interface styles. Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. */
+/* Linux Server Health Monitor Enterprise - web interface styles. Copyright (c) 2026 Rohit Santosh Trimukhe. */
 :root {
   --bg: #f3f6fa; --card: #ffffff; --text: #16212e; --muted: #5b6b7c; --line: #dde5ee; --track: #e5ecf4;
   --brand: #043a6b; --accent: #1ab4e2; --ok: #2e9e5b; --warn: #e3a008; --crit: #d63b3b; --info: #2b7fd6;

@@ -1,11 +1,12 @@
 LRS Vitals (Linux Server Health Monitor)
-Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai, India. All rights reserved.
+Copyright (c) 2026 Rohit Santosh Trimukhe (rohittrimukhe2@gmail.com). All rights reserved.
 
 PRIVATE AND PROPRIETARY. NOT LICENSED FOR USE BY ANYONE EXCEPT THE OWNER.
 
 1. Owner. This software, its source code, documentation, reports, logos and
    packages (together, "the Software") are the exclusive property of
-   LRS Services Pvt Ltd ("the Owner").
+   Rohit Santosh Trimukhe ("the Owner"), who is the owner and copyright
+   holder. Contact: rohittrimukhe2@gmail.com.
 
 2. No licence. No licence of any kind is granted to any person or company
    other than the Owner. Nothing in this repository, on this website, or in any
@@ -24,18 +25,18 @@ PRIVATE AND PROPRIETARY. NOT LICENSED FOR USE BY ANYONE EXCEPT THE OWNER.
    not permission to use it. Forking or cloning for the purpose allowed by the
    hosting site's own terms does not give any right to use the Software.
 
-5. Permission. Any permission must be written, signed by an authorised person
-   of the Owner, name the person who receives it, and state what is allowed
-   and for how long. Such permission may be withdrawn at any time. Requests:
-   write to the Owner at LRS Services Pvt Ltd, Mumbai, India.
+5. Permission. Any permission must be written, signed by the Owner, name the
+   person who receives it, and state what is allowed and for how long. Such
+   permission may be withdrawn at any time. Requests: write to the Owner at
+   rohittrimukhe2@gmail.com.
 
 6. Enforcement. Use in breach of this notice is unauthorised. The Owner may
    take any action the law allows, including claiming damages and obtaining
    an order to stop the use and to remove copies.
 
 7. No warranty. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
-   KIND, EXPRESS OR IMPLIED. IN NO EVENT SHALL LRS SERVICES PVT LTD BE LIABLE
-   FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE SOFTWARE.
+   KIND, EXPRESS OR IMPLIED. IN NO EVENT SHALL THE OWNER BE LIABLE FOR ANY
+   CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE SOFTWARE.
 
 8. Law. This notice is governed by the laws of India. The courts at Mumbai
    have exclusive jurisdiction.

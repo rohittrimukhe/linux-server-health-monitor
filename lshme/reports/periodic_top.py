@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """Top 10 programs by CPU, memory, network traffic and network connections.
 
 Very light: reads /proc twice, one second apart (a few hundred small files), and runs one `ss` command.

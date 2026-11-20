@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """XLSX workbook: Summary, Findings, one sheet per module, Metrics.
 
 Uses openpyxl when installed; otherwise writes a valid minimal OOXML workbook

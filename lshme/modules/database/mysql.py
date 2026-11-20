@@ -1,5 +1,5 @@
 # Linux Server Health Monitor Enterprise
-# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+# Copyright (c) 2026 Rohit Santosh Trimukhe. All rights reserved.
 """MySQL / MariaDB adapter: availability, connections, replication, sizes, InnoDB."""
 from lshme.core.util import fmt_bytes, pct, severity_for, to_float, to_int
 
