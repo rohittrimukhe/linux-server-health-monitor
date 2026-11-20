@@ -12,7 +12,7 @@ from lshme import reports
 from lshme.core.model import ModuleResult, RunResult
 from lshme.engine import scoring
 from lshme.engine.history import History
-from lshme.reports import periodic, periodic_html, periodic_top
+from lshme.reports import periodic, periodic_html, periodic_net, periodic_top
 
 GB = 1024 ** 3
 
@@ -62,7 +62,7 @@ def seed(paths, run, days=30):
     for hr in range(days * 24, 0, -1):
         h.add_hourly("db01", now - hr * 3600, 10 + (hr % 24), 60.0, 3.0, 0.3)
     for hr in range(days * 24, 0, -1):
-        h.add_hourly("db01", now - hr * 3600 + 1, 10 + (hr % 24), 60.0, 3.0, 0.3, [20 + (hr % 7), 5])
+        h.add_hourly("db01", now - hr * 3600 + 1, 10 + (hr % 24), 60.0, 3.0, 0.3, [20 + (hr % 7), 5], {"eth0": (125000, 62500)})
     h.save(run)
     h.close()
 
@@ -130,6 +130,20 @@ class PeriodicTest(unittest.TestCase):
         self.assertTrue(any(t.startswith("CPU usage of every core (2 cores)") for t in tables), tables)
         self.assertIn(("Customer", "ACME"), d.details)
 
+    def test_network_section_has_three_series_and_totals(self):
+        d = self.doc("weekly")
+        net = dict(d.sections)["Network"]
+        wide = [b for b in net if b["type"] == "wide_charts"][0]["items"][0]
+        self.assertEqual([s["name"] for s in wide["series"]], ["Sent", "Received", "Total"])
+        self.assertEqual(wide["colors"], [periodic_net.SENT, periodic_net.RECV, periodic_net.TOTAL])
+        tx, rx, tot = [s["pts"][5][1] for s in wide["series"]]
+        self.assertAlmostEqual(tot, rx + tx, places=2)
+        self.assertAlmostEqual(rx, 1.0, places=2)          # 125000 bytes per second received = 1 Mb/s
+        self.assertAlmostEqual(tx, 0.5, places=2)
+        titles = [b["title"] for b in net if b["type"] == "table"]
+        self.assertTrue(any(t.startswith("Data sent and received") for t in titles), titles)
+        self.assertTrue(any("by day" in t for t in titles), titles)
+
     def test_comprehensive_monthly_has_inventory(self):
         d = self.doc("monthly", "comprehensive")
         self.assertTrue(any(t in ("Server roles", "Server inventory") for t in self.titles(d)), self.titles(d))
@@ -179,6 +193,13 @@ ESTAB  0      0      10.0.0.1:5432   10.0.0.7:6000 users:(("postgres",pid=20,fd=
 ESTAB  0      0      10.0.0.1:5432   10.0.0.8:6001 users:(("postgres",pid=21,fd=5))
 	 cubic bytes_sent:100 bytes_received:50
 """
+
+
+class NetworkMathTest(unittest.TestCase):
+    def test_bytes_moved_is_rate_times_time(self):
+        pts = [(0, 100.0), (60, 100.0), (120, 100.0)]
+        self.assertEqual(periodic_net.transferred(pts, 60.0), 100.0 * 180)   # first sample covers one step
+        self.assertEqual(periodic_net.transferred([(0, 10.0), (100000, 10.0)], 60.0), 10.0 * (60 + 120))   # long gaps are capped
 
 
 class TopUsersTest(unittest.TestCase):

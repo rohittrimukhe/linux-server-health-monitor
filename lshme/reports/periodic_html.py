@@ -109,7 +109,7 @@ document.querySelectorAll(".chart").forEach(function(box){
   var dec=mx<5?2:mx<50?1:0,days=(t1-t0)/86400;
   var avg=0;P.forEach(function(p){avg+=p[1]});avg/=P.length;var pk=Math.max.apply(null,all);
   if(c.multi){var kd=document.createElement("div");kd.className="keys";kd.innerHTML=S.map(function(se,i){return "<span><b style='background:"+c.colors[i%c.colors.length]+"'></b>"+se.name+"</span>"}).join("");}
-  var h=document.createElement("h4");h.innerHTML=c.title+"<span>"+(c.max?"avg "+avg.toFixed(dec)+c.unit+" &middot; peak "+pk.toFixed(dec)+c.unit:"now "+P[P.length-1][1].toFixed(2)+c.unit)+"</span>";box.appendChild(h);if(c.multi)box.appendChild(kd);
+  var h=document.createElement("h4");h.innerHTML=c.title+"<span>"+(c.info?c.info:(c.max?"avg "+avg.toFixed(dec)+c.unit+" &middot; peak "+pk.toFixed(dec)+c.unit:"now "+P[P.length-1][1].toFixed(2)+c.unit))+"</span>";box.appendChild(h);if(c.multi)box.appendChild(kd);
   var s=ns("svg",{viewBox:"0 0 "+W+" "+H,preserveAspectRatio:"none"});box.appendChild(s);
   function X(t){return L+(t-t0)*(W-L-R)/(t1-t0)}function Y(v){return T+(1-(v-mn)/(mx-mn))*(H-T-B)}
   for(var g=0;g<=4;g++){var v=mn+(mx-mn)*g/4;s.appendChild(ns("line",{x1:L,x2:W-R,y1:Y(v),y2:Y(v),stroke:"#e3e8ee"}));
