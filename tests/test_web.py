@@ -456,6 +456,51 @@ class ToolHealthWebTests(WebCase):
         self.assertEqual(self.call("GET", "/api/backups", user="admin", query={"download": ["../../etc/passwd"]}).status, 400)
 
 
+class CustomerPortalTests(WebCase):
+    def setUp(self):
+        WebCase.setUp(self)
+        from lshme.ops import dashboard
+        mine, other = fake_run(), fake_run()
+        mine.host, mine.meta["group"] = "h1", "acme"
+        other.host, other.meta["group"] = "h2", "beta"
+        dashboard.save_results(self.app.paths, [mine, other], {})
+        auth.Users(self.app).set_password("carol", GOOD + "2", "admin")      # even an "admin" account is read-only inside a group
+        cfg = self.app.cfg
+        cfg.set("web", "user_groups", "carol", "acme")
+        cfg.set("servers", "branding:acme", "customer", "ACME Industries")
+        cfg.set("servers", "branding:acme", "color", "#aa3300")
+        self.web = WebApp(self.app)
+        self.sessions = {}
+        self.write_report("20261120_134824", "adhoc")
+        other_dir = os.path.join(self.app.paths.report_dir, "h2", "adhoc", "20261120_134824")
+        os.makedirs(other_dir)
+        with open(os.path.join(other_dir, "h2_x.html"), "w") as f:
+            f.write("<html>secret</html>")
+
+    def login(self):
+        r = self.call("POST", "/api/login", {"user": "carol", "password": GOOD + "2"})
+        self.assertEqual(r.status, 200, r.json)
+        return r
+
+    def test_customer_sees_only_its_servers_reports_and_branding(self):
+        r = self.login()
+        self.assertEqual((r.json["group"], r.json["role"]), ("acme", "viewer"))
+        self.assertEqual(r.json["branding"]["customer"], "ACME Industries")
+        self.assertEqual(r.json["branding"]["color"], "#aa3300")
+        token = r.headers["Set-Cookie"].split(";")[0].split("=", 1)[1]
+        hdr = {"host": "testhost", "cookie": "%s=%s" % (server.COOKIE, token)}
+        fleet = self.call("GET", "/api/fleet", headers=hdr)
+        self.assertEqual([x["host"] for x in fleet.json["servers"]], ["h1"])
+        self.assertEqual(fleet.json["configured"], [])
+        reports = self.call("GET", "/api/reports", headers=hdr)
+        self.assertEqual(set(x["host"] for x in reports.json["reports"]), {"h1"})
+        self.assertEqual(self.call("GET", "/reports/h1/adhoc/20261120_134824/h1_x.html", headers=hdr).status, 200)
+        self.assertEqual(self.call("GET", "/reports/h2/adhoc/20261120_134824/h2_x.html", headers=hdr).status, 404)    # another customer's report
+        for path in ("/api/live", "/api/config", "/api/alerts", "/api/audit", "/api/run"):
+            self.assertEqual(self.call("GET", path, headers=hdr).status, 403, path)
+        self.assertEqual(self.call("GET", "/api/report", headers=hdr, query={"id": ["h2/adhoc/20261120_134824"]}).status, 400)
+
+
 class ConfigApiTests(WebCase):
     def section(self, file, name):
         cat = self.call("GET", "/api/config", user="admin").json
@@ -475,7 +520,7 @@ class ConfigApiTests(WebCase):
         general = dict((e["key"], e) for e in self.section("main", "security")["keys"])
         self.assertEqual(general["require_firewall"]["kind"], "bool")
         users = [s["name"] for f in cat["files"] if f["file"] == "web" for s in f["sections"]]
-        self.assertEqual(users, ["web"])  # the account hashes are never offered for editing
+        self.assertEqual(users, ["web", "user_groups"])  # the account hashes are never offered for editing
 
     def test_valid_change_is_saved_with_backup_and_audit(self):
         r = self.call("POST", "/api/config", {"file": "smtp", "section": "smtp", "values": {"host": "smtp.example.com", "port": "465", "security": "ssl"}}, user="admin")

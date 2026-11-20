@@ -168,6 +168,11 @@ class Users(object):
         role = p.get("roles", name).strip() if p.has_section("roles") and p.has_option("roles", name) else "admin"
         return role if role in ROLES else "viewer"
 
+    def group(self, name):
+        """The customer group a web account is tied to ([user_groups] in web.conf), or ''. Such an account sees only that group's servers and reports."""
+        p = self._p()
+        return p.get("user_groups", name).strip() if p.has_section("user_groups") and p.has_option("user_groups", name) else ""
+
     def listing(self):
         return [{"user": n, "role": self.role(n)} for n in self.names()]
 

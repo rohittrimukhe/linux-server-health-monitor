@@ -134,7 +134,7 @@ DEFAULTS = {
     "credentials": {},
     "web": {"web": {"enabled": "no", "bind": "127.0.0.1", "port": "8443", "tls": "yes", "cert": "", "key": "",
                     "session_minutes": "30", "max_login_failures": "5", "allow_plain_http": "no", "system_users": "*", "system_admin_groups": "wheel, sudo", "system_default_role": "viewer"},
-            "users": {}, "roles": {}},
+            "users": {}, "roles": {}, "user_groups": {}},
 }
 
 

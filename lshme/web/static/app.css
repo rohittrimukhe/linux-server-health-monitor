@@ -157,3 +157,5 @@ svg.chart .dot.warn { fill: var(--warn); } svg.chart .dot.crit { fill: var(--cri
 .srv.st-HEALTHY { border-left-color: #1e8e3e; } .srv.st-WARNING { border-left-color: var(--warn); } .srv.st-CRITICAL, .srv.st-UNREACHABLE { border-left-color: var(--crit); }
 .srv .nm { font-size: 16px; } .srv .score { font-size: 22px; font-weight: 750; } .srv .top { font-size: 13px; }
 .srv .mini { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; }
+
+.top .cust { margin-left: 10px; font-weight: 700; } img.cust { height: 30px; max-width: 140px; object-fit: contain; background: #fff; border-radius: 6px; padding: 2px 6px; }
