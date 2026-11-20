@@ -19,6 +19,7 @@ Type=simple
 ExecStart={cmd} web start
 Restart=on-failure
 RestartSec=10
+RestartPreventExitStatus=2
 Nice=10
 IOSchedulingClass=idle
 MemoryMax=256M

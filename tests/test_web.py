@@ -506,7 +506,8 @@ class WebCertificateTests(WebCase):
         from lshme.web import certs
         r = self.call("GET", "/api/cert", user="viewer")
         self.assertEqual(r.status, 200, r.json)
-        self.assertFalse(r.json["status"]["enabled"])
+        self.assertEqual(r.json["status"]["source"], "letsencrypt")           # genuine certificates are the default
+        self.assertTrue(r.json["status"]["problem"])                          # ... and it says why none can be had yet (no public name)
         self.assertIsNone(r.json["status"]["certificate"])
         calls = []
         real = certs.issue
@@ -748,7 +749,7 @@ class RealServerTests(unittest.TestCase):
     def test_https_with_a_generated_certificate(self):
         if not self.app.runner.has("openssl"):
             self.skipTest("openssl is not installed")
-        port = self.start(tls="yes")
+        port = self.start(tls="yes", tls_source="self-signed")
         ctx = ssl.create_default_context()
         ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE  # the certificate is self-signed
         c = http.client.HTTPSConnection("127.0.0.1", port, timeout=10, context=ctx)

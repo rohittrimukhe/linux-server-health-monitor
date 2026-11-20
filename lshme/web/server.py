@@ -738,12 +738,20 @@ def ensure_certificate(app):
     """The certificate and key to use: the configured pair, or a self-signed one created once."""
     cfg = app.cfg
     from lshme.web import certs
-    pair = certs.active_pair(app)                        # a Let's Encrypt certificate, when switched on and already issued
+    source = certs.settings(cfg)["source"]
+    if source == "letsencrypt":                           # genuine certificate only: never a self-signed one
+        pair = certs.active_pair(app)
+        if pair:
+            return pair
+        raise ValueError("a genuine Let's Encrypt certificate is required (tls_source = letsencrypt) but none has been issued yet: run 'vitals web cert issue'")
+    pair = certs.active_pair(app)                         # acme = yes next to your own choice: use it once it exists
     if pair:
         return pair
     cert, key = cfg.get("web", "web", "cert", ""), cfg.get("web", "web", "key", "")
     if cert and key:
         return cert, key
+    if source == "custom":
+        raise ValueError("tls_source = custom needs cert and key in web.conf")
     d = os.path.join(app.paths.data_dir, "web")
     cert, key = os.path.join(d, "server.crt"), os.path.join(d, "server.key")
     if os.path.exists(cert) and os.path.exists(key):
@@ -777,7 +785,15 @@ def make_server(app, bind=None, port=None):
         raise ValueError("there are no web users yet: run  vitals web passwd admin (or allow a Linux account with system_users in web.conf)")
     server = Threaded((bind, port), make_handler(web))
     if tls:
-        cert, key = ensure_certificate(app)
+        from lshme.web import certs as _certs
+        if _certs.settings(cfg)["source"] == "letsencrypt":
+            try:
+                cert, key = _certs.obtain(app)
+            except ValueError:
+                server.server_close()
+                raise
+        else:
+            cert, key = ensure_certificate(app)
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
         ctx.options |= ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
         ctx.load_cert_chain(cert, key)
@@ -785,5 +801,5 @@ def make_server(app, bind=None, port=None):
         from lshme.web import certs
         certs.register_context(ctx)                       # a renewed certificate is loaded into it without a restart
         if certs.settings(cfg)["enabled"] and port:
-            certs.start_renewal(app)
+            certs.start_renewal(app, first_after=3600)    # renewals are checked about hourly after the first check
     return server, web

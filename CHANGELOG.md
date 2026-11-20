@@ -12,7 +12,7 @@
 - **Web dashboard:** Alerts card, a Servers page for central monitoring of every server, Linux account sign-in (`system_users`, rights follow wheel/sudo), customer accounts tied to a group with branding (`[user_groups]`, `[branding:group]`), health of LRS Vitals itself, retention overview per report type, audit log viewer, downloadable configuration backups.
 - **Health of the tool itself:** a `selfcheck` module and dashboard card report a stopped watcher, missing timers, late reports, failed email and low disk space.
 - **Customer document pack** in `docs/customer`: one-page install guide, "what we monitor" sheet and sample reports (`tools/demo_reports.py` regenerates them).
-- **Free HTTPS certificate (Let's Encrypt) for the web interface only:** `acme = yes` in web.conf, `vitals web cert issue|renew|status`, HTTP-01 (port 80 or webroot) or DNS-01 (hook script), names from `acme_domains` or the server's public FQDN, automatic renewal 30 days before expiry with live reload. Needs a public DNS name; private names cannot get one.
+- **Genuine HTTPS certificate (Let's Encrypt) for the web interface only, never self-signed by default (`tls_source = letsencrypt`):** ACME client with the HTTP check (port 80 or webroot) or the DNS check (Cloudflare, DuckDNS or a hook script; works for servers on private addresses), names from `acme_domains` or the server's public FQDN, automatic renewal with live reload, `vitals web cert status|issue|renew`, an Operations card. A self-signed certificate is used only when you choose `tls_source = self-signed`.
 - **Licence:** strict proprietary licence, no use by anyone except the owner.
 
 ## 1.3.0

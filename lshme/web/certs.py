@@ -14,7 +14,7 @@ import time
 
 from lshme.core import logs
 from lshme.core.config import as_bool, as_list
-from lshme.web import acme
+from lshme.web import acme, dnsproviders
 
 PRIVATE_SUFFIXES = ("local", "localdomain", "lan", "home", "internal", "intranet", "corp", "private", "localhost", "test", "example", "invalid")
 NAME_RX = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
@@ -25,7 +25,10 @@ _lock = threading.Lock()
 def settings(cfg):
     g = lambda k, d="": (cfg.get("web", "web", k, d) or "").strip()
     directory = g("acme_directory", "production")
-    return {"enabled": as_bool(g("acme", "no"), False), "domains": [d.lower() for d in as_list(g("acme_domains"))], "email": g("acme_email"),
+    source = g("tls_source", "letsencrypt").lower()
+    source = source if source in ("letsencrypt", "self-signed", "custom") else "letsencrypt"
+    return {"source": source, "enabled": as_bool(g("acme", "no"), False) or source == "letsencrypt", "dns_provider": g("acme_dns_provider").lower(), "dns_api": g("acme_dns_api"),
+            "domains": [d.lower() for d in as_list(g("acme_domains"))], "email": g("acme_email"),
             "directory": {"production": acme.PRODUCTION, "staging": acme.STAGING}.get(directory.lower(), directory), "directory_name": directory,
             "challenge": g("acme_challenge", "http").lower(), "port": int(g("acme_http_port", "80") or 80), "webroot": g("acme_webroot"),
             "dns_hook": g("acme_dns_hook"), "dns_wait": int(g("acme_dns_wait", "60") or 60), "renew_days": int(g("acme_renew_days", "30") or 30)}
@@ -105,7 +108,7 @@ def status(app):
     f = files(app)
     meta = load_meta(app)
     domains = domains_for(app.cfg)
-    out = {"enabled": s["enabled"], "domains": domains, "directory": s["directory_name"], "challenge": s["challenge"], "problem": "", "certificate": None,
+    out = {"source": s["source"], "enabled": s["enabled"], "domains": domains, "dns_provider": s["dns_provider"], "directory": s["directory_name"], "challenge": s["challenge"], "problem": "", "certificate": None,
            "last_error": meta.get("last_error", ""), "last_try": meta.get("last_try"), "renew_days": s["renew_days"]}
     if s["enabled"] and not domains:
         out["problem"] = "No public name to use. Give this server a public FQDN, or list the names in acme_domains (web.conf)."
@@ -138,10 +141,12 @@ def reload_contexts(app):
     return n
 
 
-def check_domains(domains):
+def check_domains(domains, resolve=True):
     for d in domains:
         if not valid_public_name(d):
             raise acme.AcmeError("%s is not a public domain name (no IP addresses, .local, .lan, .internal and similar)" % d)
+        if not resolve:                                  # the DNS check does not need the name to point at this server
+            continue
         try:
             socket.getaddrinfo(d, None)
         except socket.gaierror:
@@ -164,7 +169,10 @@ def issue(app, force=False, log=None):
             info = inspect(app, f["cert"])
             if info and info["not_after"] and info["not_after"] - time.time() > s["renew_days"] * 86400 and sorted(meta.get("domains", [])) == sorted(domains):
                 return {"ok": True, "renewed": False, "message": "The certificate is valid for %d more days; nothing to do." % ((info["not_after"] - time.time()) // 86400)}
-        check_domains(domains)
+        check_domains(domains, resolve=(s["challenge"] == "http"))
+        dns = None
+        if s["challenge"] == "dns":
+            dns = dnsproviders.provider(s["dns_provider"], app.cfg.secret("acme", "token"), s["dns_hook"], s["dns_api"])
         os.makedirs(folder(app), exist_ok=True)
         os.chmod(folder(app), 0o700)
         if not os.path.exists(f["account"]):
@@ -172,7 +180,7 @@ def issue(app, force=False, log=None):
         new_key = f["key"] + ".new"
         acme.new_key(new_key)
         client = acme.Client(s["directory"], f["account"], s["email"], log)
-        pem = client.issue(domains, new_key, s["challenge"], s["port"], s["webroot"], s["dns_hook"], s["dns_wait"])
+        pem = client.issue(domains, new_key, s["challenge"], s["port"], s["webroot"], dns, s["dns_wait"])
         tmp = f["cert"] + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             fh.write(pem)
@@ -191,6 +199,23 @@ def issue(app, force=False, log=None):
             pass
         logs.get().warning("web certificate: %s", e)
         return {"ok": False, "renewed": False, "message": str(e)}
+
+
+def obtain(app, retry_after=900):
+    """The (certificate, key) of a genuine certificate, getting one first if needed. Raises ValueError with the reason when it cannot:
+    with tls_source = letsencrypt a self-signed certificate is never used instead."""
+    pair = active_pair(app)
+    if pair:
+        return pair
+    meta = load_meta(app)
+    if not meta.get("last_error") or time.time() - meta.get("last_try", 0) > retry_after:     # do not hammer the authority after a failure
+        issue(app)
+        pair = active_pair(app)
+        if pair:
+            return pair
+        meta = load_meta(app)
+    raise ValueError("a genuine Let's Encrypt certificate is required (tls_source = letsencrypt) but none could be obtained: %s. "
+                     "Self-signed certificates are switched off. See 'vitals web cert status'." % (meta.get("last_error") or "no public name is set (acme_domains)"))
 
 
 def start_renewal(app, check_every=6 * 3600, first_after=30):

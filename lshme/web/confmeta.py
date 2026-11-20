@@ -35,7 +35,7 @@ CHOICES = {
     "method": ["smtp", "sendmail"], "security": ["starttls", "ssl", "none"], "send_policy": ["", "always", "issues", "critical", "never"],
     "report_type": ["daily", "weekly", "monthly", "executive", "technical", "full"], "alert_min_severity": SEVERITIES, "expected_selinux": ["enforcing", "permissive", "disabled"],
     "weekday": WEEKDAYS, "frequency": ["hourly", "daily", "weekly", "monthly", "custom"], "backend": ["auto", "systemd", "cron"],
-    "type": ["directory", "logfile"], "acme_challenge": ["http", "dns"],
+    "type": ["directory", "logfile"], "acme_challenge": ["http", "dns"], "tls_source": ["letsencrypt", "self-signed", "custom"], "acme_dns_provider": ["", "cloudflare", "duckdns", "hook"],
 }
 MULTI = {"formats": list(reports.FORMATS), "attach_formats": list(reports.FORMATS), "capacity_forecast_in": ["daily", "weekly", "monthly"]}
 EMAIL_KEYS = {"to", "cc", "bcc", "from", "critical_to", "alert_to"}
@@ -98,7 +98,9 @@ HELP = {
     "tls": "Encrypt with HTTPS (a self-signed certificate is created if none is given).", "cert": "TLS certificate file (PEM).", "key": "TLS private key file (PEM).",
     "session_minutes": "Minutes of inactivity before signing out.", "max_login_failures": "Wrong passwords allowed per address in 5 minutes.",
     "allow_plain_http": "Allow HTTP (no encryption) on a network address. Not recommended.", "code": "Finding code, wildcards allowed.", "reason": "Why this is accepted.",
-    "until": "Expiry date YYYY-MM-DD.", "target_percent": "Availability target used by the SLA report.", "acme": "Get a free Let's Encrypt certificate for the web interface (needs a public name and port 80).", "acme_domains": "Names for the certificate. Empty = this server's FQDN.",
+    "until": "Expiry date YYYY-MM-DD.", "target_percent": "Availability target used by the SLA report.", "tls_source": "Certificate for HTTPS: letsencrypt (genuine, the default; never self-signed), self-signed, or custom (your own cert and key).",
+    "acme_dns_provider": "For the DNS check: cloudflare or duckdns (token in credentials.conf, section [acme]) or hook (your own script).",
+    "acme": "Get a free Let's Encrypt certificate for the web interface (needs a public name and port 80).", "acme_domains": "Names for the certificate. Empty = this server's FQDN.",
     "acme_email": "Where Let's Encrypt sends expiry notices.", "acme_directory": "production, staging (for testing) or a full ACME directory URL.",
     "acme_challenge": "http (port 80) or dns (needs a hook script).", "acme_webroot": "A folder another web server serves on port 80, instead of this program listening there.",
     "acme_dns_hook": "Script called as: hook add|remove _acme-challenge.NAME VALUE.", "acme_renew_days": "Renew when fewer days than this are left.",

@@ -799,11 +799,12 @@ def page_web(ctx):
         b("Sign out after (minutes)", "session_minutes", "int", lo=1, hi=1440, help="Minutes of inactivity before signing out."),
         b("Wrong passwords allowed", "max_login_failures", "int", lo=1, hi=100, help="Per address in 5 minutes, then it is locked out for a while."),
         b("Allow plain HTTP on the network", "allow_plain_http", "bool", help="Not recommended: passwords would travel unencrypted."),
-        Heading("Free certificate (Let's Encrypt) - this web interface only"),
-        b("Use Let's Encrypt", "acme", "bool", help="Needs a public DNS name and port 80 open to the internet. No LAN-only names."),
-        b("Names", "acme_domains", help="Empty = this server's FQDN, or a list: a.example.com, b.example.com"),
+        Heading("HTTPS certificate - this web interface only"),
+        b("Certificate", "tls_source", "choice", choices=["letsencrypt", "self-signed", "custom"], help="letsencrypt = genuine, free, never self-signed (default)."),
+        b("Names", "acme_domains", help="Empty = this server's public FQDN, or a list: a.example.com"),
         b("E-mail for expiry notices", "acme_email", help="Let's Encrypt writes here before a certificate expires."),
-        b("Check domain by", "acme_challenge", "choice", choices=["http", "dns"], help="http uses port 80; dns needs a hook script (acme_dns_hook)."),
+        b("Check domain by", "acme_challenge", "choice", choices=["http", "dns"], help="http = port 80 open to the internet; dns = works for private servers."),
+        b("DNS provider", "acme_dns_provider", "choice", choices=["", "cloudflare", "duckdns", "hook"], help="For the DNS check. Token goes in credentials.conf [acme]."),
         b("Authority", "acme_directory", help="production, staging (for testing) or a full ACME directory URL."),
     ]
 

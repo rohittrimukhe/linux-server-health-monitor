@@ -9,10 +9,10 @@ import tempfile
 import time
 import unittest
 
-from fake_acme import FakeCA
+from fake_acme import FakeCA, FakeDnsApi
 from fakes import ROOT, TempHome
 from lshme.app import App
-from lshme.web import acme, certs
+from lshme.web import acme, certs, dnsproviders
 
 
 def free_port():
@@ -89,7 +89,7 @@ class ClientTests(unittest.TestCase):
         os.chmod(hook, 0o755)
         ca = FakeCA(dns_file=records)
         try:
-            pem = acme.Client(ca.directory, self.account, "").issue(["portal.example.com"], self.key, "dns", dns_hook=hook, dns_wait=0, poll_wait=0.05)
+            pem = acme.Client(ca.directory, self.account, "").issue(["portal.example.com"], self.key, "dns", dns=dnsproviders.Hook(hook), dns_wait=0, poll_wait=0.05)
         finally:
             ca.stop()
         self.assertIn("BEGIN CERTIFICATE", pem)
@@ -122,6 +122,129 @@ class ClientTests(unittest.TestCase):
             acme.Client("http://127.0.0.1:%d/directory" % free_port(), self.account, "", timeout=2).start()
 
 
+
+class DnsProviderTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.dns_file = os.path.join(self.tmp, "dns.txt")
+        open(self.dns_file, "w").close()
+        self.api = FakeDnsApi(self.dns_file)
+
+    def tearDown(self):
+        self.api.stop()
+
+    def test_cloudflare_finds_the_zone_adds_and_removes_the_record(self):
+        cf = dnsproviders.Cloudflare("secret-token", self.api.base)
+        cf.add("portal.example.com", "VALUE1")
+        self.assertIn("VALUE1", open(self.dns_file).read())
+        asked = [e[2]["name"][0] for e in self.api.log if e[1] == "/zones"]
+        self.assertEqual(asked[:2], ["portal.example.com", "example.com"])               # walks up to the parent domain
+        post = [e for e in self.api.log if e[0] == "POST"][0]
+        self.assertEqual((post[2]["type"], post[2]["name"]), ("TXT", "_acme-challenge.portal.example.com"))
+        cf.remove("portal.example.com", "VALUE1")
+        self.assertEqual(open(self.dns_file).read(), "")
+        self.assertEqual([e[0] for e in self.api.log if e[0] == "DELETE"], ["DELETE"])
+
+    def test_cloudflare_problems_are_explained(self):
+        with self.assertRaises(acme.AcmeError) as cm:
+            dnsproviders.Cloudflare("wrong", self.api.base).add("portal.example.com", "v")
+        self.assertIn("bad token", str(cm.exception))
+        with self.assertRaises(acme.AcmeError) as cm:
+            dnsproviders.Cloudflare("secret-token", self.api.base).add("portal.other.org", "v")
+        self.assertIn("no Cloudflare zone", str(cm.exception))
+        with self.assertRaises(acme.AcmeError):
+            dnsproviders.Cloudflare("")
+
+    def test_duckdns_sets_and_clears_the_txt_record(self):
+        d = dnsproviders.DuckDNS("secret-token", self.api.base)
+        d.add("lrsvitals.duckdns.org", "VALUE2")
+        self.assertIn("VALUE2", open(self.dns_file).read())
+        upd = [e for e in self.api.log if e[1] == "/update"][0][2]
+        self.assertEqual(upd["domains"], ["lrsvitals"])                                    # only the sub-domain part is sent
+        d.remove("lrsvitals.duckdns.org", "VALUE2")
+        self.assertEqual(open(self.dns_file).read(), "")
+        with self.assertRaises(acme.AcmeError):
+            d.add("portal.example.com", "v")                                                # not a duckdns name
+        with self.assertRaises(acme.AcmeError):
+            dnsproviders.DuckDNS("wrong", self.api.base).add("lrsvitals.duckdns.org", "v")
+
+    def test_provider_factory(self):
+        self.assertIsInstance(dnsproviders.provider("duckdns", "t"), dnsproviders.DuckDNS)
+        self.assertIsInstance(dnsproviders.provider("cloudflare", "t"), dnsproviders.Cloudflare)
+        self.assertIsInstance(dnsproviders.provider("hook", hook="/bin/true"), dnsproviders.Hook)
+        for bad in (("hook", "", ""), ("route66", "t", "")):
+            with self.assertRaises(acme.AcmeError):
+                dnsproviders.provider(bad[0], bad[1], bad[2])
+
+
+class PrivateServerGenuineCertificateTests(unittest.TestCase):
+    """A server on a private address still gets a genuine certificate through the DNS check."""
+
+    def setUp(self):
+        self.home = TempHome()
+        self.app = App(ROOT, home=self.home.dir)
+        self.dns_file = os.path.join(self.home.dir, "dns.txt")
+        open(self.dns_file, "w").close()
+        self.dns = FakeDnsApi(self.dns_file)
+        self.ca = FakeCA(dns_file=self.dns_file)
+        for k, v in (("tls_source", "letsencrypt"), ("acme_domains", "lrsvitals.duckdns.org"), ("acme_directory", self.ca.directory), ("acme_challenge", "dns"),
+                     ("acme_dns_provider", "duckdns"), ("acme_dns_api", self.dns.base), ("acme_dns_wait", "0")):
+            self.app.cfg.set("web", "web", k, v)
+        os.environ["LSHME_ACME_TOKEN"] = "secret-token"
+        self.real_check = certs.check_domains
+        self.resolved = []
+        certs.check_domains = lambda domains, resolve=True: self.resolved.append(resolve)
+
+    def tearDown(self):
+        os.environ.pop("LSHME_ACME_TOKEN", None)
+        certs.check_domains = self.real_check
+        self.ca.stop()
+        self.dns.stop()
+        self.home.cleanup()
+
+    def test_dns_check_does_not_need_the_name_to_reach_this_server(self):
+        r = certs.issue(self.app)
+        self.assertTrue(r["ok"] and r["renewed"], r)
+        self.assertEqual(self.resolved, [False])                      # no DNS lookup of the server's own address is required
+        self.assertEqual(certs.active_pair(self.app), (certs.files(self.app)["cert"], certs.files(self.app)["key"]))
+        self.assertEqual(open(self.dns_file).read(), "")              # the TXT record was cleaned up again
+
+    def test_a_genuine_certificate_is_required_and_self_signed_is_never_used(self):
+        from lshme.web import server
+        self.assertEqual(certs.settings(self.app.cfg)["source"], "letsencrypt")
+        with self.assertRaises(ValueError) as cm:
+            server.ensure_certificate(self.app)                        # nothing issued yet: no silent self-signed fallback
+        self.assertIn("genuine Let's Encrypt certificate is required", str(cm.exception))
+        self.assertFalse(os.path.exists(os.path.join(self.app.paths.data_dir, "web", "server.crt")))
+        pair = certs.obtain(self.app)                                  # getting it fixes that
+        self.assertEqual(server.ensure_certificate(self.app), pair)
+
+    def test_the_web_server_refuses_to_start_without_one_and_does_not_hammer_the_authority(self):
+        from lshme.web import server
+        self.ca.reject = True
+        self.app.cfg.set("web", "web", "tls", "yes")
+        self.app.cfg.set("web", "web", "bind", "127.0.0.1")
+        from lshme.web import auth
+        auth.Users(self.app).set_password("admin", "Passw0rd-Strong1", "admin")
+        with self.assertRaises(ValueError) as cm:
+            server.make_server(self.app, port=0)
+        self.assertIn("Self-signed certificates are switched off", str(cm.exception))
+        self.assertIn("rejected by the test CA", str(cm.exception))
+        orders = self.ca.orders
+        with self.assertRaises(ValueError):
+            server.make_server(self.app, port=0)                       # restarted a moment later
+        self.assertEqual(self.ca.orders, orders)                       # the failed attempt is not repeated for a while
+
+    def test_self_signed_and_custom_are_only_used_when_chosen(self):
+        from lshme.web import server
+        self.app.cfg.set("web", "web", "tls_source", "custom")
+        with self.assertRaises(ValueError):
+            server.ensure_certificate(self.app)
+        self.app.cfg.set("web", "web", "cert", "/tmp/c.pem")
+        self.app.cfg.set("web", "web", "key", "/tmp/k.pem")
+        self.assertEqual(server.ensure_certificate(self.app), ("/tmp/c.pem", "/tmp/k.pem"))
+
+
 class IssueTests(unittest.TestCase):
     def setUp(self):
         self.home = TempHome()
@@ -133,7 +256,7 @@ class IssueTests(unittest.TestCase):
                      ("acme_email", "ops@example.com")):
             cfg.set("web", "web", k, v)
         self.real_check = certs.check_domains
-        certs.check_domains = lambda domains: [acme_ok(d) for d in domains]
+        certs.check_domains = lambda domains, resolve=True: [acme_ok(d) for d in domains]
 
     def tearDown(self):
         certs.check_domains = self.real_check
@@ -194,9 +317,11 @@ class IssueTests(unittest.TestCase):
 
     def test_nothing_happens_when_switched_off_or_without_a_public_name(self):
         self.app.cfg.set("web", "web", "acme", "no")
+        self.app.cfg.set("web", "web", "tls_source", "self-signed")
         self.assertIn("switched off", certs.issue(self.app)["message"])
         self.assertIsNone(certs.active_pair(self.app))
         self.app.cfg.set("web", "web", "acme", "yes")
+        self.app.cfg.set("web", "web", "tls_source", "letsencrypt")
         self.app.cfg.set("web", "web", "acme_domains", "192.168.1.3")
         certs.check_domains = self.real_check
         r = certs.issue(self.app)

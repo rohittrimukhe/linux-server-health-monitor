@@ -203,7 +203,7 @@ class Client(object):
             time.sleep(wait)
         raise AcmeError("%s did not finish in time" % what)
 
-    def issue(self, domains, domain_key, challenge="http", port=80, webroot="", dns_hook="", dns_wait=60, poll_wait=3):
+    def issue(self, domains, domain_key, challenge="http", port=80, webroot="", dns=None, dns_wait=60, poll_wait=3):
         """Returns the certificate chain (PEM text) for the domains."""
         self.start()
         _, order, hdr = self.signed(self.directory["newOrder"], {"identifiers": [{"type": "dns", "value": d} for d in domains]})
@@ -226,7 +226,7 @@ class Client(object):
                     raise AcmeError("the certificate authority does not offer %s for %s" % (want, domain))
                 ch = ch[0]
                 keyauth = "%s.%s" % (ch["token"], thumbprint(self.jwk))
-                cleanup = self.provision(challenge, domain, ch["token"], keyauth, standalone, webroot, dns_hook, dns_wait)
+                cleanup = self.provision(challenge, domain, ch["token"], keyauth, standalone, webroot, dns, dns_wait)
                 try:
                     self.log("asking the certificate authority to check %s" % domain)
                     self.signed(ch["url"], {})
@@ -246,7 +246,7 @@ class Client(object):
             if standalone:
                 standalone.stop()
 
-    def provision(self, challenge, domain, token, keyauth, standalone, webroot, dns_hook, dns_wait):
+    def provision(self, challenge, domain, token, keyauth, standalone, webroot, dns, dns_wait):
         if challenge == "http":
             if webroot:
                 d = os.path.join(webroot, ".well-known", "acme-challenge")
@@ -257,20 +257,10 @@ class Client(object):
                 return lambda: os.path.exists(path) and os.unlink(path)
             standalone.tokens[token] = keyauth
             return lambda: standalone.tokens.pop(token, None)
-        if not dns_hook:
-            raise AcmeError("DNS validation needs acme_dns_hook: a script that adds and removes the TXT record")
+        if dns is None:
+            raise AcmeError("the DNS check needs a DNS provider (cloudflare or duckdns) or a hook script")
         value = b64(hashlib.sha256(keyauth.encode("ascii")).digest())
-        self.run_hook(dns_hook, "add", domain, value)
+        dns.add(domain, value)
         self.log("waiting %d s for the DNS record to spread" % dns_wait)
         time.sleep(dns_wait)
-        return lambda: self.run_hook(dns_hook, "remove", domain, value, quiet=True)
-
-    def run_hook(self, hook, action, domain, value, quiet=False):
-        try:
-            p = subprocess.run([hook, action, "_acme-challenge." + domain, value], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
-        except (OSError, subprocess.SubprocessError) as e:
-            if quiet:
-                return
-            raise AcmeError("the DNS hook could not run: %s" % e)
-        if p.returncode and not quiet:
-            raise AcmeError("the DNS hook failed (%d): %s" % (p.returncode, p.stderr.decode("utf-8", "replace")[:200]))
+        return lambda: dns.remove(domain, value)

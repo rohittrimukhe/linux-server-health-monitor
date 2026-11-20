@@ -443,32 +443,44 @@ without the logo image.
 | Schedules not running | `healthcheck schedule status`; `systemctl list-timers 'lshme-*'`; `journalctl -u lshme-daily` |
 | Reports too large | Use `report_type = executive`, reduce `formats`, set `max_attachment_mb` |
 
-## 20. Free HTTPS certificate for the web interface (Let's Encrypt)
+## 20. Genuine HTTPS certificate for the web interface (Let's Encrypt)
 
-The web interface can use a free, trusted Let's Encrypt certificate instead of its self-signed one. It is used by the
-web interface only; no other service and no system setting is changed.
+By default the web interface uses a **genuine, publicly trusted Let's Encrypt certificate and never a self-signed one**
+(`tls_source = letsencrypt`). Until the certificate exists, the HTTPS web interface does not start and `vitals web cert status`
+tells you what is missing. The certificate is used by the web interface only; no other service and no system setting changes.
+A self-signed certificate is possible only if you choose it yourself (`tls_source = self-signed`).
 
-**What it needs**
+**What Let's Encrypt needs: a public DNS name.** An IP address, a LAN-only host name such as `oraclelinux9`, and names ending in
+`.local`, `.lan` or `.internal` cannot get a certificate. Then prove you control the name, in one of two ways:
 
-- A **public DNS name** (for example `portal.example.com`) whose DNS record points at this server. A LAN-only host name,
-  `.local`, `.lan`, `.internal` names and IP addresses cannot get a Let's Encrypt certificate.
-- For the default check, **port 80** reachable from the internet. If another web server already uses port 80, set
-  `acme_webroot` to the folder it serves. If port 80 cannot be opened at all, use the DNS check (`acme_challenge = dns`)
-  with a hook script that adds and removes a TXT record.
+| Check | What must be true | Works for a server on a private address? |
+|---|---|---|
+| `acme_challenge = http` | The name points at this server and **port 80 is reachable from the internet** (or another web server on port 80 serves `acme_webroot`) | No |
+| `acme_challenge = dns` | You can edit the domain's DNS: a TXT record is added and removed automatically (`acme_dns_provider = cloudflare`, `duckdns` or `hook`, token in `credentials.conf` under `[acme]`) | **Yes** (the name may point at 192.168.x.x) |
 
-**Switch it on** (`/etc/lshme/web.conf`, section `[web]`, or *Settings > web* in the web interface or `vitals`):
+**Free setup for a server on a private network (DuckDNS, about 5 minutes)**
 
-    acme = yes
-    acme_domains =            # empty = this server's FQDN
-    acme_email = you@example.com
-    acme_directory = production   # use "staging" first to test without limits
+1. Sign in at duckdns.org, create a sub-domain such as `lrsvitals` and set its address to the server's address (for example 192.168.1.3). Copy your token.
+2. Put the token in `/etc/lshme/credentials.conf` (mode 600):
 
-Then run `vitals web cert issue`, or press **Get / renew now** in Operations > Web certificate. `vitals web cert status` shows
-the names, the expiry date and whether the web interface is using it.
+       [acme]
+       token = YOUR-DUCKDNS-TOKEN
 
-**Renewal is automatic.** While the web service runs (`vitals web install`), it checks every 6 hours and renews when fewer than
-`acme_renew_days` (30) days are left. The new certificate is loaded without a restart. A failed attempt keeps the old
-certificate and shows the reason in Operations and in `vitals web cert status`. Open the page by its name, for example
-`https://portal.example.com:8443/`, so the name matches the certificate.
+3. In `/etc/lshme/web.conf`:
 
-Let's Encrypt limits how often certificates can be requested; try `acme_directory = staging` while testing.
+       tls_source = letsencrypt
+       acme_domains = lrsvitals.duckdns.org
+       acme_challenge = dns
+       acme_dns_provider = duckdns
+       acme_email = you@example.com
+       acme_directory = staging        # test first; change to production when it works
+
+4. `vitals web cert issue`, then `vitals web install`. Open `https://lrsvitals.duckdns.org:8443/` (some routers block names that
+   answer with a private address; if so, add the name to the router's DNS exceptions or use your own domain).
+
+With your own domain on Cloudflare use `acme_dns_provider = cloudflare` and a token that may edit that zone's DNS.
+
+**Renewal is automatic.** While the web service runs (`vitals web install`) it checks about hourly and renews when fewer than
+`acme_renew_days` (30) days are left; the new certificate is loaded without a restart. A failed attempt keeps the old certificate
+and shows the reason in Operations > Web certificate and in `vitals web cert status`. Failed starts are not retried more than every
+15 minutes, so Let's Encrypt's limits are not hit. `staging` certificates are not trusted by browsers: they only prove the setup works.

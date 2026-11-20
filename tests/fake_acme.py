@@ -132,3 +132,75 @@ class FakeCA(object):
     def stop(self):
         self.server.shutdown()
         self.server.server_close()
+
+
+class FakeDnsApi(object):
+    """A pretend DNS provider API (Cloudflare shaped and DuckDNS shaped). It records what was asked and writes TXT values to a file
+    that the FakeCA reads, like a real DNS server would answer the authority."""
+
+    def __init__(self, dns_file, token="secret-token"):
+        self.dns_file, self.token, self.log, self.records = dns_file, token, [], {}
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def reply(self, code, obj, raw=False):
+                body = obj.encode() if raw else json.dumps(obj).encode()
+                self.send_response(code)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def authorised(self):
+                return self.headers.get("Authorization") == "Bearer " + outer.token
+
+            def do_GET(self):
+                from urllib.parse import parse_qs, urlsplit
+                u = urlsplit(self.path)
+                q = parse_qs(u.query)
+                outer.log.append(("GET", u.path, q))
+                if u.path == "/update":                                   # DuckDNS
+                    if q.get("token", [""])[0] != outer.token:
+                        return self.reply(200, "KO", raw=True)
+                    value = q.get("txt", [""])[0]
+                    if q.get("clear"):
+                        outer.write(remove=value)
+                    else:
+                        outer.write(add=value)
+                    return self.reply(200, "OK\n" + value, raw=True)
+                if u.path == "/zones":                                    # Cloudflare: zone lookup
+                    if not self.authorised():
+                        return self.reply(403, {"success": False, "errors": [{"message": "bad token"}]})
+                    name = q.get("name", [""])[0]
+                    return self.reply(200, {"success": True, "result": [{"id": "zone-1", "name": name}] if name == "example.com" else []})
+                self.reply(404, {"success": False, "errors": []})
+
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode())
+                outer.log.append(("POST", self.path, body))
+                if not self.authorised():
+                    return self.reply(403, {"success": False, "errors": [{"message": "bad token"}]})
+                outer.write(add=body["content"])
+                self.reply(200, {"success": True, "result": {"id": "rec-1"}})
+
+            def do_DELETE(self):
+                outer.log.append(("DELETE", self.path, None))
+                outer.write(clear=True)
+                self.reply(200, {"success": True, "result": {"id": "rec-1"}})
+
+        self.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        self.base = "http://127.0.0.1:%d" % self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def write(self, add=None, remove=None, clear=False):
+        if clear or remove:
+            open(self.dns_file, "w").close()
+        if add:
+            with open(self.dns_file, "a") as f:
+                f.write(add + "\n")
+
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
