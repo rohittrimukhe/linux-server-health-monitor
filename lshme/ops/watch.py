@@ -484,6 +484,8 @@ def deliver(app, subject, body, status, to=None):
         except Exception as e:
             results[name] = str(e)[:200]
     log.warning("watch alert: %s -> %s", subject, results)
+    from lshme.ops import rawstore
+    rawstore.write("alert", {"subject": subject, "status": status, "to": to or [], "channels": results, "body": body[:4000]})
     return results
 
 
@@ -533,6 +535,9 @@ class Watcher(object):
             with open(self.events_path, "a", encoding="utf-8") as f:
                 for e in events:
                     f.write(json.dumps(e, sort_keys=True) + "\n")
+            from lshme.ops import rawstore
+            for e in events:
+                rawstore.write("event", e, e.get("ts"))
         cov = self.state.setdefault("coverage", {})
         day = time.strftime("%Y-%m-%d", time.localtime(now))
         cov[day] = cov.get(day, 0) + 1
@@ -550,6 +555,11 @@ class Watcher(object):
         if not s:
             return
         probs = self.state.get("problems", {})
+        try:                                             # the complete measurement into the daily raw file
+            from lshme.ops import rawstore
+            rawstore.watcher_tick(self.app, s, probs, now, self.state)
+        except Exception:
+            logs.get().exception("raw data not written")
         disks = sorted(s["disk"].items(), key=lambda kv: -kv[1])[:8]  # the fullest filesystems only
         point = {"t": round(now), "cpu": s.get("cpu"), "mem": s.get("mem"), "swap": s.get("swap"), "load": s.get("load"),
                  "cores": [None if c is None else int(round(c)) for c in (s.get("cores") or [])], "net": s.get("net") or {}, "disk": dict(disks), "crit": sum(1 for p in probs.values() if p.get("severity") == "CRITICAL"),

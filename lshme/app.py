@@ -13,9 +13,20 @@ from lshme.core.runner import Runner
 from lshme.delivery import mailer
 from lshme.engine import pipeline
 from lshme.engine.history import History
-from lshme.ops import archive, exporters, fleet, retention, scheduler
+from lshme.ops import archive, exporters, fleet, rawstore, retention, scheduler
 from lshme.reports import doc as docmod
 from lshme.reports import html as htmlrep
+
+
+def raw_run(run, schedule, full, rtype="run", host=None):
+    """The complete health-check result into the raw day file (passwords masked)."""
+    try:
+        from lshme.core.util import redact_obj
+        data = redact_obj(run.to_dict())
+        data["_schedule"], data["_full"] = schedule, bool(full)
+        rawstore.write(rtype, data, run.collected_at, host=host)
+    except Exception:
+        pass
 
 
 class App(object):
@@ -27,6 +38,7 @@ class App(object):
         self.paths.ensure()
         self.log = logs.setup(self.paths.log_dir, verbose)
         self.runner = Runner(self.cfg.getint("main", "general", "command_timeout", 30))
+        rawstore.configure(self.paths, self.cfg)             # every measurement is also kept in the daily raw files
 
     def reload(self):
         self.cfg = Config(self.paths.config_dir)
@@ -54,8 +66,11 @@ class App(object):
         # one-off partial checks would distort score history; scheduled subsets are kept
         if not full and schedule in ("adhoc", "nagios", "export"):
             save_history = False
-        return pipeline.execute(ctx, mods, self.paths, save_history=save_history, progress=progress,
-                                drift=full, trends=full or schedule not in ("adhoc", "nagios", "export"))
+        run = pipeline.execute(ctx, mods, self.paths, save_history=save_history, progress=progress,
+                               drift=full, trends=full or schedule not in ("adhoc", "nagios", "export"))
+        if schedule not in ("nagios", "export", "fleet"):
+            raw_run(run, schedule, full)
+        return run
 
     def full_run(self, module_names=None, days=1, formats=None, report_type=None, email=None, schedule_name=None,
                  force_email=False, write_reports=True, progress=None, to=None, cc=None, policy=None):
@@ -94,6 +109,8 @@ class App(object):
             if write_reports and formats:
                 document, outdir, files, notes = reports.generate(run, self.cfg, self.paths, formats, report_type, category)
                 result.update(files=files, report_dir=outdir)
+                rawstore.write("report", {"dir": outdir, "report_type": report_type, "category": category, "files": [os.path.basename(f) for f in files],
+                                          "run_ts": run.collected_at, "notes": notes})
                 if module_names in (None, "", "all", ["all"]):
                     run.meta["report_files"] = files
                     self.save_latest(run)  # lets the Cockpit page open the latest reports
@@ -139,6 +156,10 @@ class App(object):
             if schedule_name and self.cfg.getbool("retention", "retention", "auto_apply", True):
                 acts = [a for a in retention.plan(self.cfg, self.paths)]
                 retention.apply(self.cfg, self.paths, acts)
+            try:
+                rawstore.seal_due()                         # finished days are sealed at 02:00 even without the live watcher
+            except Exception:
+                self.log.exception("raw data seal failed")
             self.log.info("run end status=%s score=%s files=%d", run.health["status"], run.health["score"], len(result["files"]))
         return run, result
 
@@ -204,6 +225,8 @@ class App(object):
             self.log.warning("attachments skipped: %s", skipped)
         res = mailer.send(ms, msg, recipients, self.paths.log_dir)
         res["attached"], res["skipped_attachments"] = attached, skipped
+        rawstore.write("email", {"subject": subject, "recipients": recipients, "ok": res["ok"], "attempts": res.get("attempts"),
+                                 "error": res.get("error"), "attached": attached, "skipped": skipped, "run_ts": run.collected_at})
         try:
             h = History(self.paths.history_db)
             h.record_delivery(run.host, getattr(run, "run_id", None), res["ok"], recipients, res["attempts"], res.get("error") or ",".join(attached))
@@ -227,6 +250,7 @@ class App(object):
         for r in runs:
             if r.host != os.uname()[1]:
                 h.save(r)
+            raw_run(r, "fleet", True, rtype="fleet", host=r.host)    # the central server keeps every server's raw results
         h.close()
         from lshme.ops import dashboard
         dashboard.save_results(self.paths, runs, errors)

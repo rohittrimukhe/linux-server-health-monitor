@@ -222,8 +222,9 @@ def build_parser():
     e.add_argument("--output", help="file path (default stdout)")
     e.add_argument("--modules")
 
-    from lshme.ui import archivecmd
+    from lshme.ui import archivecmd, rawcmd
     archivecmd.add_parser(sub)
+    rawcmd.add_parser(sub)
 
     rp = sub.add_parser("report", help="re-render reports from a saved JSON run")
     rp.add_argument("json_file")
@@ -817,6 +818,9 @@ def dispatch(app, cmd, args):
             C.out("written %s" % args.output)
         else:
             sys.stdout.write(text)
+    elif cmd == "raw":
+        from lshme.ui import rawcmd
+        return rawcmd.run(app, args)
     elif cmd == "archive":
         from lshme.ui import archivecmd
         return archivecmd.run(app, args)

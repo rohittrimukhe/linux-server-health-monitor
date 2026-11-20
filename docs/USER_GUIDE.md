@@ -231,6 +231,51 @@ In the web dashboard each report lists every format with **View**, **Download** 
 **Email** tick box; "Kept as" shows whether the file is on disk, compressed, or rebuilt on
 request. Set `keep_rendered_days = 0` to keep every file.
 
+**Raw data, one file per day.** Everything LRS Vitals measures is also kept exactly as it was
+measured, in one file per server per calendar day:
+
+```
+/var/lib/lshme/raw/<server>/<YYYY>/<MM>/<server>_<YYYY-MM-DD>_00-00-00_to_23-59-59.jsonl
+```
+
+A record always goes into the file of the day it was measured (00:00:00 to 23:59:59 local
+time). Two hours after the day ends, at 02:00, the day is sealed: the file is gzip-compressed
+(`.jsonl.gz`, readable with `zcat`, `zless`, `zgrep`) and a `.manifest.json` beside it records the
+period, the number of records of each type, the share of the day the live watcher covered, any
+gaps longer than three minutes, whether the day is complete, and a SHA-256 fingerprint.
+
+| Record | When | What |
+|---|---|---|
+| day | first record of a day | server name, operating system, kernel, CPUs, memory, time zone, version |
+| sample | every live-watcher check (1 min) | CPU, every core, memory detail, swap, load 1/5/15, every filesystem (bytes, %, inodes, read-only), every network interface (bytes/s, packets/s, errors, drops, counters), disk I/O per device, context switches, paging, OOM kills, uptime, open problems |
+| top | every 15 min | programs by CPU and by memory (grouped by name, process count) |
+| connections | every 15 min | TCP states, listening ports, UDP sockets, busiest peers |
+| services | every 15 min | systemd services by state and every failed unit |
+| event / alert | as they happen | incidents opened, escalated, improved, closed; every alert sent and its channels |
+| run | every health check | the complete result: every module, table, metric and finding (passwords masked) |
+| report / email | as they happen | report files written; report e-mails sent, recipients, attachments, result |
+| audit | as they happen | administrative actions (configuration changes, deletions, downloads) |
+| fleet | central server | the complete result of every other server, in that server's own day files |
+
+Nothing in the raw files is averaged or thinned. The history database and the reports are
+built from the same measurements, so a later version of LRS Vitals can add a report or a
+section and still show it for the past: `vitals raw replay` refills the history database from
+the raw files for any period it is missing (for example after it was pruned or lost).
+
+| Command | Does |
+|---|---|
+| `vitals raw list` | every day: period, sealed or open, size, records, coverage, complete or gaps |
+| `vitals raw tail today -n 20`, `vitals raw show 2026-11-20 --type run` | read a day (sealed or not) |
+| `vitals raw grep "oracle" --from 2026-11-01 --type event` | search any period |
+| `vitals raw stats`, `vitals raw verify` | totals; check every sealed day against its fingerprint |
+| `vitals raw seal --all` | seal every finished day now instead of at 02:00 |
+| `vitals raw backfill` | once, after upgrading: copy what was recorded before (saved results, history database, hourly figures, the watcher's last 24 hours, incidents, e-mail and audit logs) into the day files; never duplicates |
+| `vitals raw replay [--from DAY --to DAY]` | refill the history database from the raw files |
+
+Administrators see **Raw data by day** on the web Reports page, with a download for each day.
+Settings in retention.conf: `raw_enabled` (yes), `raw_days` (730). A sealed day takes about
+0.3 MB per server.
+
 **SLA achieved.** Daily, weekly and monthly reports have an "SLA achieved" section and
 a tile in "Overall status": availability for the report period against the target
 (`[sla] target_percent` in main.conf, default 99.9), downtime, the downtime allowed by the

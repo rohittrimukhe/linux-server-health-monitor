@@ -7,7 +7,7 @@
 
 Name:           lrs-vitals
 Version:        1.4.0
-Release:        4
+Release:        5
 Summary:        LRS Vitals - Linux server health monitor
 License:        Proprietary
 URL:            https://github.com/rohittrimukhe/linux-server-health-monitor
@@ -137,6 +137,9 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 %changelog
+* Sat Nov 21 2026 LRS Services <support@lrsservices.example> - 1.4.0-5
+- daily raw data store (00:00:00-23:59:59 per day, sealed 02:00), backfill and replay
+
 * Sat Nov 21 2026 LRS Services <support@lrsservices.example> - 1.4.0-4
 - keep report data and rebuild removed files byte for byte; SLA achieved in daily/weekly/monthly reports
 

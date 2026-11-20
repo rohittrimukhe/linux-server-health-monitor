@@ -371,6 +371,21 @@ class ReportTests(WebCase):
         self.assertEqual(self.call("GET", "/reports/%s/.source.json.gz" % rid, user="admin").status, 404)
         self.assertFalse(os.path.exists(os.path.join(d, html)))         # viewing never writes the file back
 
+    def test_raw_data_days_for_administrators_only(self):
+        import gzip
+        from lshme.ops import rawstore
+        rawstore.configure(self.app.paths)
+        rawstore.write("sample", {"cpu": 5})
+        self.assertEqual(self.call("GET", "/api/raw", user="viewer").status, 403)
+        d = self.call("GET", "/api/raw", user="admin").json
+        day = d["days"][0]
+        self.assertEqual((day["period"], day["open"]), ("00:00:00 - 23:59:59", True))
+        r = self.call("GET", "/api/raw/file", user="admin", query={"host": [day["host"]], "day": [day["day"]]})
+        self.assertEqual(r.status, 200)
+        self.assertIn('"cpu": 5', gzip.decompress(r.body).decode())
+        self.assertEqual(self.call("GET", "/api/raw/file", user="viewer", query={"host": [day["host"]], "day": [day["day"]]}).status, 403)
+        self.assertEqual(self.call("GET", "/api/raw/file", user="admin", query={"host": ["../etc"], "day": [day["day"]]}).status, 400)
+
     def test_nothing_outside_the_report_folder_is_served(self):
         self.write_report()
         outside = os.path.join(self.home.dir, "secret.txt")

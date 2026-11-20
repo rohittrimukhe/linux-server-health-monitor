@@ -175,7 +175,7 @@ class WebApp(object):
         if req.method not in ("GET", "HEAD") and sess["role"] != "admin" and name != "password":
             self.audit("web-denied", sess, route=name)
             raise PermissionError("your account is read-only")
-        if name in ("config", "users", "backups", "logs", "audit") and sess["role"] != "admin":
+        if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file") and sess["role"] != "admin":
             raise PermissionError("administrators only")
         return handler(req, sess)
 
@@ -396,6 +396,37 @@ class WebApp(object):
         out = [{"id": self.rel(r), "ts": r["ts"], "when": r["when"], "host": r["host"], "category": r["category"], "files": r["files"],
                 "score": r["score"], "status": r["status"], "critical": r["critical"], "warning": r["warning"], "unknown": r["unknown"]} for r in items]
         return jr({"reports": out, "series": reportlist.score_series(self.app.paths, 365)})
+
+    def api_raw(self, req, sess):
+        from lshme.ops import rawstore
+        out = []
+        for e in rawstore.days()[:400]:
+            m = e["manifest"] or {}
+            out.append({"host": e["host"], "day": e["day"], "period": "00:00:00 - 23:59:59", "sealed": e["sealed"], "open": e["open"],
+                        "bytes": e["bytes"], "records": m.get("records"), "coverage": m.get("coverage_pct"), "complete": m.get("complete"),
+                        "gaps": m.get("gap_count"), "by_type": m.get("by_type")})
+        return jr({"days": out, "root": rawstore.root()})
+
+    def api_raw_file(self, req, sess):
+        from lshme.ops import rawstore
+        host = (req.query.get("host") or [""])[0]
+        day = (req.query.get("day") or [""])[0]
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", day) or not host or rawstore.safe(host) != host:
+            raise ValueError("unknown day")
+        files = rawstore.day_files(host, day)
+        if not files:
+            return err("not found", 404)
+        import gzip as _gz
+        import io as _io
+        buf = _io.BytesIO()
+        for p in files:                                   # one download: the sealed day plus anything written after sealing
+            with open(p, "rb") as f:
+                data = f.read()
+            buf.write(data if p.endswith(".gz") else _gz.compress(data))
+        self.audit("raw-download", sess, host=host, day=day)
+        name = rawstore.file_name(host, day) + ".gz"
+        return Resp(200, buf.getvalue(), "application/gzip", {"Content-Disposition": 'attachment; filename="%s"' % name,
+                                                              "Content-Security-Policy": "default-src 'none'; sandbox"})
 
     def api_reports_search(self, req, sess):
         text = (req.query.get("q") or [""])[0]

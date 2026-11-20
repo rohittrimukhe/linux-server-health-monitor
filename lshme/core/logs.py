@@ -60,3 +60,8 @@ def audit(log_dir, action, **details):
             f.write(json.dumps(rec, sort_keys=True, default=str) + "\n")
     except OSError:
         pass
+    try:
+        from lshme.ops import rawstore
+        rawstore.write("audit", {"user": user, "action": action, "details": details})
+    except Exception:
+        pass

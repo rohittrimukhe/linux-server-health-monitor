@@ -65,6 +65,12 @@ class RegenTest(unittest.TestCase):
     def test_rebuild_in_another_process_is_identical(self):
         """A rebuild days later runs in another process (different hash seed, different clock)."""
         _, outdir, files, notes = reports.generate(self.run, self.home.cfg, self.home.paths, ["html", "pdf", "xlsx", "txt"], "weekly", "weekly")
+        self.cross_process(outdir)
+        _, outdir, files, notes = reports.generate(self.run, self.home.cfg, self.home.paths, ["pptx", "xlsx", "pdf", "csv"], "technical", "adhoc")
+        self.cross_process(outdir)
+
+    def cross_process(self, outdir):
+        time.sleep(2.1)                                       # the clock has moved on: nothing may depend on it
         orig = self.originals(outdir)
         code = ("import sys, json, hashlib; sys.path.insert(0, %r); from lshme.reports import snapshot; "
                 "print(json.dumps({n: [hashlib.sha256(snapshot.rebuild(sys.argv[1], n)[0]).hexdigest(), snapshot.rebuild(sys.argv[1], n)[1]] "

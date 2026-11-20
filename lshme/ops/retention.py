@@ -128,6 +128,14 @@ def plan(cfg, paths, now=None, usage=None):
         if os.path.exists(ev):
             actions.append({"action": "trim", "path": ev, "age_days": None, "bytes": _size(ev),
                             "reason": "drop incidents older than %g days" % num("history_days", 365), "days": num("history_days", 365)})
+    raw_root = os.path.join(paths.data_dir, "raw")
+    if os.path.isdir(raw_root):
+        from lshme.ops import rawstore
+        cutoff = rawstore.day_of(now - num("raw_days", 730) * 86400)
+        for e in rawstore.days(raw_root):
+            if e["day"] < cutoff:
+                actions.append({"action": "delete-raw", "path": e["files"][0], "age_days": None, "bytes": e["bytes"],
+                                "reason": "raw data older than %g days" % num("raw_days", 730), "day": e["day"], "host": e["host"]})
     actions += space_plan(cfg, paths, candidates, actions, usage or disk_usage)
     keep = int(num("config_backups_keep", 30))
     bdir = paths.config_backup_dir
@@ -298,6 +306,9 @@ def apply(cfg, paths, actions, now=None):
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 shutil.move(p, dest)
                 a["destination"] = dest
+            elif a["action"] == "delete-raw":
+                for f in [x for x in os.listdir(os.path.dirname(p)) if x.startswith("%s_%s_" % (a["host"], a["day"]))]:
+                    os.remove(os.path.join(os.path.dirname(p), f))
             elif a["action"] == "slim":
                 a["removed_files"], kept = slim(p, a.get("files", []))
                 if kept:
@@ -327,7 +338,7 @@ def apply(cfg, paths, actions, now=None):
             a["result"] = "ok"
         except Exception as e:
             a["result"] = "error: %s" % e
-        if a["action"] in ("delete", "archive", "compress", "slim"):
+        if a["action"] in ("delete", "archive", "compress", "slim", "delete-raw"):
             logs.audit(paths.log_dir, "retention-" + a["action"], path=p, age_days=a.get("age_days"),
                        bytes=a.get("bytes"), result=a["result"], destination=a.get("destination", ""),
                        reason=a.get("reason", ""))

@@ -487,6 +487,20 @@
             h("div", { class: "row" }, q, h("button", { class: "primary", text: "Search", onclick: search })), found));
         var wrap = h("div", { class: "stack" });
         box.appendChild(wrap);
+        if (S.me.role === "admin") {
+            var rawBox = h("div", null, h("p", { class: "muted", text: "Loading..." }));
+            box.appendChild(card("Raw data by day", h("span", { class: "muted", text: "every measurement as taken, 00:00:00 to 23:59:59, sealed at 02:00" }), rawBox));
+            api("GET", "/api/raw").then(function (d) {
+                clear(rawBox);
+                if (!d.days.length) { rawBox.appendChild(h("p", { class: "muted", text: "No raw data yet. It is written by the live watcher and every health check." })); return; }
+                rawBox.appendChild(table(["Server", "Day", "Period", "State", "Records", "Coverage", "Complete", "Size", ""], d.days.slice(0, 120).map(function (x) {
+                    return [x.host, x.day, x.period, x.sealed ? (x.open ? "sealed + late records" : "sealed") : "open (today)",
+                        x.records === null || x.records === undefined ? "-" : x.records, x.coverage === null || x.coverage === undefined ? "-" : x.coverage.toFixed(1) + " %",
+                        x.complete === null || x.complete === undefined ? "-" : (x.complete ? badge("OK") : h("span", { text: (x.gaps || 0) + " gap(s)" })), size(x.bytes),
+                        h("a", { class: "btn small", href: "/api/raw/file?host=" + encodeURIComponent(x.host) + "&day=" + x.day, text: "Download" })];
+                }), [4, 5, 7]));
+            }).catch(function () { clear(rawBox); });
+        }
         function load() {
             api("GET", "/api/reports").then(function (d) {
                 clear(wrap);
