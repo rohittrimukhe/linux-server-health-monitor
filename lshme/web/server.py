@@ -87,6 +87,7 @@ class WebApp(object):
         self.sample, self.sample_at, self.sample_lock = None, 0.0, threading.Lock()
         self.job = {"running": False, "progress": 0, "total": 0, "title": "", "started": 0, "finished": 0, "result": None, "error": ""}
         self.fleet_job = {"running": False, "title": "", "started": 0, "finished": 0, "result": None, "error": ""}
+        self.cert_job = {"running": False, "started": 0, "finished": 0, "result": None}
         self.pending_profile = None
 
     # -- helpers ------------------------------------------------------------------------------------
@@ -346,6 +347,31 @@ class WebApp(object):
                 self.fleet_job.update(running=False, finished=time.time())
         threading.Thread(target=work, daemon=True).start()
         return jr(self.fleet_job, 202)
+
+    # -- web certificate (Let's Encrypt) -------------------------------------------------------------------------------
+    def api_cert(self, req, sess):
+        from lshme.web import certs
+        if req.method == "GET":
+            return jr({"status": certs.status(self.app), "job": self.cert_job})
+        data = req.json()
+        if data.get("action") != "issue":
+            raise ValueError("unknown action")
+        with self.lock:
+            if self.cert_job["running"]:
+                return err("A certificate request is already running.", 409)
+            self.cert_job.update(running=True, started=time.time(), finished=0, result=None)
+        self.audit("web-cert-request", sess, force=bool(data.get("force")))
+
+        def work():
+            try:
+                self.cert_job["result"] = certs.issue(self.app, force=bool(data.get("force")))
+            except Exception as e:
+                self.app.log.exception("web certificate request failed")
+                self.cert_job["result"] = {"ok": False, "message": "The request failed: %s" % e}
+            finally:
+                self.cert_job.update(running=False, finished=time.time())
+        threading.Thread(target=work, daemon=True).start()
+        return jr(self.cert_job, 202)
 
     # -- health of the tool, retention, audit -----------------------------------------------------------------------
     def api_toolhealth(self, req, sess):
@@ -711,6 +737,10 @@ def make_handler(web):
 def ensure_certificate(app):
     """The certificate and key to use: the configured pair, or a self-signed one created once."""
     cfg = app.cfg
+    from lshme.web import certs
+    pair = certs.active_pair(app)                        # a Let's Encrypt certificate, when switched on and already issued
+    if pair:
+        return pair
     cert, key = cfg.get("web", "web", "cert", ""), cfg.get("web", "web", "key", "")
     if cert and key:
         return cert, key
@@ -752,4 +782,8 @@ def make_server(app, bind=None, port=None):
         ctx.options |= ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
         ctx.load_cert_chain(cert, key)
         server.socket = ctx.wrap_socket(server.socket, server_side=True)
+        from lshme.web import certs
+        certs.register_context(ctx)                       # a renewed certificate is loaded into it without a restart
+        if certs.settings(cfg)["enabled"] and port:
+            certs.start_renewal(app)
     return server, web

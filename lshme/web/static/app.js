@@ -621,13 +621,25 @@
         box.appendChild(wrap);
         function act(name, ok) { return function () { api("POST", "/api/action", { name: name }).then(ok || function (r) { toast("Done: " + JSON.stringify(r), "good"); load(); }).catch(fail); }; }
         function load() {
-            Promise.all([api("GET", "/api/watch"), api("GET", "/api/schedules"), api("GET", "/api/backups"), api("GET", "/api/logs"), api("GET", "/api/toolhealth"), api("GET", "/api/retention")]).then(function (r) {
-                var w = r[0], sch = r[1], bk = r[2], logs = r[3], th = r[4], rt = r[5];
+            Promise.all([api("GET", "/api/watch"), api("GET", "/api/schedules"), api("GET", "/api/backups"), api("GET", "/api/logs"), api("GET", "/api/toolhealth"), api("GET", "/api/retention"), api("GET", "/api/cert")]).then(function (r) {
+                var w = r[0], sch = r[1], bk = r[2], logs = r[3], th = r[4], rt = r[5], cr = r[6];
                 clear(wrap);
                 var bad = th.checks.filter(function (c) { return c.status !== "ok"; }).length;
                 wrap.appendChild(card("Health of LRS Vitals", badge(bad ? (th.checks.some(function (c) { return c.status === "critical"; }) ? "CRITICAL" : "WARNING") : "OK"),
                     h("p", { class: "muted", text: bad ? bad + " problem(s) with the monitoring itself." : "The watcher, schedules, reports and e-mail are all working." }),
                     table(["Check", "Status", "Detail"], th.checks.map(function (c) { return [h("b", { text: c.name }), badge(c.status === "ok" ? "OK" : c.status.toUpperCase()), c.detail]; }))));
+                var cs = cr.status, cj = cr.job;
+                wrap.appendChild(card("Web certificate (Let's Encrypt)", badge(cs.certificate ? (cs.certificate.days_left < 14 ? "WARNING" : "OK") : (cs.enabled ? "WARNING" : "UNKNOWN")),
+                    h("p", { class: "muted", text: cs.enabled ? "Names: " + (cs.domains.join(", ") || "none") + " - " + cs.directory + " - check by " + cs.challenge : "Switched off. Set acme = yes in Settings > web to use a free Let's Encrypt certificate for this web interface only." }),
+                    cs.problem ? h("p", { class: "err", text: cs.problem }) : null,
+                    cs.certificate ? table(["Subject", "Issuer", "Expires", "Days left", "Used by this page"], [[cs.certificate.subject, cs.certificate.issuer, when(cs.certificate.expires), cs.certificate.days_left.toFixed(0), cs.certificate.in_use ? "yes" : "no"]])
+                        : h("p", { class: "muted", text: "No Let's Encrypt certificate yet." }),
+                    cs.last_error ? h("p", { class: "err", text: "Last problem: " + cs.last_error }) : null,
+                    cj.result ? h("p", { class: cj.result.ok ? "muted" : "err", text: cj.result.message }) : null,
+                    h("p", { class: "muted", text: "It needs a public DNS name that points at this server and port 80 reachable from the internet; a LAN-only name or an IP address cannot get one. Renewal is automatic " + cs.renew_days + " days before expiry while the web service runs." }),
+                    S.me.role === "admin" ? h("div", { class: "row" }, h("button", { class: "primary", text: cj.running ? "Working..." : "Get / renew now", disabled: !cs.enabled || cj.running, onclick: function () {
+                        api("POST", "/api/cert", { action: "issue", force: true }).then(function () { toast("Asking the certificate authority...", "good"); setTimeout(load, 5000); }).catch(fail);
+                    } })) : null));
                 var space = rt.space;
                 wrap.appendChild(card("Retention - what is kept and for how long", h("span", { class: "muted", text: space.total ? size(space.free) + " free of " + size(space.total) : "" }),
                     table(["Report type", "Kept for", "Reports", "Disk used", "Oldest", "Newest", "Next removal"], rt.types.map(function (t) {

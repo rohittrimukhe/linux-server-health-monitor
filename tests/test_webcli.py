@@ -67,6 +67,18 @@ class WebCliTests(unittest.TestCase):
         self.assertIn("https://", out)
         self.assertIn(":8443/", out)
 
+    def test_certificate_status_explains_a_private_name(self):
+        code, out = self.run_cli("cert", "status")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Let's Encrypt", out)
+        self.assertIn("off", out)
+        self.home.cfg.set("web", "web", "acme", "yes")
+        self.home.cfg.set("web", "web", "acme_domains", "")
+        self.home.cfg.save("web")
+        code, out = self.run_cli("cert", "issue")
+        self.assertEqual(code, 1)
+        self.assertTrue("public" in out or "FQDN" in out, out)
+
     def test_install_needs_a_password_first(self):
         code, out = self.run_cli("install")
         self.assertEqual(code, 2)

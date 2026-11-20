@@ -35,7 +35,7 @@ CHOICES = {
     "method": ["smtp", "sendmail"], "security": ["starttls", "ssl", "none"], "send_policy": ["", "always", "issues", "critical", "never"],
     "report_type": ["daily", "weekly", "monthly", "executive", "technical", "full"], "alert_min_severity": SEVERITIES, "expected_selinux": ["enforcing", "permissive", "disabled"],
     "weekday": WEEKDAYS, "frequency": ["hourly", "daily", "weekly", "monthly", "custom"], "backend": ["auto", "systemd", "cron"],
-    "type": ["directory", "logfile"],
+    "type": ["directory", "logfile"], "acme_challenge": ["http", "dns"],
 }
 MULTI = {"formats": list(reports.FORMATS), "attach_formats": list(reports.FORMATS), "capacity_forecast_in": ["daily", "weekly", "monthly"]}
 EMAIL_KEYS = {"to", "cc", "bcc", "from", "critical_to", "alert_to"}
@@ -98,7 +98,11 @@ HELP = {
     "tls": "Encrypt with HTTPS (a self-signed certificate is created if none is given).", "cert": "TLS certificate file (PEM).", "key": "TLS private key file (PEM).",
     "session_minutes": "Minutes of inactivity before signing out.", "max_login_failures": "Wrong passwords allowed per address in 5 minutes.",
     "allow_plain_http": "Allow HTTP (no encryption) on a network address. Not recommended.", "code": "Finding code, wildcards allowed.", "reason": "Why this is accepted.",
-    "until": "Expiry date YYYY-MM-DD.", "target_percent": "Availability target used by the SLA report.", "capacity_forecast_in": "Report types that show the capacity forecast (when each filesystem fills up). Default weekly and monthly.", "forecast_lead_days": "Days before the full date that the forecast tells you to act by.", "title": "Title shown on pages and reports. Server name, IP address and role are added in brackets.",
+    "until": "Expiry date YYYY-MM-DD.", "target_percent": "Availability target used by the SLA report.", "acme": "Get a free Let's Encrypt certificate for the web interface (needs a public name and port 80).", "acme_domains": "Names for the certificate. Empty = this server's FQDN.",
+    "acme_email": "Where Let's Encrypt sends expiry notices.", "acme_directory": "production, staging (for testing) or a full ACME directory URL.",
+    "acme_challenge": "http (port 80) or dns (needs a hook script).", "acme_webroot": "A folder another web server serves on port 80, instead of this program listening there.",
+    "acme_dns_hook": "Script called as: hook add|remove _acme-challenge.NAME VALUE.", "acme_renew_days": "Renew when fewer days than this are left.",
+    "capacity_forecast_in": "Report types that show the capacity forecast (when each filesystem fills up). Default weekly and monthly.", "forecast_lead_days": "Days before the full date that the forecast tells you to act by.", "title": "Title shown on pages and reports. Server name, IP address and role are added in brackets.",
 }
 KEY_RX = re.compile(r"^[A-Za-z0-9_.:/@*\- ]{1,100}$")
 SECTION_RX = re.compile(r"^[A-Za-z0-9_.:@\-]{1,80}$")

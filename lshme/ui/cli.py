@@ -135,6 +135,7 @@ def build_parser():
     wb.add_argument("--bind", help="address to listen on (start; default from web.conf)")
     wb.add_argument("--port", type=int, help="port (start; default from web.conf)")
     wb.add_argument("--role", default="viewer", choices=("admin", "viewer"), help="role for useradd (default: viewer, read-only)")
+    wb.add_argument("--force", action="store_true", help="cert renew: get a new certificate even if the current one is not due")
     wb.add_argument("--password-stdin", action="store_true", help="read the password from standard input instead of asking")
     sub.add_parser("doctor", help="self-diagnostics: dependencies, permissions, config")
     sub.add_parser("version")
@@ -337,6 +338,21 @@ def web_command(app, args):
         elif act == "remove":
             C.out("Removed the web service." if webservice.uninstall(app) else "The web service is not installed (or belongs to another installation).")
         elif act == "cert":
+            from lshme.web import certs
+            if name in ("status", "issue", "renew"):
+                if name == "status":
+                    st = certs.status(app)
+                    c = st["certificate"]
+                    C.table(["Item", "Value"], [["Let's Encrypt", "on (%s)" % st["directory"] if st["enabled"] else "off (acme = no in web.conf)"], ["Names", ", ".join(st["domains"]) or "none found"],
+                                                ["Certificate", ("expires %s (%d days left)" % (time.strftime("%Y-%m-%d", time.localtime(c["expires"])), c["days_left"])) if c else "none yet"],
+                                                ["Used by the web interface", "yes" if c and c["in_use"] else "no (self-signed or your own certificate)"],
+                                                ["Last error", st["last_error"] or "-"]])
+                    if st["problem"]:
+                        C.out(C.c(st["problem"], "yellow"))
+                    return 0
+                r = certs.issue(app, force=(name == "issue" or args.force), log=C.out)
+                C.out(C.c(r["message"], "green" if r["ok"] else "red"))
+                return 0 if r["ok"] else 1
             cert, key = server.ensure_certificate(app)
             C.out("Certificate: %s\nKey:         %s" % (cert, key))
         elif act == "url":

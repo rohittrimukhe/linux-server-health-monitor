@@ -501,6 +501,30 @@ class CustomerPortalTests(WebCase):
         self.assertEqual(self.call("GET", "/api/report", headers=hdr, query={"id": ["h2/adhoc/20261120_134824"]}).status, 400)
 
 
+class WebCertificateTests(WebCase):
+    def test_status_and_request_through_the_api(self):
+        from lshme.web import certs
+        r = self.call("GET", "/api/cert", user="viewer")
+        self.assertEqual(r.status, 200, r.json)
+        self.assertFalse(r.json["status"]["enabled"])
+        self.assertIsNone(r.json["status"]["certificate"])
+        calls = []
+        real = certs.issue
+        certs.issue = lambda app, force=False, log=None: calls.append(force) or {"ok": True, "renewed": True, "message": "done"}
+        try:
+            self.assertEqual(self.call("POST", "/api/cert", {"action": "issue"}, user="viewer").status, 403)      # read-only account
+            self.assertEqual(self.call("POST", "/api/cert", {"action": "nonsense"}, user="admin").status, 400)
+            self.assertEqual(self.call("POST", "/api/cert", {"action": "issue", "force": True}, user="admin").status, 202)
+            for _ in range(50):
+                if not self.web.cert_job["running"]:
+                    break
+                time.sleep(0.05)
+        finally:
+            certs.issue = real
+        self.assertEqual(calls, [True])
+        self.assertEqual(self.call("GET", "/api/cert", user="admin").json["job"]["result"]["message"], "done")
+
+
 class ConfigApiTests(WebCase):
     def section(self, file, name):
         cat = self.call("GET", "/api/config", user="admin").json

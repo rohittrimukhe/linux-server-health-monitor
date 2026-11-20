@@ -442,3 +442,33 @@ without the logo image.
 | PDF has no charts | Install `python3-reportlab` (the built-in renderer is used otherwise) |
 | Schedules not running | `healthcheck schedule status`; `systemctl list-timers 'lshme-*'`; `journalctl -u lshme-daily` |
 | Reports too large | Use `report_type = executive`, reduce `formats`, set `max_attachment_mb` |
+
+## 20. Free HTTPS certificate for the web interface (Let's Encrypt)
+
+The web interface can use a free, trusted Let's Encrypt certificate instead of its self-signed one. It is used by the
+web interface only; no other service and no system setting is changed.
+
+**What it needs**
+
+- A **public DNS name** (for example `portal.example.com`) whose DNS record points at this server. A LAN-only host name,
+  `.local`, `.lan`, `.internal` names and IP addresses cannot get a Let's Encrypt certificate.
+- For the default check, **port 80** reachable from the internet. If another web server already uses port 80, set
+  `acme_webroot` to the folder it serves. If port 80 cannot be opened at all, use the DNS check (`acme_challenge = dns`)
+  with a hook script that adds and removes a TXT record.
+
+**Switch it on** (`/etc/lshme/web.conf`, section `[web]`, or *Settings > web* in the web interface or `vitals`):
+
+    acme = yes
+    acme_domains =            # empty = this server's FQDN
+    acme_email = you@example.com
+    acme_directory = production   # use "staging" first to test without limits
+
+Then run `vitals web cert issue`, or press **Get / renew now** in Operations > Web certificate. `vitals web cert status` shows
+the names, the expiry date and whether the web interface is using it.
+
+**Renewal is automatic.** While the web service runs (`vitals web install`), it checks every 6 hours and renews when fewer than
+`acme_renew_days` (30) days are left. The new certificate is loaded without a restart. A failed attempt keeps the old
+certificate and shows the reason in Operations and in `vitals web cert status`. Open the page by its name, for example
+`https://portal.example.com:8443/`, so the name matches the certificate.
+
+Let's Encrypt limits how often certificates can be requested; try `acme_directory = staging` while testing.
