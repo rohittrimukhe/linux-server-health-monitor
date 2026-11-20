@@ -229,7 +229,7 @@ def page_modules(ctx):
     disabled = set(ctx.cfg.getlist("main", "modules", "disabled", ""))
     fields = []
     for m in modreg.all_modules():
-        f = Field(m.TITLE, "bool", "no" if m.NAME in disabled else "yes", help="Turn off to leave '%s' out of every run. Modules that do not apply to this host are skipped anyway." % m.TITLE)
+        f = Field(m.TITLE, "bool", "no" if m.NAME in disabled else "yes", help="Turn off to leave '%s' out of every run." % m.TITLE)
         f.module = m.NAME
         fields.append(f)
 
@@ -282,7 +282,7 @@ def page_thresholds(ctx):
         items.append(Heading(heading))
         for label, section, option, hi in rows:
             items.append(bound(ctx, label, "thresholds", section, option, "float", lo=0, hi=hi,
-                               help="Warning must not be higher than critical (for 'days' settings, critical must not exceed warning)."))
+                               help="Warning must not exceed critical (days: critical must not exceed warning)."))
     Form(ctx.ui, "Thresholds", items, lambda form: persist(ctx, write_fields(ctx, form.fields)), check=threshold_check,
          intro="Values at or above a warning or critical level raise a finding. Per-mount filesystem limits are under 'Filesystem overrides'.").run()
 
@@ -356,7 +356,7 @@ def new_name(ctx, title, label, taken, default=""):
 def page_services(ctx):
     def critical():
         settings(ctx, "Critical services", [
-            bound(ctx, "Critical services", "services", "critical", "services", help="Comma-separated systemd service names that must be running, e.g. sshd, crond, chronyd."),
+            bound(ctx, "Critical services", "services", "critical", "services", help="Comma-separated service names that must be running, e.g. sshd, crond."),
             bound(ctx, "Ignore failed units", "services", "ignore", "failed_units", help="Comma-separated units whose failure is expected and should not be reported."),
         ])
     Menu(ctx.ui, "Services & processes", [
@@ -401,7 +401,7 @@ def db_form(ctx, sec, new=False):
     if engine == "oracle":
         items = [b("ORACLE_SID", "sid", help="Instance name."), b("ORACLE_HOME", "oracle_home", validate=v_abs, help="Oracle software location."),
                  Heading("Authentication: OS owner, or a monitoring user"),
-                 b("OS user (OS authentication)", "os_user", help="Owner of the instance: connects with '/ as sysdba'. Leave the user/password below blank."),
+                 b("OS user (OS authentication)", "os_user", help="Instance owner: connects '/ as sysdba'. Leave the user and password blank."),
                  b("Monitoring user", "username", help="Alternative: a user with SELECT_CATALOG_ROLE."),
                  b("Connect identifier", "connect_identifier", help="TNS alias or EZConnect, e.g. //localhost:1521/ORCL."),
                  pw("Password for the monitoring user."),
@@ -428,7 +428,7 @@ def page_databases(ctx):
 
     def discovery():
         settings(ctx, "Database auto-discovery", [
-            bound(ctx, "Oracle", "database", "discovery", "oracle_autodiscover", "bool", help="Find running Oracle instances automatically (OS authentication as the owner)."),
+            bound(ctx, "Oracle", "database", "discovery", "oracle_autodiscover", "bool", help="Find running Oracle instances automatically (OS authentication)."),
             bound(ctx, "PostgreSQL", "database", "discovery", "postgresql_autodiscover", "bool", help="Find running PostgreSQL servers."),
             bound(ctx, "MySQL / MariaDB", "database", "discovery", "mysql_autodiscover", "bool", help="Find running MySQL or MariaDB servers."),
             bound(ctx, "MongoDB", "database", "discovery", "mongodb_autodiscover", "bool", help="Find running MongoDB servers."),
@@ -476,7 +476,7 @@ def page_smtp(ctx):
         b("Port", "port", "int", lo=1, hi=65535, help="TCP port of the mail server."),
         b("Username", "username", help="Leave blank when the server needs no login."),
         Field("Password", "text", "", secret=True, has_value=bool(ctx.cfg.secret("smtp")), bind=("credentials", "smtp", "password"),
-              help="Stored in credentials.conf (mode 600). Leave unchanged to keep the saved password."),
+              help="Kept in credentials.conf (mode 600). Leave as is to keep the saved one."),
         Heading("Addresses"),
         b("Sender (From)", "from", validate=v_emails, help="For example lshme@yourhost.example.com"),
         b("Recipients (To)", "to", validate=v_emails, help="Comma-separated addresses."),
@@ -484,7 +484,7 @@ def page_smtp(ctx):
         b("BCC", "bcc", validate=v_emails, help="Optional, comma-separated."),
         b("Extra for CRITICAL", "critical_to", validate=v_emails, help="Additional people told only when a report is CRITICAL."),
         Heading("Sending"),
-        b("Send policy", "send_policy", "choice", choices=["always", "issues", "critical", "never"], help="always: every report. issues: only with warnings. critical: only when critical. never: do not email."),
+        b("Send policy", "send_policy", "choice", choices=["always", "issues", "critical", "never"], help="always, issues (warnings or worse), critical (only critical), never."),
         b("Attach formats", "attach_formats", "multi", choices=reports.FORMATS, help="Which report files are attached to the email."),
         b("Max attachment size (MB)", "max_attachment_mb", "int", lo=1, hi=500, help="Total size of attachments in one email."),
         b("Subject prefix", "subject_prefix", help="For example [LSHME]."),
@@ -530,7 +530,7 @@ def schedule_form(ctx, name, new=False, frequency=None):
         return bound(ctx, label, "schedule", sec, opt, kind, dflt=d.get(opt, absent.get(opt, "")), new=new, **kw)
     items = [Field("Frequency", "readonly", freq), b("Enabled", "enabled", "bool", help="Switch off to keep the settings but stop running it.")]
     if freq == "custom":
-        items.append(b("Calendar", "calendar", validate=v_required, help="systemd OnCalendar, e.g. Mon..Fri *-*-* 06:30:00 (or 5-field cron when the backend is cron)."))
+        items.append(b("Calendar", "calendar", validate=v_required, help="systemd OnCalendar, e.g. Mon..Fri *-*-* 06:30:00 (or 5-field cron)."))
     else:
         items.append(b("Minute past the hour (HH:MM)" if freq == "hourly" else "Time (HH:MM)", "time", validate=v_time, help="Use 24-hour time, for example 07:00."))
     if freq == "weekly":
@@ -632,8 +632,8 @@ def page_watch(ctx):
     b = lambda label, opt, kind="text", **kw: bound(ctx, label, "main", "watch", opt, kind, **kw)
     items = [
         b("Check every (seconds)", "interval", "int", lo=10, hi=3600, help="How often CPU, memory, disks and critical services are checked."),
-        b("Confirm after (checks)", "confirm", "int", lo=1, hi=20, help="A problem must be seen this many checks in a row before alerting, so short spikes stay quiet."),
-        b("Heavy modules every (min)", "rotation_minutes", "int", lo=1, hi=1440, help="Database, KVM, network and other heavier modules run one at a time at this interval."),
+        b("Confirm after (checks)", "confirm", "int", lo=1, hi=20, help="Checks in a row a problem must last before alerting, so spikes stay quiet."),
+        b("Heavy modules every (min)", "rotation_minutes", "int", lo=1, hi=1440, help="Database, KVM, network and other heavier modules, one at a time."),
         Heading("Alerts"),
         b("Lowest severity to alert", "alert_min_severity", "choice", choices=["INFO", "WARNING", "CRITICAL"], help="Findings below this level are recorded but not sent."),
         b("Email alerts", "alert_email", "bool", help="Send alerts to the Email page's recipients."),
