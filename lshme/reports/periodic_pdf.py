@@ -209,17 +209,45 @@ class PeriodicPDF(MiniPDF):
                 widths = [w * USABLE / sum(widths) for w in widths]
         else:
             widths = [w * USABLE / total for w in nat] if n else nat
+        # no column may be narrower than its longest unbreakable word (so a date never wraps onto a second line)
+        def widest_word(text, bold, sz):
+            return max([tw(w, sz, bold) for w in str(text).split()] or [0])
+        wm = []
+        for i in range(n):
+            m = widest_word(str(headers[i]).upper(), True, hs) + 10
+            for r in rows[:300]:
+                c = r[i] if i < len(r) else ""
+                if isinstance(c, Bar):
+                    m = max(m, 62)
+                elif isinstance(c, Cell) and c.style.startswith("chip-"):
+                    m = max(m, tw(c.text, size, True) + 16)
+                else:
+                    m = max(m, max([widest_word(x, isinstance(c, Cell) and c.style in ("b", "ok", "wn", "cr"), size) for x in str(c).splitlines()] or [0]) + 10)
+            wm.append(min(m, USABLE * 0.45))
+        widths = [max(w, m) for w, m in zip(widths, wm)]
+        for _ in range(6):
+            over = sum(widths) - USABLE
+            if over <= 0.5:
+                break
+            slack = [max(0.0, w - m) for w, m in zip(widths, wm)]
+            if sum(slack) <= 0:
+                break
+            widths = [w - over * s / sum(slack) for w, s in zip(widths, slack)]
+        if sum(widths) > USABLE + 0.5:
+            widths = [w * USABLE / sum(widths) for w in widths]
         xs = [MARGIN]
         for w in widths:
             xs.append(xs[-1] + w)
+        hlines = [wrap(str(h).upper(), widths[i] - 8, hs, True, 2) for i, h in enumerate(headers)]
+        hh = max(len(l) for l in hlines) * 9.5 + 9
 
         def draw_header():
-            self.fill(MARGIN, self.y - 19, USABLE, 19, HEADBG)
-            for i, h in enumerate(headers):
-                s = wrap(str(h).upper(), widths[i] - 6, hs, True, 1)[0]
-                x = xs[i + 1] - 4 - tw(s, hs, True) if (i < len(align) and align[i] == "r") else xs[i] + 4
-                self.put(x, self.y - 13, s, hs, "F2", (0.2, 0.25, 0.35))
-            self.y -= 19
+            self.fill(MARGIN, self.y - hh, USABLE, hh, HEADBG)
+            for i, lines in enumerate(hlines):
+                for k, s in enumerate(lines):
+                    x = xs[i + 1] - 4 - tw(s, hs, True) if (i < len(align) and align[i] == "r") else xs[i] + 4
+                    self.put(x, self.y - 12 - k * 9.5, s, hs, "F2", (0.2, 0.25, 0.35))
+            self.y -= hh
         self.need(52)
         draw_header()
         for ri, r in enumerate(rows):

@@ -5,6 +5,7 @@ interactive charts (hover shows value, date and time). One self-contained file, 
 import base64
 import json
 import os
+import re
 import time
 from html import escape as E
 
@@ -48,7 +49,7 @@ th{background:#f8fafc;text-align:left;padding:10px 12px;font-size:11.5px;text-tr
 td{padding:11px 12px;border-bottom:1px solid #eef2f7;vertical-align:top}
 tbody tr:hover td{background:#f8fafc}
 td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
-td.wrap{white-space:pre-line}
+td.wrap{white-space:pre-line}td.nw{white-space:nowrap}
 .tw{overflow-x:auto;border:1px solid var(--line);border-radius:12px}.tw table{margin:0}.tw tr:last-child td{border-bottom:0}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:999px;font-weight:700;font-size:12.5px;white-space:nowrap}
 .chip:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
@@ -144,11 +145,16 @@ document.querySelectorAll(".chart").forEach(function(box){
 """
 
 
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 def cell_html(c, align=""):
     if isinstance(c, Bar):
         col = {"ok": "#1e8e3e", "wn": "#ef8f00", "cr": "#c5221f"}[c.level()]
         return "<td><span class='bar'><i style='width:%.0f%%;background:%s'></i><b>%.0f%%</b></span></td>" % (min(c.pct, 100), col, c.pct)
     cls = [align] if align else []
+    if DATE_RE.match(str(c)):
+        cls.append("nw")
     inner = E(str(c))
     if isinstance(c, Cell):
         st = c.style
