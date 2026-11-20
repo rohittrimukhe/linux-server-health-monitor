@@ -29,7 +29,7 @@ def change_cell(now_v, before_v, unit="", up_is_bad=True, rel_floor=0.05, fmt="%
     if d == 0:
         return Cell("no change", "fl")
     arrow = "up" if d > 0 else "down"
-    txt = "%s %s%s (%+.0f%%)" % (arrow, fmt % abs(d), unit, 100.0 * d / base if before_v else 0)
+    txt = "%s %s%s (%s)" % (arrow, fmt % abs(d), unit, ("%+.0f%%" % (100.0 * d / before_v)) if before_v else "was none")
     if abs(d) / base < rel_floor:
         return Cell(txt, "fl")
     bad = (d > 0) == up_is_bad
