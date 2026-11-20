@@ -828,6 +828,13 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
         if hist:
             d.add("Findings during the period", [period_findings(data)])
 
+    if ptype != "daily":
+        try:
+            from lshme.reports import periodic_more
+            for title, blocks in periodic_more.sections(data, ptype):
+                d.add(title, blocks)
+        except Exception as e:
+            d.add("More checks", [note("These sections could not be built: %s" % e)])
     d.add("Server overview", [{"type": "kv", "rows": overview_rows(run)}])
     if acts:
         d.add("What needs attention", [actions(acts[:10])])

@@ -128,7 +128,7 @@ DEFAULTS = {
                              "identity_file": ""}},
     "backup": {"netbackup": {"enabled": "auto", "max_age_hours": "26"},
                "backupexec": {"enabled": "auto"}, "veeam": {"enabled": "auto", "max_age_hours": "26"}},
-    "certificates": {"certificates": {"files": "", "endpoints": "", "scan_dirs": ""}},
+    "certificates": {"certificates": {"files": "", "endpoints": "", "scan_dirs": ""}, "licences": {}},
     "custom": {"general": {"checks_dir": "", "default_timeout": "60"}},
     "exclusions": {},
     "credentials": {},
