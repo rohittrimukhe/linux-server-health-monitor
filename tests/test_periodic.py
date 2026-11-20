@@ -37,6 +37,9 @@ def make_run(now):
     st.add("WARNING", "FS_USAGE", "/u01", "Filesystem /u01 is 84% full", recommendation="Extend it.")
     db = ModuleResult("database", "Databases", 15)
     db.metric("oracle.ORCL.datafile_bytes", 148 * GB)
+    db.metric("oracle.ORCL.ts_used_bytes:USERS", 60 * GB)
+    db.metric("postgresql.main.db_bytes:app", 12 * GB)
+    db.metric("postgresql.main.table_bytes:app/public.orders", 5 * GB)
     fo = ModuleResult("folders", "Folders", 0)
     fo.metric("folder.bytes:/u01/oradata", 148 * GB)
     fo.metric("folder.bytes:/tmp", 1024)
@@ -70,9 +73,9 @@ def seed(paths, run, days=30):
                   ("db01", ts, "daily", 90, "WARNING", 0, 1, 0, 5.0, "t", ""))
         rid = c.lastrowid
         c.executemany("INSERT INTO metrics VALUES(?,?,?,?,?)",
-                      [(rid, "db01", ts, k, (v - back * 0.5 * GB) if k.startswith(("fs.used", "oracle.", "folder.bytes:/u01")) else
+                      [(rid, "db01", ts, k, max(v * 0.3, v - back * 0.5 * GB) if k.startswith(("fs.used", "oracle.", "postgresql.", "folder.bytes:/u01")) else
                         (v * (1.0 if back < 5 else 1.8) if k.startswith("backup.size") else v + (back % 3)))
-                       for k, v in cur.items() if k.startswith(("fs.used", "oracle.", "folder.bytes:/u01", "backup.", "logs.count", "security.pending"))])
+                       for k, v in cur.items() if k.startswith(("fs.used", "oracle.", "postgresql.", "folder.bytes:/u01", "backup.", "logs.count", "security.pending"))])
     for hr in range(days * 24, 0, -1):
         h.add_hourly("db01", now - hr * 3600, 10 + (hr % 24), 60.0, 3.0, 0.3)
     for hr in range(days * 24, 0, -1):
@@ -168,6 +171,16 @@ class PeriodicTest(unittest.TestCase):
         cmp = [b for t, bl in d.sections if t == "This period against the last one" for b in bl][0]
         self.assertTrue(any(str(r[0]).startswith("CPU used") for r in cmp["rows"]))
         self.assertTrue(any(str(r[0]) == "Filesystem space added" for r in cmp["rows"]))
+
+    def test_inside_the_databases(self):
+        d = self.doc("weekly")
+        tables = dict((b["title"], b) for t, bl in d.sections for b in bl if b["type"] == "table")
+        dbs = tables["Every database: size and growth"]["rows"]
+        self.assertEqual([str(r[2]) for r in dbs], ["app"])
+        self.assertTrue(str(dbs[0][5]).startswith("+"))                     # grew over the 7 days
+        self.assertEqual(str(tables["Largest tables: size and growth"]["rows"][0][2]), "app/public.orders")
+        self.assertEqual(str(tables["Oracle tablespaces: used space and growth"]["rows"][0][2]), "USERS")
+        self.assertIn("Every database: size and growth", [b["title"] for t, bl in self.doc("daily").sections for b in bl if b["type"] == "table"])
 
     def test_monthly_compares_with_last_month(self):
         self.assertIn("This month against last month", self.titles(self.doc("monthly")))

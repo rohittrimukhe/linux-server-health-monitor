@@ -47,6 +47,9 @@ def check(ctx, res, inst):
     info.update(data)
     res.metric("mongodb.%s.connections_percent" % inst["name"], cpct)
     dbs = data.get("dbs", [])
+    res.metric("mongodb.%s.total_bytes" % inst["name"], sum(to_int(d[1], 0) for d in dbs))
+    for d in dbs:
+        res.metric("mongodb.%s.db_bytes:%s" % (inst["name"], d[0]), to_int(d[1], 0))
     res.table("MongoDB %s — overview" % inst["name"], ["Item", "Value"], [
         ["Version", data.get("version", "")], ["Uptime", "%.1f days" % (to_int(data.get("uptime"), 0) / 86400.0)],
         ["Connections", "%d (%.1f%% of limit)" % (cur, cpct or 0)],

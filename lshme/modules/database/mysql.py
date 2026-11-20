@@ -68,6 +68,13 @@ def check(ctx, res, inst):
     res.metric("mysql.%s.slow_queries" % inst["name"], to_int(status.get("Slow_queries"), 0))
     total = sum(to_int(s[1], 0) for s in sizes if len(s) >= 2)
     res.metric("mysql.%s.total_bytes" % inst["name"], total)
+    for s_ in sizes:
+        if len(s_) >= 2 and to_int(s_[1], 0) > 0:
+            res.metric("mysql.%s.db_bytes:%s" % (inst["name"], s_[0]), to_int(s_[1], 0))
+    for t in [l.split("\t") for l in q(ctx, inst, "SELECT CONCAT(table_schema, '.', table_name), ROUND(data_length + index_length) FROM information_schema.tables "
+                                                  "WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') ORDER BY 2 DESC LIMIT 10", timeout=120).lines()]:
+        if len(t) >= 2 and to_int(t[1], 0) > 0:
+            res.metric("mysql.%s.table_bytes:%s" % (inst["name"], t[0]), to_int(t[1], 0))
     res.table("MySQL %s — overview" % inst["name"], ["Item", "Value"], [
         ["Version", ver], ["Host:port", "%s:%s" % (host, port)], ["Read only", ro],
         ["Uptime", "%.1f days" % (uptime / 86400.0)], ["Connections", "%s / %s (%s%%)" % (conns, maxc, cpct)],

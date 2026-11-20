@@ -12,6 +12,7 @@ periodic_pdf and periodic_out render.
 """
 import json
 import os
+import re
 import time
 
 from lshme import APP_NAME, BRAND_LOGO, COPYRIGHT, VERSION
@@ -785,6 +786,8 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
                         legend="Sizes are datafile or total database size; Oracle uses datafiles, PostgreSQL and MySQL the sum of all databases.")]
         if ptype != "daily":
             blocks += [charts(growth_charts([(x["name"], x["item"]) for x in dbs][:6], "Size of", data.since))]
+        from lshme.reports import periodic_db
+        blocks += periodic_db.blocks(data, 8 if ptype == "daily" else 40 if variant != "summary" else 15)
         d.add("Database size and growth", blocks)
     else:
         d.add("Database size and growth", [note("No database sizes recorded yet. They are measured by the health check for Oracle, PostgreSQL and MySQL/MariaDB.")])
@@ -840,10 +843,12 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
         keep = ("In short", "Overall status", "Database size and growth", "Database health", "Capacity forecast", "Backup verification", "Top folders and growth",
                 "Repeating problems and log errors", "This period against the last one", "This month against last month", "Server overview")
         dbm = run.module("database")
+        dtabs = [t for t in (dbm.tables if dbm else []) if t.rows and re.search(r"RMAN|backup|tablespace|replication|datafile", t.title, re.I)][:8]
         dfind = [f for f in (dbm.findings if dbm else []) if f.severity in ("CRITICAL", "WARNING")]
         d.add("Database health", [table("Database findings", ["Level", "Where", "Finding"], [
             [Cell("CRIT" if f.severity == "CRITICAL" else "WARN", "chip-cr" if f.severity == "CRITICAL" else "chip-wn"), f.component, redact(f.message)[:160]] for f in dfind])
-            if dfind else note("No warnings or critical findings from the database checks.")])
+            if dfind else note("No warnings or critical findings from the database checks.")] +
+            [table(t.title, t.headers, [[redact(str(c)) for c in r] for r in t.rows[:60]]) for t in dtabs])
         d.sections = [(t, b) for t, b in d.sections if t in keep]
         return d
     if acts:

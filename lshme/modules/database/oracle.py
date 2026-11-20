@@ -259,6 +259,7 @@ def check(ctx, res, inst):
         sev = severity_for(used_pct, tw, tc)
         ts_rows.append([tname, contents, "%.1f%%" % used_pct, fmt_bytes(used_b), fmt_bytes(max_b), fmt_bytes(max_b - used_b), sev or "OK"])
         res.metric("oracle.%s.ts_used_percent:%s" % (inst["name"], tname), used_pct)
+        res.metric("oracle.%s.ts_used_bytes:%s" % (inst["name"], tname), used_b)
         if sev and (incl or contents == "PERMANENT"):
             res.add(sev, "ORACLE_TABLESPACE", "%s %s" % (label, tname),
                     "Tablespace %s is %.1f%% of its maximum size (%s free)" % (tname, used_pct, fmt_bytes(max_b - used_b)),

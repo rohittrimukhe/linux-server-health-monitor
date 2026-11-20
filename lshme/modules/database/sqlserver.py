@@ -44,6 +44,10 @@ def check(ctx, res, inst):
     res.table("SQL Server %s — overview" % inst["name"], ["Item", "Value"], [
         ["Version", v[0]], ["Edition", v[1]], ["Uptime", "%.1f days" % (to_float(v[2], 0) / 86400.0)],
         ["Databases", len(dbs)], ["Failed agent jobs (%dd)" % ctx.days, len(jobs)]], kind="summary")
+    res.metric("sqlserver.%s.total_bytes" % inst["name"], sum(to_int(d[3], 0) for d in dbs if len(d) >= 4))
+    for d in dbs:
+        if len(d) >= 4:
+            res.metric("sqlserver.%s.db_bytes:%s" % (inst["name"], d[0]), to_int(d[3], 0))
     ages = dict((b[0], b[1]) for b in bak if len(b) >= 2)
     res.table("SQL Server %s — databases" % inst["name"], ["Database", "State", "Recovery", "Size", "Last full/diff backup (h)"],
               [[d[0], d[1], d[2], fmt_bytes(to_int(d[3], 0)), ages.get(d[0], "")] for d in dbs if len(d) >= 4])

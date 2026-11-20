@@ -335,6 +335,33 @@ class OtherDatabasesTest(unittest.TestCase):
         self.assertEqual(c["SQLSERVER_DB_STATE"], "CRITICAL")
         self.assertEqual(c["SQLSERVER_NO_BACKUP"], "WARNING")
 
+    def test_database_size_metrics_for_growth_reports(self):
+        def mysql_cmd(a, i):
+            sql = a[-1]
+            if sql.startswith("SELECT VERSION"):
+                return (0, "8.0.36\tdb01\t3306\t0")
+            if sql == "SHOW GLOBAL STATUS":
+                return (0, "Threads_connected\t1\nUptime\t864000\n")
+            if sql == "SHOW GLOBAL VARIABLES":
+                return (0, "max_connections\t1000\n")
+            return (0, "shop\t2147483648\t20\n")
+        m = self.check(mysql, FakeRunner({"mysql": mysql_cmd}), {"name": "main"}).metrics
+        self.assertEqual(m["mysql.main.db_bytes:shop"], 2147483648)
+        self.assertEqual(m["mysql.main.table_bytes:shop"], 2147483648)
+        payload = '{"version":"6.0.5","uptime":100,"conn":{"current":1,"available":99},"dbs":[["app",1000],["logs",500]]}'
+        m = self.check(mongodb, FakeRunner({"mongosh": (0, payload)}), {"name": "main"}).metrics
+        self.assertEqual((m["mongodb.main.total_bytes"], m["mongodb.main.db_bytes:logs"]), (1500, 500))
+
+        def q(a, i):
+            sql = a[-1]
+            if "SERVERPROPERTY" in sql:
+                return (0, "16.0.4105.2|Developer Edition (64-bit)|86400")
+            if "master_files" in sql:
+                return (0, "master|ONLINE|SIMPLE|10000\napp|ONLINE|FULL|99999\n")
+            return (0, "")
+        m = self.check(sqlserver, FakeRunner({"sqlcmd": q}), {"name": "main", "username": "mon"}).metrics
+        self.assertEqual((m["sqlserver.main.total_bytes"], m["sqlserver.main.db_bytes:app"]), (109999, 99999))
+
     def test_postgres_unreachable(self):
         c = codes(self.check(postgresql, FakeRunner({"psql": (2, "", "could not connect to server")}), {"name": "main"}))
         self.assertEqual(c["POSTGRES_UNAVAILABLE"], "CRITICAL")
