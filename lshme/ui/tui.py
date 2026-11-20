@@ -104,6 +104,11 @@ def v_time(v):
     return None if re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", v) else "use HH:MM, for example 07:00"
 
 
+def v_weekdays(v):
+    from lshme.ops.scheduler import parse_days
+    return None if parse_days(v) is not None else "use mon-sat, or mon,wed,fri, or leave empty for every day"
+
+
 def v_name(v):
     return None if NAME.match(v or "") else "use letters, digits, '.', '_' or '-' only"
 
@@ -545,6 +550,8 @@ def schedule_form(ctx, name, new=False, frequency=None):
         items.append(b("Calendar", "calendar", validate=v_required, help="systemd OnCalendar, e.g. Mon..Fri *-*-* 06:30:00 (or 5-field cron)."))
     else:
         items.append(b("Minute past the hour (HH:MM)" if freq == "hourly" else "Time (HH:MM)", "time", validate=v_time, help="Use 24-hour time, for example 07:00."))
+    if freq == "daily":
+        items.append(b("Days", "weekdays", validate=v_weekdays, help="Days the report runs, for example mon-sat. Empty means every day."))
     if freq == "weekly":
         items.append(b("Weekday", "weekday", "choice", choices=["mon", "tue", "wed", "thu", "fri", "sat", "sun"], help="Day of the week to run."))
     if freq == "monthly":

@@ -15,6 +15,60 @@ WEEKDAYS = {"mon": (1, "Mon"), "tue": (2, "Tue"), "wed": (3, "Wed"), "thu": (4, 
             "4": (4, "Thu"), "5": (5, "Fri"), "6": (6, "Sat"), "7": (0, "Sun"), "0": (0, "Sun")}
 
 
+DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+DAY_NAMES = {"mon": "Mon", "tue": "Tue", "wed": "Wed", "thu": "Thu", "fri": "Fri", "sat": "Sat", "sun": "Sun"}
+
+
+def parse_days(spec):
+    """Week days from mon-sat, mon,wed,fri or empty (every day), in week order; None when the text is not valid."""
+    spec = (spec or "").strip().lower().replace(" ", "")
+    if spec in ("", "all", "daily", "every", "everyday"):
+        return list(DAY_ORDER)
+    days = set()
+    for part in spec.split(","):
+        if "-" in part:
+            a, b = part.split("-", 1)
+            if a[:3] not in DAY_ORDER or b[:3] not in DAY_ORDER:
+                return None
+            i, j = DAY_ORDER.index(a[:3]), DAY_ORDER.index(b[:3])
+            days.update(DAY_ORDER[i:j + 1] if i <= j else DAY_ORDER[i:] + DAY_ORDER[:j + 1])
+        elif part[:3] in DAY_ORDER:
+            days.add(part[:3])
+        else:
+            return None
+    return [d for d in DAY_ORDER if d in days]
+
+
+def _is_run(days):
+    idx = [DAY_ORDER.index(d) for d in days]
+    return idx == list(range(idx[0], idx[0] + len(idx)))
+
+
+def days_systemd(days):
+    if len(days) == 7:
+        return ""
+    if len(days) > 1 and _is_run(days):
+        return "%s..%s " % (DAY_NAMES[days[0]], DAY_NAMES[days[-1]])
+    return ",".join(DAY_NAMES[d] for d in days) + " "
+
+
+def days_cron(days):
+    if len(days) == 7:
+        return "*"
+    num = lambda d: (DAY_ORDER.index(d) + 1) % 7      # Monday 1 ... Saturday 6, Sunday 0
+    if len(days) > 1 and _is_run(days) and "sun" not in days:
+        return "%d-%d" % (num(days[0]), num(days[-1]))
+    return ",".join(str(num(d)) for d in days)
+
+
+def days_text(days):
+    if len(days) == 7:
+        return "every day"
+    if len(days) > 1 and _is_run(days):
+        return "%s-%s" % (DAY_NAMES[days[0]], DAY_NAMES[days[-1]])
+    return ", ".join(DAY_NAMES[d] for d in days)
+
+
 class Schedule(object):
     def __init__(self, name, s):
         self.name = name
@@ -22,6 +76,7 @@ class Schedule(object):
         self.frequency = s.get("frequency", "daily").lower()
         self.time = s.get("time", "07:00")
         self.weekday = s.get("weekday", "mon").lower()[:3]
+        self.weekdays = s.get("weekdays", "")           # daily schedules only: mon-sat runs Monday to Saturday, blank means every day
         self.monthday = s.get("monthday", "1")
         self.calendar = s.get("calendar", "")  # systemd OnCalendar or 5-field cron for frequency=custom
         self.days = int(s.get("days") or {"daily": 1, "weekly": 7, "monthly": 30, "hourly": 1}.get(self.frequency, 1))
@@ -41,6 +96,8 @@ class Schedule(object):
             errors.append("frequency must be hourly, daily, weekly, monthly or custom")
         if self.frequency != "custom" and not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", self.time):
             errors.append("time must be HH:MM")
+        if self.frequency == "daily" and parse_days(self.weekdays) is None:
+            errors.append("weekdays must look like mon-sat or mon,wed,fri (or be empty for every day)")
         if self.frequency == "weekly" and self.weekday not in WEEKDAYS:
             errors.append("weekday must be mon..sun")
         if self.frequency == "monthly" and not (self.monthday.isdigit() and 1 <= int(self.monthday) <= 28):
@@ -62,7 +119,7 @@ class Schedule(object):
         if self.frequency == "hourly":
             return "*-*-* *:%02d:00" % m
         if self.frequency == "daily":
-            return "*-*-* %02d:%02d:00" % (h, m)
+            return "%s*-*-* %02d:%02d:00" % (days_systemd(parse_days(self.weekdays) or list(DAY_ORDER)), h, m)
         if self.frequency == "weekly":
             return "%s *-*-* %02d:%02d:00" % (WEEKDAYS[self.weekday][1], h, m)
         return "*-*-%02d %02d:%02d:00" % (int(self.monthday), h, m)
@@ -74,7 +131,7 @@ class Schedule(object):
         if self.frequency == "hourly":
             return "%d * * * *" % m
         if self.frequency == "daily":
-            return "%d %d * * *" % (m, h)
+            return "%d %d * * %s" % (m, h, days_cron(parse_days(self.weekdays) or list(DAY_ORDER)))
         if self.frequency == "weekly":
             return "%d %d * * %d" % (m, h, WEEKDAYS[self.weekday][0])
         return "%d %d %d * *" % (m, h, int(self.monthday))
@@ -85,7 +142,7 @@ class Schedule(object):
         if self.frequency == "hourly":
             return "every hour at :%02d" % self.hm()[1]
         if self.frequency == "daily":
-            return "every day at %s" % self.time
+            return "%s at %s" % (days_text(parse_days(self.weekdays) or list(DAY_ORDER)), self.time)
         if self.frequency == "weekly":
             return "every %s at %s" % (WEEKDAYS[self.weekday][1], self.time)
         return "day %s of every month at %s" % (self.monthday, self.time)

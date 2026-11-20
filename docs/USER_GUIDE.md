@@ -152,9 +152,9 @@ Three schedules are predefined and can be changed:
 
 | Schedule | Default | Period | Formats |
 |---|---|---|---|
-| daily | 07:00 every day | 1 day | html, pdf, json |
-| weekly | Monday 08:00 | 7 days | html, pdf, xlsx, json |
-| monthly | 1st of the month 09:00 | 30 days | html, pdf, xlsx, pptx, json (full report) |
+| daily | Monday to Saturday 09:00 | 1 day | html, pdf, xlsx (daily checklist report) |
+| weekly | Sunday 12:00 | 7 days | html, pdf, xlsx, csv (weekly report with growth by date) |
+| monthly | 1st of the month 10:00 | 30 days | html, pdf, xlsx, csv (summary and comprehensive report, both emailed) |
 
 Add your own in `schedule.conf`:
 

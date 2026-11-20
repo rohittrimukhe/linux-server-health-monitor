@@ -17,15 +17,35 @@ class SchedulerTest(unittest.TestCase):
         home = TempHome({"schedule": "[schedule:weekly]\nweekday = fri\ntime = 22:30\n[schedule:bad]\nfrequency = weekly\nweekday = xyz\ntime = 25:00\n"
                                      "[schedule:custom1]\nfrequency = custom\ncalendar = Mon..Fri *-*-* 06:30:00\nmodules = database\n"})
         s = dict((x.name, x) for x in scheduler.schedules(home.cfg))
-        self.assertEqual(s["daily"].cron(), "0 7 * * *")
+        self.assertEqual(s["daily"].cron(), "0 9 * * 1-6")          # Monday to Saturday at 09:00
+        self.assertEqual(s["daily"].on_calendar(), "Mon..Sat *-*-* 09:00:00")
+        self.assertEqual(s["daily"].describe(), "Mon-Sat at 09:00")
         self.assertEqual(s["weekly"].cron(), "30 22 * * 5")
         self.assertEqual(s["weekly"].on_calendar(), "Fri *-*-* 22:30:00")
-        self.assertEqual(s["monthly"].on_calendar(), "*-*-01 09:00:00")
+        self.assertEqual(s["monthly"].on_calendar(), "*-*-01 10:00:00")
         self.assertEqual(s["custom1"].on_calendar(), "Mon..Fri *-*-* 06:30:00")
         self.assertEqual(len(s["bad"].validate()), 2)
         rep = scheduler.install(home.cfg, FakeRunner(), "/opt/lshme/healthcheck", ["--config-dir", "/etc/lshme"], dry_run=True)
         self.assertTrue(rep["errors"])  # the bad schedule blocks installation
         home.cleanup()
+
+    def test_defaults_daily_mon_to_sat_weekly_sunday_monthly_first(self):
+        home = TempHome()
+        s = dict((x.name, x) for x in scheduler.schedules(home.cfg))
+        self.assertEqual(s["weekly"].on_calendar(), "Sun *-*-* 12:00:00")
+        self.assertEqual(s["weekly"].cron(), "0 12 * * 0")
+        self.assertEqual(s["monthly"].cron(), "0 10 1 * *")
+        self.assertEqual(s["monthly"].describe(), "day 1 of every month at 10:00")
+        home.cleanup()
+
+    def test_weekday_lists(self):
+        self.assertEqual(scheduler.parse_days("mon-sat"), ["mon", "tue", "wed", "thu", "fri", "sat"])
+        self.assertEqual(scheduler.parse_days(""), scheduler.DAY_ORDER)
+        self.assertEqual(scheduler.parse_days("fri-mon"), ["mon", "fri", "sat", "sun"])
+        self.assertEqual(scheduler.days_systemd(scheduler.parse_days("mon,wed,fri")), "Mon,Wed,Fri ")
+        self.assertEqual(scheduler.days_cron(scheduler.parse_days("mon,wed,fri")), "1,3,5")
+        self.assertEqual(scheduler.days_cron(scheduler.parse_days("fri-sun")), "5,6,0")
+        self.assertIsNone(scheduler.parse_days("monday-xyz"))
 
     def test_install_systemd_and_cron(self):
         home = TempHome()
@@ -40,7 +60,7 @@ class SchedulerTest(unittest.TestCase):
                                                   "lshme-weekly.service", "lshme-weekly.timer"])
         svc = slurp(os.path.join(sd, "lshme-daily.service"))
         self.assertIn("ExecStart=/opt/lshme/healthcheck --config-dir /etc/lshme run --schedule daily --quiet --retries 2", svc)
-        self.assertIn("OnCalendar=*-*-* 07:00:00", slurp(os.path.join(sd, "lshme-daily.timer")))
+        self.assertIn("OnCalendar=Mon..Sat *-*-* 09:00:00", slurp(os.path.join(sd, "lshme-daily.timer")))
         self.assertIn("systemctl enable --now lshme-daily.timer", r.calls)
         # the weekly server rescan: Sunday 02:00, applies what it finds
         self.assertIn("ExecStart=/opt/lshme/healthcheck --config-dir /etc/lshme scan --apply --quiet", slurp(os.path.join(sd, "lshme-scan.service")))
@@ -53,8 +73,8 @@ class SchedulerTest(unittest.TestCase):
         home.cfg.set("schedule", "scheduler", "cron_file", cron)
         rep = scheduler.install(home.cfg, r, "/opt/lshme/healthcheck", [])
         text = slurp(cron)
-        self.assertIn("0 7 * * * root /opt/lshme/healthcheck run --schedule daily", text)
-        self.assertIn("0 8 * * 1 root", text)
+        self.assertIn("0 9 * * 1-6 root /opt/lshme/healthcheck run --schedule daily", text)
+        self.assertIn("0 12 * * 0 root", text)
         self.assertIn("0 2 * * 0 root /opt/lshme/healthcheck scan --apply --quiet", text)  # Sunday 02:00 rescan
         home.cleanup()
 

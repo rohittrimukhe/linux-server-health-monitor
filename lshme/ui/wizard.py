@@ -228,6 +228,10 @@ class Wizard(object):
             if not en:
                 continue
             self.cfg.set("schedule", sec, "time", C.ask("Time (HH:MM)", s.time, validate=lambda x: None if re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", x) else "HH:MM"))
+            if s.frequency == "daily":
+                from lshme.ops.scheduler import parse_days
+                self.cfg.set("schedule", sec, "weekdays", C.ask("Days (for example mon-sat, empty = every day)", s.weekdays,
+                                                                 validate=lambda x: None if parse_days(x) is not None else "use mon-sat or mon,wed,fri"))
             if s.frequency == "weekly":
                 self.cfg.set("schedule", sec, "weekday", C.ask("Weekday", s.weekday, choices=["mon", "tue", "wed", "thu", "fri", "sat", "sun"]))
             if s.frequency == "monthly":
