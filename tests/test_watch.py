@@ -92,6 +92,35 @@ class ProbeTest(unittest.TestCase):
         self.assertEqual(status, "CRITICAL")
         home.cleanup()
 
+    def test_rules_hold_back_a_new_alert_until_it_has_lasted(self):
+        home = TempHome({"main": "[watch]\nconfirm = 1\nrotation_modules =\nsyslog = no\nalert_email = no\nmin_minutes_critical = 30\nalert_digest = no\n",
+                         "services": "[critical]\nservices =\n[processes]\nghost = no-such-process-xyz\n"})
+        from lshme.app import App
+        app = App(ROOT, home=home.dir)
+        w = watch.Watcher(app)
+        alerts, recovered, delivery = w.tick()
+        self.assertEqual(alerts, [])                                    # a critical problem, but not yet 30 minutes old
+        self.assertIsNone(w.state["problems"]["proc:ghost"]["alerted"])
+        w.state["problems"]["proc:ghost"]["since"] -= 3600              # now it has lasted
+        alerts, recovered, delivery = w.tick()
+        self.assertEqual([a["key"] for a in alerts], ["proc:ghost"])
+        home.cleanup()
+
+    def test_alerts_are_routed_to_the_people_for_that_area(self):
+        home = TempHome({"main": "[watch]\nconfirm = 1\nrotation_modules =\nsyslog = no\nalert_to = ops@example.com\nalert_digest = no\n[alert_routes]\nservices = svc@example.com\n",
+                         "services": "[critical]\nservices =\n[processes]\nghost = no-such-process-xyz\n"})
+        from lshme.app import App
+        app = App(ROOT, home=home.dir)
+        sent = []
+        real = watch.deliver
+        watch.deliver = lambda app, subject, body, status, to=None: sent.append(to) or {"ok": True}
+        try:
+            watch.Watcher(app).tick()
+        finally:
+            watch.deliver = real
+        self.assertEqual(sent, [["svc@example.com"]])
+        home.cleanup()
+
     def test_maintenance_suppresses_delivery(self):
         home = TempHome()
         from lshme.app import App

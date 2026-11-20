@@ -28,6 +28,9 @@ from lshme.core.util import NETWORK_FS, PSEUDO_FS, listening_ports_from_proc, ow
 DEFAULTS = {"interval": "60", "confirm": "2", "repeat_minutes": "60", "recovery_alerts": "yes",
             "rotation_modules": "services,database,kvm,cockpit,network,backup,cluster,certificates,selfcheck",
             "rotation_minutes": "15", "alert_min_severity": "WARNING", "alert_email": "yes", "alert_to": "",
+            "quiet_hours": "", "quiet_min_severity": "CRITICAL", "min_minutes": "0", "min_minutes_critical": "0",
+            "slack_webhook_url": "", "teams_webhook_url": "", "webhook_format": "auto",
+            "alert_digest": "yes", "alert_digest_time": "08:00", "alert_digest_empty": "no",
             "syslog": "yes", "webhook_url": "", "max_rss_mb": "100", "netfs_timeout": "5", "metrics_hours": "24"}
 
 
@@ -402,7 +405,48 @@ def format_alert(host, alerts, recovered):
     return subject, "\n".join(lines), ("CRITICAL" if crit else "WARNING" if alerts else "HEALTHY")
 
 
-def deliver(app, subject, body, status):
+def acks_path(paths):
+    return os.path.join(paths.data_dir, "watch_acks.json")
+
+
+def load_acks(paths):
+    try:
+        with open(acks_path(paths), encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (IOError, OSError, ValueError):
+        return {}
+
+
+def save_acks(paths, acks):
+    tmp = acks_path(paths) + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(acks, f)
+    os.replace(tmp, acks_path(paths))
+
+
+def acknowledge(paths, key, user, now=None):
+    """Mark a problem as seen: reminders stop until it gets worse or ends."""
+    acks = load_acks(paths)
+    acks[key] = {"by": user, "at": now or time.time()}
+    save_acks(paths, acks)
+
+
+def read_events(paths, limit=800):
+    out = []
+    try:
+        with open(os.path.join(paths.data_dir, "watch_events.jsonl"), encoding="utf-8") as f:
+            for line in f.read().splitlines()[-limit:]:
+                try:
+                    out.append(json.loads(line))
+                except ValueError:
+                    pass
+    except (IOError, OSError):
+        pass
+    return out
+
+
+def deliver(app, subject, body, status, to=None):
     """Email + syslog + webhook. Each channel is optional and failures never stop the watcher."""
     results = {}
     log = logs.get()
@@ -422,22 +466,23 @@ def deliver(app, subject, body, status):
     if as_bool(setting(cfg, "alert_email"), True):
         from lshme.delivery import mailer
         ms = mailer.MailSettings(cfg)
-        to = as_list(setting(cfg, "alert_to")) or None
+        to = to or as_list(setting(cfg, "alert_to")) or None
         if (ms.host or ms.method == "sendmail") and (to or ms.to or ms.critical_to):
             msg, rcpts, _, _ = mailer.build_message(ms, subject, body, None, [], status, to)
             ms.retries = min(ms.retries, 2)
             results["email"] = mailer.send(ms, msg, rcpts, app.paths.log_dir)["ok"]
         else:
             results["email"] = "not configured"
-    url = setting(cfg, "webhook_url")
-    if url:
+    from lshme.ops import alertrules
+    for name, url, fmt in (("webhook", setting(cfg, "webhook_url"), setting(cfg, "webhook_format")),
+                           ("slack", setting(cfg, "slack_webhook_url"), "slack"), ("teams", setting(cfg, "teams_webhook_url"), "teams")):
+        if not url:
+            continue
         try:
-            from urllib.request import Request, urlopen
-            data = json.dumps({"text": "%s\n%s" % (subject, body), "status": status}).encode("utf-8")
-            urlopen(Request(url, data=data, headers={"Content-Type": "application/json"}), timeout=10).read(1024)
-            results["webhook"] = True
+            alertrules.post(url, alertrules.payload(alertrules.detect_format(url, fmt), subject, body, status))
+            results[name] = True
         except Exception as e:
-            results["webhook"] = str(e)[:200]
+            results[name] = str(e)[:200]
     log.warning("watch alert: %s -> %s", subject, results)
     return results
 
@@ -548,9 +593,33 @@ class Watcher(object):
                                      float(setting(cfg, "repeat_minutes")) * 60, setting(cfg, "alert_min_severity").upper(),
                                      as_bool(setting(cfg, "recovery_alerts"), True))
         delivery = None
-        if alerts or recovered:
-            subject, body, status = format_alert(os.uname()[1], alerts, recovered)
-            delivery = deliver(self.app, subject, body, status)
+        from lshme.ops import alertrules
+        host = os.uname()[1]
+        acks = load_acks(self.app.paths)
+        stale = [k for k in acks if k not in self.state.get("problems", {})]
+        if stale:                                        # a problem that ended no longer needs its acknowledgement
+            for k in stale:
+                acks.pop(k)
+            save_acks(self.app.paths, acks)
+        alerts = alertrules.drop_acknowledged(alerts, acks)
+        alerts, held = alertrules.apply_rules(alerts, now, setting(cfg, "quiet_hours"), setting(cfg, "quiet_min_severity"),
+                                              float(setting(cfg, "min_minutes")), float(setting(cfg, "min_minutes_critical")))
+        for a in held:                                   # not yet allowed (quiet hours, too short): alert again on a later check
+            p = self.state.get("problems", {}).get(a["key"])
+            if p:
+                p["alerted"], p["last_alert"] = None, 0
+        for to, grp_alerts, grp_recovered in alertrules.route(cfg.section("main", "alert_routes"), as_list(setting(cfg, "alert_to")), alerts, recovered, code_of):
+            subject, body, status = format_alert(host, grp_alerts, grp_recovered)
+            result = deliver(self.app, subject, body, status, to)
+            if delivery is None:
+                delivery = result
+        if as_bool(setting(cfg, "alert_digest"), True) and alertrules.digest_due(setting(cfg, "alert_digest_time"), now, self.state.get("digest_day")):
+            self.state["digest_day"] = time.strftime("%Y-%m-%d", time.localtime(now))
+            d = alertrules.digest(host, read_events(self.app.paths), now)
+            if d is None and as_bool(setting(cfg, "alert_digest_empty"), False):
+                d = ("[LSHME DIGEST] %s: no alerts in 24 h" % host, "No problems were reported in the last 24 hours.", "HEALTHY")
+            if d:
+                deliver(self.app, *d)
         self.flush_events(now)
         self.record_metrics(now)
         self.state["last_tick"] = now
