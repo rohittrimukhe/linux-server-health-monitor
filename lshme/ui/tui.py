@@ -30,7 +30,7 @@ ENGINES = ("oracle", "mysql", "postgresql", "mongodb", "sqlserver")
 def available():
     """(True, "") when the full-screen UI can run here, else (False, reason)."""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return False, "not an interactive terminal"
+        return False, "input or output is not a terminal"
     if os.environ.get("TERM", "dumb") in ("dumb", ""):
         return False, "TERM is not set to a terminal type"
     try:
@@ -48,7 +48,7 @@ def run(app, page=None):
         return False, why
 
     def main(backend):
-        ui = UI(backend, "%s  v%s  -  Configuration" % ("LSHME", VERSION))
+        ui = UI(backend, "%s  v%s  -  Configuration" % (APP_NAME, VERSION))
         start(Ctx(app, ui), page)
     run_curses(main)
     return True, ""
@@ -80,6 +80,8 @@ def start(ctx, page=None):
 class Ctx(object):
     def __init__(self, app, ui):
         self.app, self.ui = app, ui
+        self.form_opts = {}   # the setup wizard sets Next/Back/Skip labels here for the pages it reuses
+        self.last_exit = None  # how the last form was left: "saved", "skip" or "back"
 
     @property
     def cfg(self):
@@ -180,10 +182,19 @@ def persist(ctx, files):
     return "Saved %s" % ", ".join(done) if done else "No changes"
 
 
+def run_form(ctx, title, items, on_save, **kw):
+    """Run a Form, applying ctx.form_opts (button labels, title prefix) set by the setup wizard."""
+    opts = dict(ctx.form_opts)
+    prefix = opts.pop("title_prefix", "")
+    opts.update(kw)
+    form = Form(ctx.ui, prefix + title, items, on_save, **opts)
+    form.run()
+    ctx.last_exit = form.exit
+    return form.saved
+
+
 def settings(ctx, title, items, **kw):
-    def on_save(form):
-        return persist(ctx, write_fields(ctx, form.fields))
-    return Form(ctx.ui, title, items, on_save, **kw).run()
+    return run_form(ctx, title, items, lambda form: persist(ctx, write_fields(ctx, form.fields)), **kw)
 
 
 def threshold_check(form):
@@ -765,6 +776,62 @@ def page_policy(ctx):
     ])
 
 
+def page_web(ctx):
+    """Settings of the web interface, a password button and install/remove of its service."""
+    from lshme.ops import webservice
+    from lshme.web import auth
+    ui, app = ctx.ui, ctx.app
+    b = lambda label, opt, kind="text", **kw: bound(ctx, label, "web", "web", opt, kind, **kw)
+    items = [
+        Heading("Address"),
+        b("Enabled", "enabled", "bool", help="Start the web interface with the service. Off until you switch it on."),
+        b("Listen on", "bind", validate=v_required, help="127.0.0.1 = this server only (use an SSH tunnel); 0.0.0.0 = the network."),
+        b("Port", "port", "int", lo=1, hi=65535, help="TCP port, for example 8443."),
+        b("Encrypt (HTTPS)", "tls", "bool", help="A self-signed certificate is created if you do not give one."),
+        Heading("Security"),
+        b("Sign out after (minutes)", "session_minutes", "int", lo=1, hi=1440, help="Minutes of inactivity before signing out."),
+        b("Wrong passwords allowed", "max_login_failures", "int", lo=1, hi=100, help="Per address in 5 minutes, then it is locked out for a while."),
+        b("Allow plain HTTP on the network", "allow_plain_http", "bool", help="Not recommended: passwords would travel unencrypted."),
+    ]
+
+    def set_password(form):
+        users = auth.Users(app)
+        name = ui.prompt("Web user", "User name:", "admin", validate=lambda v: None if auth.USER_RX.match(v) else "letters, digits and . _ @ - only")
+        if not name:
+            return
+        pw = ui.prompt("Password", "New password for %s (10+ characters, upper, lower, digit):" % name, "", secret=True, validate=auth.password_problem)
+        if pw is None:
+            return
+        again = ui.prompt("Password", "Repeat the password:", "", secret=True, validate=lambda v: None if v == pw else "the two passwords are not the same")
+        if again is None:
+            return
+        try:
+            users.set_password(name, pw, None if name in users.names() else "admin")
+            ui.message("Password set for %s." % name, "Web interface")
+        except (ValueError, OSError) as e:
+            ui.message(str(e), "Cannot save", "error")
+
+    def service(action):
+        def cb(form):
+            if form.changed() and not (ui.confirm("Save your changes first?", "Unsaved changes", True) and form.save()):
+                return
+            if action == "install":
+                if not auth.Users(app).names():
+                    ui.message("Set a password first (button: Set password).", "Web interface")
+                    return
+                if not ui.confirm("Install and (re)start the web interface service on this server?", "Web interface", True):
+                    return
+                ui.working("Starting the web interface...")
+                ok, message = webservice.install(app)
+                ui.message(message, "Web interface", "info" if ok else "error")
+            elif ui.confirm("Stop and remove the web interface service?", "Web interface", False):
+                ui.message("Removed." if webservice.uninstall(app) else "The service is not installed.", "Web interface")
+        return cb
+    settings(ctx, "Web interface", items, buttons=[("Set password", set_password), ("Install", service("install")), ("Remove", service("remove"))],
+             intro="Use these pages in a browser, with a sign-in. Address: %s   Service: %s. Users: %s." % (
+                 webservice.url(app), webservice.state(app), ", ".join(auth.Users(app).names()) or "none yet"))
+
+
 def page_tools(ctx):
     Menu(ctx.ui, "Tools", [
         ("Validate configuration", "Check the files, permissions, schedules and tools for problems.", lambda: page_validate(ctx)),
@@ -841,5 +908,6 @@ PAGES = (
     ("backups", "Backup jobs", "Extra backups to verify.", page_backup_jobs),
     ("fleet", "Multi-server (fleet)", "Other servers monitored from this one.", page_fleet),
     ("policy", "Security, network, certificates & other", "Rules checked on this server, certificates to watch, dashboard and priority.", page_policy),
+    ("web", "Web interface", "Open these pages in a browser: address, encryption, password and service.", page_web),
     ("tools", "Tools: validate, back up, restore", "Check the configuration for problems, or save and restore copies.", page_tools),
 )

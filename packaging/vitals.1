@@ -1,0 +1,52 @@
+.TH VITALS 1 "November 2026" "LRS Vitals 1.3.0" "LRS Services"
+.SH NAME
+vitals \- LRS Vitals, Linux server health monitor
+.SH SYNOPSIS
+.B vitals
+[\fIcommand\fR] [\fIoptions\fR]
+.SH DESCRIPTION
+.B vitals
+opens a full-screen interface (in the style of nmtui) with live graphs of CPU, memory, filesystems, mounts,
+network, disks and processes, the health reports already written, and every setting.
+The first time it runs it scans the server and asks a few questions, one page at a time.
+.PP
+It checks only what is present on the server. A rescan runs every Sunday at 02:00.
+.SH COMMANDS
+.TP
+.B (none)
+Open the health screen (the first-time setup runs first if it has not been done).
+.TP
+.B setup
+Run the first-time setup again.
+.TP
+.B dashboard, reports, config, help
+Open that screen directly.
+.TP
+.B run
+Run a complete health check now and write the reports.
+.TP
+.B scan [--apply]
+Show what is present on this server; with \fB--apply\fR, leave out what is not.
+.TP
+.B web [start|status|install|remove|passwd|useradd|userdel|users|cert|url]
+The web interface.
+.TP
+.B schedule, watch, history, export, ...
+All other \fBhealthcheck\fR commands work too; see \fBhealthcheck --help\fR.
+.SH KEYS
+Up/Down move, Enter opens or edits, Space switches yes/no, F10 saves, Esc goes back.
+Where a connection does not send arrow keys or Esc: Ctrl-N/Ctrl-P or j/k move, Ctrl-B or q goes back.
+.SH FILES
+.TP
+.I /etc/lshme/*.conf
+Settings (mode 600).
+.TP
+.I /var/lib/lshme
+Reports, history and the last server scan.
+.TP
+.I /var/log/lshme
+Logs and the audit log.
+.SH SEE ALSO
+.BR healthcheck (1), systemhealth (1)
+.SH AUTHOR
+LRS Services Pvt Ltd, Mumbai.

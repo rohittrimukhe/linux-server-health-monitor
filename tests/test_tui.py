@@ -60,10 +60,11 @@ class MemoryBackend(object):
     def text(self):
         return "\n".join("".join(r).rstrip() for r in self.grid)
 
-    def key(self):
+    def key(self, timeout=None):
         if not self.keys:
             raise AssertionError("script exhausted; last screen:\n" + self.text())
-        return self.keys.pop(0)
+        k = self.keys.pop(0)
+        return None if k == "TIMEOUT" else k  # "TIMEOUT": nothing was pressed before the screen refreshed itself
 
     @contextlib.contextmanager
     def suspend(self):

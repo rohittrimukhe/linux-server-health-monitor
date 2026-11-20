@@ -36,13 +36,18 @@ class SchedulerTest(unittest.TestCase):
         r = FakeRunner({"systemctl": (0, "")})
         rep = scheduler.install(home.cfg, r, "/opt/lshme/healthcheck", ["--config-dir", "/etc/lshme"])
         self.assertEqual(rep["errors"], [])
-        self.assertEqual(sorted(os.listdir(sd)), ["lshme-daily.service", "lshme-daily.timer", "lshme-weekly.service", "lshme-weekly.timer"])
+        self.assertEqual(sorted(os.listdir(sd)), ["lshme-daily.service", "lshme-daily.timer", "lshme-scan.service", "lshme-scan.timer",
+                                                  "lshme-weekly.service", "lshme-weekly.timer"])
         svc = slurp(os.path.join(sd, "lshme-daily.service"))
         self.assertIn("ExecStart=/opt/lshme/healthcheck --config-dir /etc/lshme run --schedule daily --quiet --retries 2", svc)
         self.assertIn("OnCalendar=*-*-* 07:00:00", slurp(os.path.join(sd, "lshme-daily.timer")))
         self.assertIn("systemctl enable --now lshme-daily.timer", r.calls)
+        # the weekly server rescan: Sunday 02:00, applies what it finds
+        self.assertIn("ExecStart=/opt/lshme/healthcheck --config-dir /etc/lshme scan --apply --quiet", slurp(os.path.join(sd, "lshme-scan.service")))
+        self.assertIn("OnCalendar=Sun *-*-* 02:00:00", slurp(os.path.join(sd, "lshme-scan.timer")))
+        self.assertIn("systemctl enable --now lshme-scan.timer", r.calls)
         removed = scheduler.uninstall(home.cfg, r)
-        self.assertEqual(len(removed), 4)
+        self.assertEqual(len(removed), 6)
         cron = os.path.join(home.dir, "cron-lshme")
         home.cfg.set("schedule", "scheduler", "backend", "cron")
         home.cfg.set("schedule", "scheduler", "cron_file", cron)
@@ -50,6 +55,22 @@ class SchedulerTest(unittest.TestCase):
         text = slurp(cron)
         self.assertIn("0 7 * * * root /opt/lshme/healthcheck run --schedule daily", text)
         self.assertIn("0 8 * * 1 root", text)
+        self.assertIn("0 2 * * 0 root /opt/lshme/healthcheck scan --apply --quiet", text)  # Sunday 02:00 rescan
+        home.cleanup()
+
+    def test_uninstall_removes_the_timers_as_well_as_the_services(self):
+        home = TempHome()
+        sd = os.path.join(home.dir, "systemd")
+        home.cfg.set("schedule", "scheduler", "backend", "systemd")
+        home.cfg.set("schedule", "scheduler", "systemd_dir", sd)
+        r = FakeRunner({"systemctl": (0, "")})
+        scheduler.install(home.cfg, r, "/opt/lshme/healthcheck", ["--config-dir", "/etc/lshme"])
+        self.assertTrue([f for f in os.listdir(sd) if f.endswith(".timer")])
+        # with an owner check (what the package removal does) every timer must go, not only the services
+        removed = scheduler.uninstall(home.cfg, r, ["--config-dir", "/etc/lshme"])
+        self.assertEqual(os.listdir(sd), [])
+        self.assertTrue(any(x.endswith("lshme-scan.timer") for x in removed))
+        self.assertIn("systemctl disable --now lshme-scan.timer", r.calls)
         home.cleanup()
 
     def test_uninstall_leaves_other_installations_alone(self):

@@ -30,7 +30,10 @@ def resolve(cfg, requested=None):
         enabled = cfg.getlist("main", "modules", "enabled", "all")
         names = list(MODULE_ORDER) if (not enabled or enabled == ["all"]) else enabled
         disabled = set(cfg.getlist("main", "modules", "disabled", ""))
-        names = [n for n in names if n not in disabled]
+        # modules the last server scan found nothing for (no KVM, no databases, ...) are left out,
+        # unless the administrator forced them on
+        absent = set(cfg.getlist("main", "modules", "auto_excluded", "")) - set(cfg.getlist("main", "modules", "force_enabled", ""))
+        names = [n for n in names if n not in disabled and n not in absent]
     unknown = [n for n in names if n not in MODULE_ORDER]
     if unknown:
         raise ValueError("unknown module(s): %s (available: %s)" % (", ".join(unknown), ", ".join(MODULE_ORDER)))

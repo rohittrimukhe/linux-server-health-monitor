@@ -1,15 +1,19 @@
 # Changelog
 
+## 1.3.0
+
+- **Renamed to LRS Vitals.** The main command is `vitals`; `systemhealth` and `healthcheck` keep working. The RPM is `lrs-vitals`. Machine-facing names (the `/etc/lshme` folder, `lshme-*` service units, Nagios output, alert subject prefixes) are unchanged so existing installs, monitoring rules and mail filters keep working.
+- **`vitals`: a full-screen home screen** (like `nmtui`) with a live dashboard (CPU, per-core load, memory, swap, filesystems and mounts, network, disk I/O, processes, five views, pause and speed keys), the reports already written with a score trend, run-a-check-now with progress, the server scan, the web interface and every setting.
+- **First-time setup** (runs on first use, or `vitals setup`): welcome, system scan, organisation, email, alert levels, services to watch, databases, schedules, real-time alerts, web interface, review and finish. Every page can be skipped.
+- **Server scan** (`vitals scan [--apply]`): finds what is present (KVM, databases, backup products, Cockpit, containers, clusters, certificates, applications, custom checks). Modules with nothing to check are left out of every run and every report instead of showing as SKIPPED. A rescan runs every Sunday at 02:00 (`systemd` timer or cron) and reports what changed. `[modules] force_enabled` keeps a module on anyway.
+- **Web interface** (`vitals web`): sign-in (salted PBKDF2 hashes, rate limiting, expiring HttpOnly SameSite sessions, CSRF token and Origin check, administrator and read-only roles, strict Content-Security-Policy), live dashboard, reports with summaries, server scan, a settings editor for every configuration file with validation, operations (real-time monitor, schedules, email test, configuration backup and restore, logs, audit log) and accounts. HTTPS with an automatically created certificate; plain HTTP only on 127.0.0.1. Runs as `lshme-web.service`.
+- **Reports:** a plain-language "At a glance" summary, a sticky navigation bar with one coloured link per area, expand/collapse/print buttons, and an issues filter. Areas with nothing to check are no longer listed.
+- **RPM package** (`packaging/build_rpm.sh`): installs to `/opt/lshme`, settings in `/etc/lshme` (kept on removal), shows a getting-started guide on first install, runs the first scan and schedules the reports and the weekly rescan, refreshes schedules and restarts running services on upgrade, and removes timers and services on removal.
+- **Fixes.** `schedule remove` now removes the timers as well as the services (it skipped the timers). The installer resets SELinux labels (the watcher failed with `203/EXEC` otherwise) and restarts a running watcher. Arrow keys and Esc now work from PuTTY and plink; `Ctrl-N`/`Ctrl-P`/`j`/`k`/`q`/`Ctrl-B` work where a connection sends none of them.
+- **Full-screen configuration forms** (`vitals` > Configuration, or `healthcheck setup`): identity, modules, thresholds, services/ports/processes, databases, reports, email (test button), schedules (install button), retention, real-time monitoring, backup jobs, fleet servers, policy, web interface, and validate/back up/restore tools. Every value is validated before it is written; saves keep file comments, use mode 600, back up first and are audit-logged. `setup --text` keeps the plain prompts.
+
 ## 1.2.0
 
-- **Full-screen configuration forms** (`healthcheck setup`, menu option 17), in the style of `nmtui`.
-  - Move with the arrow keys, Enter to edit, Space to switch yes/no, F10 to save, Esc to go back.
-  - Covers identity, modules, thresholds, services/ports/processes, databases, reports, email (with a test-email button), schedules (with an install button), retention, real-time monitoring and alerts (status, run once, install, remove), backup jobs, fleet servers, security/network/certificate policy, and validate/back up/restore tools.
-  - Every value is validated before it is written; saves keep file comments, use mode 600, back up the configuration first and are audit-logged. Passwords go to `credentials.conf` only.
-  - Uses the Python standard `curses` module (no new dependency). `healthcheck setup --text` keeps the plain prompts, and they are also the fallback when there is no terminal; `--page NAME` opens one screen.
-- **Installer fixes.**
-  - `install.sh` now resets the SELinux labels of the installed program (`restorecon`). Files copied from a home directory kept the `admin_home_t` label, which systemd may not execute, so the real-time watcher failed to start (`203/EXEC`) on hosts with SELinux enforcing.
-  - `install.sh` restarts a running real-time watcher that belongs to the installation, so it runs the new code and unit.
 - **Real-time monitoring** (`healthcheck watch`).
   - Probes every minute read `/proc` and `statvfs` directly; heavier modules run one at a time in rotation.
   - Alerts go out by email, syslog and webhook, with confirmation (no flapping), escalation, reminders and recovery messages.

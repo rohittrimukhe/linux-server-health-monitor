@@ -122,7 +122,20 @@ def build_parser():
     sp.add_argument("--text", action="store_true", help="use plain text prompts instead of the full-screen forms")
     sp.add_argument("--page", help="open one screen directly (identity, modules, thresholds, services, databases, reports, "
                                    "smtp, schedules, retention, watch, backups, fleet, policy, tools, validate, backup)")
-    sub.add_parser("menu", help="interactive DOS-style menu")
+    sub.add_parser("menu", help="the classic numbered menu")
+    hm = sub.add_parser("home", help="the health screen: live graphs, reports, settings (also: vitals)")
+    hm.add_argument("--page", help="open one screen directly (dashboard, reports, run, scan, config, setup, help)")
+    sn = sub.add_parser("scan", help="scan the server for what is present (KVM, databases, backups...) and leave out the rest")
+    sn.add_argument("--apply", action="store_true", help="store the result and exclude modules with nothing to check (needs root)")
+    sn.add_argument("--quiet", action="store_true", help="print nothing except problems")
+    sn.add_argument("--json", action="store_true", help="print the scan result as JSON")
+    wb = sub.add_parser("web", help="the web interface: start, install as a service, passwords and users")
+    wb.add_argument("action", nargs="?", default="status", choices=("start", "status", "install", "remove", "passwd", "useradd", "userdel", "users", "cert", "url"))
+    wb.add_argument("name", nargs="?", help="user name (passwd, useradd, userdel)")
+    wb.add_argument("--bind", help="address to listen on (start; default from web.conf)")
+    wb.add_argument("--port", type=int, help="port (start; default from web.conf)")
+    wb.add_argument("--role", default="viewer", choices=("admin", "viewer"), help="role for useradd (default: viewer, read-only)")
+    wb.add_argument("--password-stdin", action="store_true", help="read the password from standard input instead of asking")
     sub.add_parser("doctor", help="self-diagnostics: dependencies, permissions, config")
     sub.add_parser("version")
     sub.add_parser("email-test", help="send a test email using smtp.conf")
@@ -215,8 +228,30 @@ def build_parser():
     return p
 
 
+SYSTEMHEALTH_PAGES = ("setup", "help", "dashboard", "reports")
+
+
+def systemhealth_args(argv):
+    """'vitals' is the same program: no command opens the health screen, and setup / help / dashboard /
+    reports open that screen directly. Anything else (run, scan, ...) is passed to the normal command."""
+    argv = list(argv)
+    i = 0
+    while i < len(argv) and argv[i].startswith("-"):
+        i += 2 if argv[i] in ("--config-dir", "--home", "--app-dir") else 1
+    if i >= len(argv):
+        return argv + ["home"]
+    if argv[i] in SYSTEMHEALTH_PAGES and argv[i + 1:] == []:
+        return argv[:i] + ["home", "--page", argv[i]]
+    if argv[i] == "config" and argv[i + 1:] == []:
+        return argv[:i] + ["home", "--page", "config"]
+    return argv
+
+
 def main(argv=None):
     parser = build_parser()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if os.environ.get("LSHME_PROG") in ("vitals", "systemhealth"):
+        argv = systemhealth_args(argv)
     args = parser.parse_args(argv)
     if args.no_color:
         C.disable_color()
@@ -229,7 +264,7 @@ def main(argv=None):
     cmd = args.cmd
     if cmd is None:
         if sys.stdin.isatty():
-            cmd = "menu"
+            cmd = "home"
         else:
             parser.print_help()
             return 0
@@ -246,6 +281,79 @@ def main(argv=None):
         return 2
 
 
+def read_password(args, name):
+    """A new password, from stdin (--password-stdin) or asked for twice without echo."""
+    if args.password_stdin:
+        return sys.stdin.readline().rstrip("\r\n")
+    import getpass
+    first = getpass.getpass("New password for %s: " % name)
+    if first != getpass.getpass("Repeat the password: "):
+        raise ValueError("the two passwords are not the same")
+    return first
+
+
+def web_command(app, args):
+    from lshme.ops import webservice
+    from lshme.web import auth, server
+    users = auth.Users(app)
+    act, name = args.action, args.name
+    try:
+        if act == "start":
+            srv, _ = server.make_server(app, args.bind, args.port)
+            host, port = srv.server_address[:2]
+            C.out("LSHME web interface listening on %s:%s (%s). Press Ctrl-C to stop." % (host, port, "https" if app.cfg.getbool("web", "web", "tls", True) else "http"))
+            app.audit("web-start", bind=host, port=port)
+            try:
+                srv.serve_forever()
+            except KeyboardInterrupt:
+                C.out("\nstopped")
+            finally:
+                srv.server_close()
+        elif act == "passwd":
+            name = name or "admin"
+            users.set_password(name, read_password(args, name), None if name in users.names() else "admin")
+            C.out(C.c("Password set for %s." % name, "green"))
+        elif act == "useradd":
+            if not name:
+                raise ValueError("give the new user name: vitals web useradd NAME [--role admin|viewer]")
+            if name in users.names():
+                raise ValueError("%s already exists (use 'web passwd %s' to change the password)" % (name, name))
+            users.set_password(name, read_password(args, name), args.role)
+            C.out(C.c("User %s added (%s)." % (name, args.role), "green"))
+        elif act == "userdel":
+            users.remove(name or "")
+            C.out(C.c("User %s removed." % name, "green"))
+        elif act == "users":
+            C.table(["User", "Role"], [[u["user"], u["role"]] for u in users.listing()])
+        elif act == "install":
+            if not users.names():
+                raise ValueError("set a password first: vitals web passwd admin")
+            app.cfg.set("web", "web", "enabled", "yes")
+            app.save_config("web")
+            app.reload()
+            ok, message = webservice.install(app)
+            C.out(C.c(message, "green" if ok else "red"))
+            return 0 if ok else 1
+        elif act == "remove":
+            C.out("Removed the web service." if webservice.uninstall(app) else "The web service is not installed (or belongs to another installation).")
+        elif act == "cert":
+            cert, key = server.ensure_certificate(app)
+            C.out("Certificate: %s\nKey:         %s" % (cert, key))
+        elif act == "url":
+            C.out(webservice.url(app))
+        else:
+            cfg = app.cfg
+            C.table(["Setting", "Value"], [["Enabled", "yes" if cfg.getbool("web", "web", "enabled", False) else "no"], ["Address", webservice.url(app)],
+                                           ["Encryption (TLS)", "yes" if cfg.getbool("web", "web", "tls", True) else "no"], ["Users", ", ".join(u["user"] for u in users.listing()) or "none yet"],
+                                           ["Service", webservice.state(app)]])
+            if not users.names():
+                C.out("\nSet an administrator password first:  vitals web passwd admin")
+    except (ValueError, OSError) as e:
+        C.out(C.c("Error: %s" % e, "red"))
+        return 2
+    return 0
+
+
 def dispatch(app, cmd, args):
     from lshme import modules as modreg
     from lshme.engine import baseline, maintenance
@@ -259,6 +367,14 @@ def dispatch(app, cmd, args):
     elif cmd == "menu":
         from lshme.ui.menu import Menu
         Menu(app).loop()
+    elif cmd == "home":
+        from lshme.ui import helptext, home
+        page = getattr(args, "page", None)  # plain 'healthcheck' on a terminal arrives here without the option
+        ran, why = home.run(app, page)
+        if not ran:
+            C.out(C.c("The health screen needs an interactive terminal (%s)." % why, "yellow"))
+            C.out(helptext.QUICK_START if page != "help" else os.linesep.join(helptext.full_help()))
+            return 0 if page == "help" else 1
     elif cmd == "setup":
         from lshme.ui.wizard import Wizard
         if not args.text:
@@ -307,6 +423,34 @@ def dispatch(app, cmd, args):
         run = app.check(args.modules, args.days, "agent", save_history=True)
         from lshme.core.util import redact_obj
         sys.stdout.write(json.dumps(redact_obj(run.to_dict()), default=str) + "\n")
+    elif cmd == "scan":
+        from lshme.core.context import Context
+        from lshme.ops import discover
+        profile = discover.scan(Context(app.cfg, app.paths, app.runner))
+        changes, excluded = [], discover.excluded_modules(profile)
+        if args.apply:
+            try:
+                changes, excluded = discover.apply(app, profile)
+            except OSError as e:
+                C.out(C.c("Cannot store the scan: %s (run as root)" % e, "red"))
+                return 1
+        else:
+            changes = discover.compare(discover.load_profile(app.paths), profile)
+        if args.json:
+            C.out(json.dumps(profile, indent=1, sort_keys=True))
+        elif not args.quiet:
+            inv = profile["inventory"]
+            C.out("%s  |  %s  |  %d CPU, %d MB RAM  |  %s" % (inv["hostname"], inv["os"], inv["cpus"], inv["memory_mb"], inv["virtualization"]))
+            C.out()
+            C.table(["Area", "Status", "Why"], discover.rows(profile))
+            if changes:
+                C.out(C.c("\nChanged since the last scan:", "bold"))
+                for line in changes:
+                    C.out("  " + line)
+            C.out("\n%s" % (("Applied: %d module(s) with nothing to check are left out of every run and report." % len(excluded))
+                            if args.apply else "Nothing was changed. Run 'healthcheck scan --apply' (as root) to use this result."))
+    elif cmd == "web":
+        return web_command(app, args)
     elif cmd == "doctor":
         rows = doctor.run(app.cfg, app.paths, app.runner)
         C.table(["Area", "Check", "Status", "Detail"], rows)

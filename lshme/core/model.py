@@ -144,6 +144,7 @@ class RunResult(object):
         self.trends = {}
         self.history = []
         self.excluded = []
+        self.not_present = []  # [{"name", "title", "reason"}]: modules with nothing to check here (left out of reports)
 
     def findings(self, min_severity="INFO"):
         floor = SEV_RANK[min_severity]
@@ -174,7 +175,7 @@ class RunResult(object):
                 "finished_at": self.finished_at, "days": self.days, "schedule": self.schedule,
                 "version": self.version, "meta": self.meta, "health": self.health,
                 "maintenance": self.maintenance, "trends": self.trends, "history": self.history, "excluded": self.excluded,
-                "modules": [m.to_dict() for m in self.modules]}
+                "not_present": self.not_present, "modules": [m.to_dict() for m in self.modules]}
 
     @classmethod
     def from_dict(cls, d):
@@ -190,5 +191,6 @@ class RunResult(object):
         r.trends = d.get("trends", {})
         r.history = d.get("history", [])
         r.excluded = d.get("excluded", [])
+        r.not_present = d.get("not_present", [])
         r.modules = [ModuleResult.from_dict(x) for x in d.get("modules", [])]
         return r

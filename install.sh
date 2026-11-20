@@ -140,6 +140,12 @@ chmod 750 "$DATA" "$REPORTS" "$LOGS"
 
 ln -sf "$PREFIX/healthcheck" "$BIN"
 ok "command installed: $BIN"
+SHBIN="$(dirname "$BIN")/systemhealth"  # the same program under its friendly name: opens the health screen
+ln -sf "$PREFIX/healthcheck" "$SHBIN"
+ok "command installed: $SHBIN"
+VBIN="$(dirname "$BIN")/vitals"  # the short, memorable name
+ln -sf "$PREFIX/healthcheck" "$VBIN"
+ok "command installed: $VBIN"
 
 if [ $WITH_OPTIONAL -eq 1 ]; then install_optional; fi
 

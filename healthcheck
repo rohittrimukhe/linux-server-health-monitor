@@ -3,6 +3,7 @@
 # Linux Server Health Monitor Enterprise - launcher
 # Finds a Python 3.6+ interpreter (RHEL/OL 7 ship python3.6) and starts the app.
 set -e
+PROG="$(basename "${BASH_SOURCE[0]}")"  # healthcheck, or systemhealth (a link to this file)
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
   DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
@@ -25,6 +26,7 @@ if [ -z "$PY" ]; then
   exit 2
 fi
 export PYTHONPATH="$APP_DIR${PYTHONPATH:+:$PYTHONPATH}"
+export LSHME_PROG="$PROG"
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8:replace}"
 exec "$PY" -m lshme --app-dir "$APP_DIR" "$@"

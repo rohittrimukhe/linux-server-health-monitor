@@ -206,7 +206,7 @@ class CockpitPageTest(unittest.TestCase):
         dest = os.path.join(home.dir, "cockpit", "lshme")
         cockpit_page.install(app, dest=dest)
         manifest = json.loads(slurp(os.path.join(dest, "manifest.json")))
-        self.assertEqual(manifest["menu"]["index"]["label"], "LSHME Health")
+        self.assertEqual(manifest["menu"]["index"]["label"], "LRS Vitals")
         cfg = json.loads(slurp(os.path.join(dest, "config.json")))
         self.assertEqual(cfg["data_dir"], app.paths.data_dir)
         self.assertIn("--home", cfg["command"])

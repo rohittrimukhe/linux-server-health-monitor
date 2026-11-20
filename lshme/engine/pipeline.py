@@ -24,6 +24,7 @@ def run_modules(ctx, modules, progress=None):
                 "location": g.get("location", ""), "logo": g.get("logo", "")}
     log = logs.get()
     deadline = time.time() + ctx.cfg.getint("main", "general", "run_timeout", 1800)
+    hide_absent = ctx.cfg.getbool("main", "modules", "hide_not_present", True)
     for i, mod in enumerate(modules):
         res = ModuleResult(mod.NAME, mod.TITLE, mod.WEIGHT)
         if time.time() > deadline:
@@ -46,6 +47,10 @@ def run_modules(ctx, modules, progress=None):
         if res.errors and res.status == "OK":
             res.status = "PARTIAL"
         log.info("module %s %s in %.1fs (%d findings)", mod.NAME, res.status, res.duration, len(res.findings))
+        if res.status == "SKIPPED" and not res.findings and hide_absent:
+            # nothing to check on this server (no KVM, no databases, ...): keep it out of every report
+            run.not_present.append({"name": mod.NAME, "title": mod.TITLE, "reason": res.summary or "; ".join(res.skipped)})
+            continue
         run.modules.append(res)
     if progress:
         progress(len(modules), len(modules), "done")

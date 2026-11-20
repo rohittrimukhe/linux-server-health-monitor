@@ -14,14 +14,15 @@ import tarfile
 import time
 
 CONFIG_FILES = ("main", "thresholds", "services", "database", "smtp", "reports", "schedule",
-                "retention", "servers", "backup", "certificates", "custom", "exclusions", "credentials")
+                "retention", "servers", "backup", "certificates", "custom", "exclusions", "credentials", "web")
 
 DEFAULTS = {
     "main": {
         "general": {"company": "", "customer": "", "environment": "Production", "prepared_by": "",
                     "location": "", "logo": "", "command_timeout": "30", "run_timeout": "1800"},
         "paths": {"data_dir": "", "report_dir": "", "log_dir": ""},
-        "modules": {"enabled": "all", "disabled": ""},
+        "modules": {"enabled": "all", "disabled": "", "auto_excluded": "", "force_enabled": "", "hide_not_present": "yes"},
+        "scan": {"enabled": "yes", "weekday": "sun", "time": "02:00", "auto_apply": "yes"},
         "security": {"expected_selinux": "enforcing", "require_firewall": "yes",
                      "permit_root_login_allowed": "no", "password_authentication_allowed": "yes",
                      "require_auditd": "no", "check_updates": "yes", "updates_cache_hours": "12",
@@ -125,6 +126,9 @@ DEFAULTS = {
     "custom": {"general": {"checks_dir": "", "default_timeout": "60"}},
     "exclusions": {},
     "credentials": {},
+    "web": {"web": {"enabled": "no", "bind": "127.0.0.1", "port": "8443", "tls": "yes", "cert": "", "key": "",
+                    "session_minutes": "30", "max_login_failures": "5", "allow_plain_http": "no"},
+            "users": {}, "roles": {}},
 }
 
 
@@ -379,7 +383,7 @@ class Config(object):
     def permission_problems(self):
         """Files holding secrets must not be readable by group/others."""
         problems = []
-        for name in ("credentials", "smtp", "database"):
+        for name in ("credentials", "smtp", "database", "web"):
             path = self.path(name)
             if os.path.exists(path):
                 mode = os.stat(path).st_mode & 0o777
