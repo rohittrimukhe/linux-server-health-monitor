@@ -741,6 +741,16 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
     charts_blocks = [usage_table(usage, win, source, ncores), charts(chart_defs(data, usage, win))]
     d.add("CPU and memory", charts_blocks + X.cores_blocks(data, cores) + ([day_usage_table(data, usage)] if ptype != "daily" else []))
 
+    try:
+        from lshme.core.runner import Runner
+        from lshme.reports import periodic_net
+        nb, nsent = periodic_net.blocks(data, Runner(cfg.getint("main", "general", "command_timeout", 30)))
+        d.add("Network", nb)
+        if nsent:
+            d.sections[0][1][0]["items"].append(("ok", nsent))
+    except Exception as e:
+        d.add("Network", [note("The network details could not be collected: %s" % e)])
+
     heads, frows = fs_table(data, fs, win)
     blocks = [table("Filesystem usage and growth", heads, frows, align=["", "", "r", "r", "r", "r", "r", "r", "r", ""] if win == "monthly" else ["", "", "r", "r", "r", "r", "r", "r", ""],
                     legend="Bar: green under the warning limit, amber to the critical limit, red above. Growth in red = space used increased.")]

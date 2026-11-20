@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS deliveries (id INTEGER PRIMARY KEY, ts REAL, host TEX
 CREATE TABLE IF NOT EXISTS hourly (host TEXT, ts INTEGER, n INTEGER, cpu_sum REAL, cpu_max REAL, mem_sum REAL, mem_max REAL,
     swap_sum REAL, swap_max REAL, load_sum REAL, load_max REAL, PRIMARY KEY (host, ts));
 CREATE TABLE IF NOT EXISTS hourly_core (host TEXT, ts INTEGER, core INTEGER, n INTEGER, sum REAL, max REAL, PRIMARY KEY (host, ts, core));
+CREATE TABLE IF NOT EXISTS hourly_net (host TEXT, ts INTEGER, iface TEXT, n INTEGER, rx_sum REAL, rx_max REAL, tx_sum REAL, tx_max REAL, PRIMARY KEY (host, ts, iface));
 CREATE INDEX IF NOT EXISTS ix_runs_host_ts ON runs(host, ts);
 CREATE INDEX IF NOT EXISTS ix_metrics_host_key_ts ON metrics(host, key, ts);
 CREATE INDEX IF NOT EXISTS ix_findings_host_ts ON findings(host, ts);
@@ -85,7 +86,7 @@ class History(object):
         cols = ("id", "host", "ts", "schedule", "score", "status", "critical", "warning", "unknown", "duration", "report_dir")
         return [dict(zip(cols, r)) for r in self.con.execute(q, args).fetchall()]
 
-    def add_hourly(self, host, now, cpu, mem, swap, load, cores=None):
+    def add_hourly(self, host, now, cpu, mem, swap, load, cores=None, net=None):
         """Fold one real-time sample into the running totals for its hour (used for week and month graphs)."""
         hour = int(now // 3600 * 3600)
         v = [x if x is not None else 0.0 for x in (cpu, mem, swap, load)]
@@ -103,7 +104,22 @@ class History(object):
                 self.con.execute("UPDATE hourly_core SET n=n+1, sum=sum+?, max=MAX(max,?) WHERE host=? AND ts=? AND core=?", (c, c, host, hour, i))
             else:
                 self.con.execute("INSERT INTO hourly_core VALUES(?,?,?,1,?,?)", (host, hour, i, c, c))
+        for iface, (rx, tx) in (net or {}).items():
+            if self.con.execute("SELECT 1 FROM hourly_net WHERE host=? AND ts=? AND iface=?", (host, hour, iface)).fetchone():
+                self.con.execute("UPDATE hourly_net SET n=n+1, rx_sum=rx_sum+?, rx_max=MAX(rx_max,?), tx_sum=tx_sum+?, tx_max=MAX(tx_max,?) "
+                                 "WHERE host=? AND ts=? AND iface=?", (rx, rx, tx, tx, host, hour, iface))
+            else:
+                self.con.execute("INSERT INTO hourly_net VALUES(?,?,?,1,?,?,?,?)", (host, hour, iface, rx, rx, tx, tx))
         self.con.commit()
+
+    def hourly_net(self, host, since):
+        """{iface: [(ts, rx avg B/s, rx max, tx avg, tx max)]} per hour."""
+        out = {}
+        for iface, ts, n, rs, rm, tsum, tm in self.con.execute(
+                "SELECT iface, ts, n, rx_sum, rx_max, tx_sum, tx_max FROM hourly_net WHERE host=? AND ts>=? ORDER BY ts", (host, since)).fetchall():
+            n = float(n or 1)
+            out.setdefault(iface, []).append((ts, rs / n, rm, tsum / n, tm))
+        return out
 
     def hourly_cores(self, host, since):
         """{core: [(ts, avg, max)]} per hour."""
@@ -158,6 +174,7 @@ class History(object):
         c.execute("DELETE FROM deliveries WHERE ts < ?", (cutoff,))
         c.execute("DELETE FROM hourly WHERE ts < ?", (cutoff,))
         c.execute("DELETE FROM hourly_core WHERE ts < ?", (cutoff,))
+        c.execute("DELETE FROM hourly_net WHERE ts < ?", (cutoff,))
         self.con.commit()
         try:
             self.con.execute("VACUUM")

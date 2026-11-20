@@ -298,7 +298,10 @@ class PeriodicPDF(MiniPDF):
             mx = mn + 1
         avg = sum(p[1] for p in P) / len(P)
         self.put(x + 8, top - 14, c["title"], 10.5, "F2", INK)
-        if not c.get("multi"):
+        if c.get("info"):
+            inf = c["info"]
+            self.put(x + w - 8 - tw(inf, 8.5), top - 14, inf, 8.5, "F1", MUT)
+        elif not c.get("multi"):
             info = ("avg %.1f%s, peak %.1f%s" % (avg, c["unit"], max(vals), c["unit"])) if c.get("max") else ("now %.2f%s" % (P[-1][1], c["unit"]))
             self.put(x + w - 8 - tw(info, 8.5), top - 14, info, 8.5, "F1", MUT)
         key_h = 0

@@ -52,6 +52,21 @@ def cpu_sample():
         return []
 
 
+def net_counters():
+    """{interface: (received bytes, sent bytes)} for every interface except loopback."""
+    out = {}
+    for line in _read("/proc/net/dev").splitlines()[2:]:
+        name, _, rest = line.partition(":")
+        f = rest.split()
+        name = name.strip()
+        if len(f) >= 9 and name and name != "lo":
+            try:
+                out[name] = (int(f[0]), int(f[8]))
+            except ValueError:
+                pass
+    return out
+
+
 def core_samples():
     """{cpu0: [counters], ...} for every logical CPU."""
     out = {}
@@ -135,6 +150,15 @@ def fast_probes(cfg, state, prober):
     cpu = cpu_percent(state.get("cpu_prev"), cur)
     state["cpu_prev"] = cur
     sample = state["sample"] = {"cpu": cpu, "disk": {}}
+    now_t, counters = time.time(), net_counters()
+    prev_net = state.get("net_prev")
+    state["net_prev"] = (now_t, counters)
+    if prev_net and now_t - prev_net[0] > 0.5:
+        dt = now_t - prev_net[0]
+        rates = dict((k, [max(0, int((v[0] - prev_net[1][k][0]) / dt)), max(0, int((v[1] - prev_net[1][k][1]) / dt))])
+                     for k, v in counters.items() if k in prev_net[1])
+        busiest = sorted(rates, key=lambda k: -(counters[k][0] + counters[k][1]))[:8]
+        sample["net"] = dict((k, rates[k]) for k in busiest)
     cores_now = core_samples()
     prev_cores = state.get("cores_prev") or {}
     state["cores_prev"] = cores_now
@@ -474,13 +498,13 @@ class Watcher(object):
         probs = self.state.get("problems", {})
         disks = sorted(s["disk"].items(), key=lambda kv: -kv[1])[:8]  # the fullest filesystems only
         point = {"t": round(now), "cpu": s.get("cpu"), "mem": s.get("mem"), "swap": s.get("swap"), "load": s.get("load"),
-                 "cores": [None if c is None else int(round(c)) for c in (s.get("cores") or [])], "disk": dict(disks), "crit": sum(1 for p in probs.values() if p.get("severity") == "CRITICAL"),
+                 "cores": [None if c is None else int(round(c)) for c in (s.get("cores") or [])], "net": s.get("net") or {}, "disk": dict(disks), "crit": sum(1 for p in probs.values() if p.get("severity") == "CRITICAL"),
                  "warn": sum(1 for p in probs.values() if p.get("severity") == "WARNING")}
         try:  # hourly roll-up for the weekly and monthly reports; never allowed to break the watcher
             from lshme.engine.history import History
             h = History(self.app.paths.history_db)
             try:
-                h.add_hourly(os.uname()[1], now, s.get("cpu"), s.get("mem"), s.get("swap"), s.get("load"), s.get("cores"))
+                h.add_hourly(os.uname()[1], now, s.get("cpu"), s.get("mem"), s.get("swap"), s.get("load"), s.get("cores"), s.get("net"))
             finally:
                 h.close()
         except Exception:
