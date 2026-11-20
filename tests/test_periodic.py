@@ -1,0 +1,174 @@
+# Linux Server Health Monitor Enterprise
+# Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
+"""Daily, weekly and monthly checklist reports."""
+import json
+import os
+import time
+import unittest
+import zipfile
+
+from fakes import TempHome
+from lshme import reports
+from lshme.core.model import ModuleResult, RunResult
+from lshme.engine import scoring
+from lshme.engine.history import History
+from lshme.reports import periodic, periodic_html
+
+GB = 1024 ** 3
+
+
+def make_run(now):
+    r = RunResult("db01", days=1, schedule="daily")
+    r.collected_at = now
+    r.fqdn, r.ip, r.version = "db01.example.com", "10.0.0.11", "test"
+    r.meta = {"company": "Example Ltd", "customer": "ACME"}
+    sy = ModuleResult("system", "Operating System", 8)
+    sy.data = {"fqdn": "db01.example.com", "ip": "10.0.0.11", "distribution": "Oracle Linux 9", "kernel": "5.14", "architecture": "x86_64",
+               "uptime": "41d", "boot_time": "x", "timezone": "UTC", "virtualization": "vmware", "reboot_required": False,
+               "time_sync": True, "time_sync_source": "chronyc"}
+    sy.metric("system.uptime_days", 41.0)
+    st = ModuleResult("storage", "Storage", 20)
+    st.data = {"filesystems": [{"mountpoint": "/u01", "fstype": "xfs", "size": 200 * GB, "used": 168 * GB, "free": 32 * GB, "used_percent": 84.0},
+                               {"mountpoint": "/", "fstype": "xfs", "size": 50 * GB, "used": 23 * GB, "free": 27 * GB, "used_percent": 46.0}]}
+    st.metric("fs.used_bytes:/u01", 168 * GB)
+    st.metric("fs.size_bytes:/u01", 200 * GB)
+    st.metric("fs.used_bytes:/", 23 * GB)
+    st.metric("fs.size_bytes:/", 50 * GB)
+    st.add("WARNING", "FS_USAGE", "/u01", "Filesystem /u01 is 84% full", recommendation="Extend it.")
+    db = ModuleResult("database", "Databases", 15)
+    db.metric("oracle.ORCL.datafile_bytes", 148 * GB)
+    fo = ModuleResult("folders", "Folders", 0)
+    fo.metric("folder.bytes:/u01/oradata", 148 * GB)
+    fo.metric("folder.bytes:/tmp", 1024)
+    cp = ModuleResult("cpu_memory", "CPU", 12)
+    cp.metric("cpu.cores", 2)
+    r.modules = [sy, st, db, fo, cp]
+    scoring.score_run(r)
+    return r
+
+
+def seed(paths, run, days=30):
+    h = History(paths.history_db)
+    now = run.collected_at
+    cur = run.metrics()
+    for back in range(days, 0, -1):
+        ts = now - back * 86400
+        c = h.con.cursor()
+        c.execute("INSERT INTO runs(host, ts, schedule, score, status, critical, warning, unknown, duration, version, report_dir) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                  ("db01", ts, "daily", 90, "WARNING", 0, 1, 0, 5.0, "t", ""))
+        rid = c.lastrowid
+        c.executemany("INSERT INTO metrics VALUES(?,?,?,?,?)",
+                      [(rid, "db01", ts, k, v - back * 0.5 * GB) for k, v in cur.items() if k.startswith(("fs.used", "oracle.", "folder.bytes:/u01"))])
+    for hr in range(days * 24, 0, -1):
+        h.add_hourly("db01", now - hr * 3600, 10 + (hr % 24), 60.0, 3.0, 0.3)
+    for hr in range(days * 24, 0, -1):
+        h.add_hourly("db01", now - hr * 3600 + 1, 10 + (hr % 24), 60.0, 3.0, 0.3, [20 + (hr % 7), 5])
+    h.save(run)
+    h.close()
+
+
+class PeriodicTest(unittest.TestCase):
+    def setUp(self):
+        self.home = TempHome()
+        self.now = time.time()
+        self.run = make_run(self.now)
+        seed(self.home.paths, self.run)
+
+    def tearDown(self):
+        self.home.cleanup()
+
+    def doc(self, ptype, variant="summary"):
+        return periodic.build(self.run, self.home.cfg, self.home.paths, ptype, variant, self.now)
+
+    def titles(self, d):
+        return [t for t, _ in d.sections]
+
+    def test_daily_has_every_section(self):
+        d = self.doc("daily")
+        for want in ("Overall status", "Daily checklist", "CPU and memory", "Filesystem usage and growth", "Database size and growth",
+                     "Top folders and growth", "Server overview", "What needs attention", "In short"):
+            self.assertIn(want, self.titles(d))
+        self.assertNotIn("Data growth by date", self.titles(d))
+
+    def test_checklist_flags_the_full_filesystem(self):
+        d = self.doc("daily")
+        rows = [b for t, bl in d.sections if t == "Daily checklist" for b in bl if b["type"] == "table"][0]["rows"]
+        fs = [r for r in rows if str(r[1]) == "Fullest filesystem"][0]
+        self.assertEqual(fs[0].style, "chip-wn")
+        self.assertEqual(d.status, "WARNING")
+
+    def test_growth_is_computed_from_history(self):
+        d = self.doc("weekly")
+        folder = [b for t, bl in d.sections for b in bl if b["type"] == "table" and b["title"] == "Largest folders"][0]
+        row = [r for r in folder["rows"] if str(r[0]) == "/u01/oradata"][0]
+        self.assertTrue(str(row[3]).startswith("+"), row)
+        self.assertNotIn("/tmp", [str(r[0]) for r in folder["rows"]])  # tiny folders are left out
+
+    def test_weekly_and_monthly_have_growth_by_date(self):
+        w, m = self.doc("weekly"), self.doc("monthly", "comprehensive")
+        self.assertIn("Data growth by date", self.titles(w))
+        self.assertIn("Data growth by date", self.titles(m))
+        self.assertGreater(len(m.growth_rows), len(w.growth_rows))
+        dates = set(r[0] for r in m.growth_rows if r[1] == "filesystem")
+        self.assertGreaterEqual(len(dates), 28)
+        self.assertEqual(len(periodic.build_all(self.run, self.home.cfg, self.home.paths, "monthly")), 2)
+        self.assertEqual(len(periodic.build_all(self.run, self.home.cfg, self.home.paths, "daily")), 1)
+
+    def test_plain_english_and_no_recommendations(self):
+        d = self.doc("daily")
+        short = dict(d.sections)["In short"][0]["items"]
+        self.assertTrue(any("/u01" in t for _, t in short), short)
+        attention = dict(d.sections)["What needs attention"][0]["items"]
+        self.assertTrue(any("full" in m.lower() for _, m, _ in attention))
+        titles = " ".join(self.titles(d)).lower()
+        self.assertNotIn("how to resolve", titles)
+        self.assertNotIn("recommend", titles)
+
+    def test_cpu_by_core_and_customer_details(self):
+        d = self.doc("weekly")
+        tables = [b["title"] for t, bl in d.sections for b in bl if b["type"] == "table"]
+        self.assertTrue(any(t.startswith("CPU usage of every core (2 cores)") for t in tables), tables)
+        self.assertIn(("Customer", "ACME"), d.details)
+
+    def test_comprehensive_monthly_has_inventory(self):
+        d = self.doc("monthly", "comprehensive")
+        self.assertTrue(any(t in ("Server roles", "Server inventory") for t in self.titles(d)), self.titles(d))
+
+    def test_every_format_is_written_and_monthly_has_two_reports(self):
+        fmts = ["html", "pdf", "xlsx", "csv", "txt", "json"]
+        _, outdir, files, notes = reports.generate(self.run, self.home.cfg, self.home.paths, fmts, "monthly", "monthly")
+        names = [os.path.basename(f) for f in files]
+        self.assertEqual(sum(1 for n in names if n.endswith("_comprehensive.pdf")), 1)
+        self.assertEqual(sum(1 for n in names if n.endswith(".pdf")), 2)
+        for f in files:
+            self.assertGreater(os.path.getsize(f), 40, f)
+        pdf = [f for f in files if f.endswith("_comprehensive.pdf")][0]
+        with open(pdf, "rb") as fh:
+            self.assertEqual(fh.read(5), b"%PDF-")
+        for f in files:
+            if f.endswith(".xlsx"):
+                self.assertIsNone(zipfile.ZipFile(f).testzip())
+        html = [f for f in files if f.endswith("_comprehensive.html")][0]
+        with open(html, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("chartdata", body)
+        data = json.loads(body.split("id='chartdata'>")[1].split("</script>")[0])
+        self.assertGreaterEqual(len(data["charts"]), 4)
+        self.assertEqual(notes, [])
+
+    def test_email_body_is_inline_html(self):
+        body = periodic_html.email_body(self.doc("daily"), ["/x/a.pdf"])
+        self.assertIn("Fullest filesystem", body)
+        self.assertNotIn("<script", body)
+
+    def test_no_history_still_builds(self):
+        home = TempHome()
+        try:
+            d = periodic.build(self.run, home.cfg, home.paths, "monthly", "comprehensive", self.now)
+            self.assertTrue(d.sections)
+        finally:
+            home.cleanup()
+
+
+if __name__ == "__main__":
+    unittest.main()

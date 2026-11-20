@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS findings (run_id INTEGER, host TEXT, ts REAL, severit
     component TEXT, module TEXT, message TEXT);
 CREATE TABLE IF NOT EXISTS deliveries (id INTEGER PRIMARY KEY, ts REAL, host TEXT, run_id INTEGER, ok INTEGER,
     recipients TEXT, attempts INTEGER, detail TEXT);
+CREATE TABLE IF NOT EXISTS hourly (host TEXT, ts INTEGER, n INTEGER, cpu_sum REAL, cpu_max REAL, mem_sum REAL, mem_max REAL,
+    swap_sum REAL, swap_max REAL, load_sum REAL, load_max REAL, PRIMARY KEY (host, ts));
+CREATE TABLE IF NOT EXISTS hourly_core (host TEXT, ts INTEGER, core INTEGER, n INTEGER, sum REAL, max REAL, PRIMARY KEY (host, ts, core));
 CREATE INDEX IF NOT EXISTS ix_runs_host_ts ON runs(host, ts);
 CREATE INDEX IF NOT EXISTS ix_metrics_host_key_ts ON metrics(host, key, ts);
 CREATE INDEX IF NOT EXISTS ix_findings_host_ts ON findings(host, ts);
@@ -82,6 +85,43 @@ class History(object):
         cols = ("id", "host", "ts", "schedule", "score", "status", "critical", "warning", "unknown", "duration", "report_dir")
         return [dict(zip(cols, r)) for r in self.con.execute(q, args).fetchall()]
 
+    def add_hourly(self, host, now, cpu, mem, swap, load, cores=None):
+        """Fold one real-time sample into the running totals for its hour (used for week and month graphs)."""
+        hour = int(now // 3600 * 3600)
+        v = [x if x is not None else 0.0 for x in (cpu, mem, swap, load)]
+        row = self.con.execute("SELECT n FROM hourly WHERE host=? AND ts=?", (host, hour)).fetchone()
+        if row:
+            self.con.execute("UPDATE hourly SET n=n+1, cpu_sum=cpu_sum+?, cpu_max=MAX(cpu_max,?), mem_sum=mem_sum+?, mem_max=MAX(mem_max,?),"
+                             " swap_sum=swap_sum+?, swap_max=MAX(swap_max,?), load_sum=load_sum+?, load_max=MAX(load_max,?)"
+                             " WHERE host=? AND ts=?", (v[0], v[0], v[1], v[1], v[2], v[2], v[3], v[3], host, hour))
+        else:
+            self.con.execute("INSERT INTO hourly VALUES(?,?,1,?,?,?,?,?,?,?,?)", (host, hour, v[0], v[0], v[1], v[1], v[2], v[2], v[3], v[3]))
+        for i, c in enumerate(cores or []):
+            if c is None:
+                continue
+            if self.con.execute("SELECT 1 FROM hourly_core WHERE host=? AND ts=? AND core=?", (host, hour, i)).fetchone():
+                self.con.execute("UPDATE hourly_core SET n=n+1, sum=sum+?, max=MAX(max,?) WHERE host=? AND ts=? AND core=?", (c, c, host, hour, i))
+            else:
+                self.con.execute("INSERT INTO hourly_core VALUES(?,?,?,1,?,?)", (host, hour, i, c, c))
+        self.con.commit()
+
+    def hourly_cores(self, host, since):
+        """{core: [(ts, avg, max)]} per hour."""
+        out = {}
+        for core, ts, n, total, mx in self.con.execute("SELECT core, ts, n, sum, max FROM hourly_core WHERE host=? AND ts>=? ORDER BY ts", (host, since)).fetchall():
+            out.setdefault(core, []).append((ts, total / float(n or 1), mx))
+        return out
+
+    def hourly(self, host, since):
+        """[{ts, cpu, cpu_max, mem, mem_max, swap, swap_max, load, load_max}] with averages per hour."""
+        out = []
+        for r in self.con.execute("SELECT ts, n, cpu_sum, cpu_max, mem_sum, mem_max, swap_sum, swap_max, load_sum, load_max "
+                                  "FROM hourly WHERE host=? AND ts>=? ORDER BY ts", (host, since)).fetchall():
+            n = float(r[1] or 1)
+            out.append({"ts": r[0], "cpu": r[2] / n, "cpu_max": r[3], "mem": r[4] / n, "mem_max": r[5],
+                        "swap": r[6] / n, "swap_max": r[7], "load": r[8] / n, "load_max": r[9]})
+        return out
+
     def hosts(self):
         return [r[0] for r in self.con.execute("SELECT DISTINCT host FROM runs ORDER BY host").fetchall()]
 
@@ -116,6 +156,8 @@ class History(object):
         c.execute("DELETE FROM findings WHERE ts < ?", (cutoff,))
         c.execute("DELETE FROM runs WHERE ts < ?", (cutoff,))
         c.execute("DELETE FROM deliveries WHERE ts < ?", (cutoff,))
+        c.execute("DELETE FROM hourly WHERE ts < ?", (cutoff,))
+        c.execute("DELETE FROM hourly_core WHERE ts < ?", (cutoff,))
         self.con.commit()
         try:
             self.con.execute("VACUUM")

@@ -108,7 +108,7 @@ class App(object):
                     h.set_report_dir(run.run_id, outdir)
                     h.close()
             else:
-                document = docmod.build(run, self.cfg, report_type)
+                document = reports.build_document(run, self.cfg, self.paths, report_type)
             if sched and write_reports:
                 result["files"] += self.schedule_extras(sched, result["notes"])
             if email or force_email:
@@ -181,7 +181,16 @@ class App(object):
             document.counts.get("WARNING", 0), document.counts.get("UNKNOWN", 0))
         text += "\n".join("[%s] %s: %s" % (f["severity"], f["component"], f["message"]) for f in document.findings
                           if f["severity"] in ("CRITICAL", "WARNING"))[:20000]
-        msg, recipients, attached, skipped = mailer.build_message(ms, subject, text, htmlrep.email_body(document, files), files, status, to, cc)
+        if hasattr(document, "ptype"):  # daily / weekly / monthly checklist report
+            from lshme.reports import periodic_html
+            body = periodic_html.email_body(document, files)
+            text = "%s\n%s\n\nStatus: %s   Score: %s/100\n" % (document.title, document.subtitle, status, run.health["score"]) + \
+                   "\n".join("[%s] %s: %s" % (f["severity"], f["component"], f["message"]) for f in document.findings
+                             if f["severity"] in ("CRITICAL", "WARNING"))[:20000]
+            subject = "%s %s %s - %s" % (ms.prefix, document.title, run.fqdn or run.host, status)
+        else:
+            body = htmlrep.email_body(document, files)
+        msg, recipients, attached, skipped = mailer.build_message(ms, subject, text, body, files, status, to, cc)
         if skipped:
             self.log.warning("attachments skipped: %s", skipped)
         res = mailer.send(ms, msg, recipients, self.paths.log_dir)

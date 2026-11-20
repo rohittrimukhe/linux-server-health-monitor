@@ -52,6 +52,19 @@ def cpu_sample():
         return []
 
 
+def core_samples():
+    """{cpu0: [counters], ...} for every logical CPU."""
+    out = {}
+    for line in _read("/proc/stat").splitlines():
+        parts = line.split()
+        if parts and parts[0].startswith("cpu") and parts[0] != "cpu":
+            try:
+                out[parts[0]] = [int(x) for x in parts[1:9]]
+            except ValueError:
+                pass
+    return out
+
+
 def cpu_percent(prev, cur):
     if not prev or not cur or len(prev) != len(cur):
         return None
@@ -122,6 +135,10 @@ def fast_probes(cfg, state, prober):
     cpu = cpu_percent(state.get("cpu_prev"), cur)
     state["cpu_prev"] = cur
     sample = state["sample"] = {"cpu": cpu, "disk": {}}
+    cores_now = core_samples()
+    prev_cores = state.get("cores_prev") or {}
+    state["cores_prev"] = cores_now
+    sample["cores"] = [cpu_percent(prev_cores.get(k), cores_now[k]) for k in sorted(cores_now, key=lambda x: int(x[3:]))] if prev_cores else []
     check("cpu", cpu, t("cpu", "warning", 85), t("cpu", "critical", 95), "cpu", "CPU utilisation %.0f%%",
           "Check top CPU consumers.")
     try:
@@ -457,8 +474,17 @@ class Watcher(object):
         probs = self.state.get("problems", {})
         disks = sorted(s["disk"].items(), key=lambda kv: -kv[1])[:8]  # the fullest filesystems only
         point = {"t": round(now), "cpu": s.get("cpu"), "mem": s.get("mem"), "swap": s.get("swap"), "load": s.get("load"),
-                 "disk": dict(disks), "crit": sum(1 for p in probs.values() if p.get("severity") == "CRITICAL"),
+                 "cores": [None if c is None else int(round(c)) for c in (s.get("cores") or [])], "disk": dict(disks), "crit": sum(1 for p in probs.values() if p.get("severity") == "CRITICAL"),
                  "warn": sum(1 for p in probs.values() if p.get("severity") == "WARNING")}
+        try:  # hourly roll-up for the weekly and monthly reports; never allowed to break the watcher
+            from lshme.engine.history import History
+            h = History(self.app.paths.history_db)
+            try:
+                h.add_hourly(os.uname()[1], now, s.get("cpu"), s.get("mem"), s.get("swap"), s.get("load"), s.get("cores"))
+            finally:
+                h.close()
+        except Exception:
+            pass
         keep = float(setting(self.app.cfg, "metrics_hours")) * 3600
         try:
             with open(self.metrics_path, encoding="utf-8") as f:

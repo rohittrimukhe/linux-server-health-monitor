@@ -69,6 +69,7 @@ def top_processes(ctx, sort_key):
 def run(ctx, res):
     cores = [l for l in ctx.read("/proc/cpuinfo").splitlines() if l.startswith("processor")]
     ncpu = len(cores) or 1
+    res.metric("cpu.cores", ncpu)
     model = ""
     sockets = set()
     for line in ctx.read("/proc/cpuinfo").splitlines():

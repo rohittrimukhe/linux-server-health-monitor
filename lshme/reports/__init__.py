@@ -82,9 +82,61 @@ def write_all(document, formats, outdir, basename, run=None, runs=None, logo="")
     return files, notes
 
 
+PERIODIC = ("daily", "weekly", "monthly")
+
+
+def write_periodic(docs, formats, outdir, base, logo=""):
+    """Render daily/weekly/monthly documents (monthly has a summary and a comprehensive one)."""
+    from lshme.reports import periodic_html, periodic_out, periodic_pdf
+    files, notes = [], []
+    log = logs.get()
+    for doc in docs:
+        stem = os.path.join(outdir, base + doc.basename_suffix())
+        for fmt in formats:
+            try:
+                if fmt == "html":
+                    files.append(periodic_html.render(doc, stem + ".html", logo))
+                elif fmt == "pdf":
+                    files.append(periodic_pdf.render(doc, stem + ".pdf", logo))
+                elif fmt == "xlsx":
+                    files.append(periodic_out.render_xlsx(doc, stem + ".xlsx")[0])
+                elif fmt == "csv":
+                    files.extend(periodic_out.render_csv(doc, stem + ".csv"))
+                elif fmt == "txt":
+                    files.append(periodic_out.render_txt(doc, stem + ".txt"))
+                elif fmt == "json":
+                    files.append(periodic_out.render_json(doc, stem + ".json"))
+                elif fmt == "pptx":
+                    notes.append("PowerPoint is not produced for %s reports." % doc.ptype)
+            except Exception as e:
+                log.exception("periodic report format %s failed", fmt)
+                notes.append("%s report failed: %s" % (fmt.upper(), e))
+    for f in files:
+        try:
+            os.chmod(f, 0o640)
+        except OSError:
+            pass
+    return files, notes
+
+
+def build_document(run, cfg, paths, report_type):
+    """The main document for a report type (the summary for monthly)."""
+    if report_type in PERIODIC:
+        from lshme.reports import periodic
+        return periodic.build_all(run, cfg, paths, report_type)[0]
+    return docmod.build(run, cfg, report_type)
+
+
 def generate(run, cfg, paths, formats, report_type=None, category=None):
     report_type = report_type or cfg.get("reports", "reports", "report_type", "technical")
     category = category or run.schedule or "adhoc"
+    if report_type in PERIODIC:
+        from lshme.reports import periodic
+        docs = periodic.build_all(run, cfg, paths, report_type)
+        outdir = output_dir(paths.report_dir, run.host, category)
+        base = "%s_%s_%s" % (safe(run.host), safe(category), time.strftime("%Y%m%d_%H%M", time.localtime(run.collected_at)))
+        files, notes = write_periodic(docs, formats, outdir, base, cfg.get("main", "general", "logo", ""))
+        return docs[0], outdir, files, notes
     document = docmod.build(run, cfg, report_type)
     outdir = output_dir(paths.report_dir, run.host, category)
     base = "%s_%s_%s" % (safe(run.host), safe(category), time.strftime("%Y%m%d_%H%M", time.localtime(run.collected_at)))

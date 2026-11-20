@@ -251,11 +251,11 @@ class ScanScreenTests(HomeCase):
         self.assertTrue(os.path.exists(discover.profile_path(self.app.paths)))
 
     def test_force_a_missing_module_on_and_off(self):
-        ctx = self.ctx(["DOWN"] * 6 + ["ENTER", "y", "ESC"])  # row 7 is KVM
+        ctx = self.ctx(["DOWN"] * 7 + ["ENTER", "y", "ESC"])  # row 8 is KVM
         home.scan_screen(ctx)
         self.app.reload()
         self.assertEqual(self.app.cfg.get("main", "modules", "force_enabled"), "kvm")
-        ctx = self.ctx(["DOWN"] * 6 + ["ENTER", "ESC"])
+        ctx = self.ctx(["DOWN"] * 7 + ["ENTER", "ESC"])
         home.scan_screen(ctx)
         self.assertTrue(self.be.saw("checked (forced on)"))
         self.app.reload()

@@ -97,7 +97,7 @@ def build_parser():
     r.add_argument("--modules", help="comma-separated modules (default: all enabled)")
     r.add_argument("--days", type=int, default=None, help="days of logs/history the report covers (default 1)")
     r.add_argument("--formats", help="html,pdf,xlsx,pptx,txt,csv,json or all")
-    r.add_argument("--report-type", choices=("executive", "technical", "full"))
+    r.add_argument("--report-type", choices=("daily", "weekly", "monthly", "executive", "technical", "full"))
     r.add_argument("--email", action="store_true", help="email reports according to send_policy")
     r.add_argument("--force-email", action="store_true", help="email even if policy/maintenance would suppress it")
     r.add_argument("--to", help="override recipients (comma-separated)")
@@ -203,7 +203,7 @@ def build_parser():
     f.add_argument("action", choices=("run", "list", "import"))
     f.add_argument("--servers", help="limit to these server names")
     f.add_argument("--formats")
-    f.add_argument("--report-type", default="technical", choices=("executive", "technical", "full"))
+    f.add_argument("--report-type", default="technical", choices=("daily", "weekly", "monthly", "executive", "technical", "full"))
     f.add_argument("--email", action="store_true")
     f.add_argument("--days", type=int, default=1)
     f.add_argument("--dir", help="for import: directory of agent JSON files")
@@ -224,7 +224,7 @@ def build_parser():
     rp = sub.add_parser("report", help="re-render reports from a saved JSON run")
     rp.add_argument("json_file")
     rp.add_argument("--formats", default="html,pdf")
-    rp.add_argument("--report-type", default="technical", choices=("executive", "technical", "full"))
+    rp.add_argument("--report-type", default="technical", choices=("daily", "weekly", "monthly", "executive", "technical", "full"))
     return p
 
 
