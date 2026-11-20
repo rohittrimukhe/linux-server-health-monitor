@@ -431,7 +431,7 @@ class PeriodicPDF(MiniPDF):
 
 
 def render(doc, path, logo=""):
-    foot = "%s - %s - %s" % (doc.title, time.strftime("%Y-%m-%d %H:%M", time.localtime(doc.generated)), doc.copyright)
+    foot = "%s - %s - %s" % (getattr(doc, "title_plain", "") or doc.title, time.strftime("%Y-%m-%d %H:%M", time.localtime(doc.generated)), doc.copyright)
     p = PeriodicPDF(doc.title, foot)
     mark = doc.brand_logo or logo
     p.watermark = p.add_image(mark) if mark and os.path.isfile(mark) else None

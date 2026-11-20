@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>LRS Vitals - Install Guide</title>
+<style>
+@page{size:A4;margin:11mm}
+body{font:9.8pt/1.38 "Segoe UI",Arial,sans-serif;color:#0f172a;margin:0}
+.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1d4ed8;padding-bottom:8px;margin-bottom:12px}
+.hd img{height:34px}h1{margin:0;font-size:19pt}.sub{color:#64748b;font-size:10.5pt}
+h2{font-size:11.5pt;margin:8px 0 2px;color:#1d4ed8}
+code,pre{font-family:Consolas,monospace;background:#f1f5f9;border-radius:4px}code{padding:1px 5px}
+pre{padding:4px 10px;margin:3px 0;font-size:9.5pt}
+table{border-collapse:collapse;width:100%;font-size:9.2pt}td,th{border:1px solid #dfe5ec;padding:2px 6px;text-align:left}th{background:#eef2f7}
+.n{background:#fff7e0;border-left:4px solid #ef8f00;padding:3px 8px;margin:5px 0}
+.f{color:#64748b;font-size:8.5pt;margin-top:6px}p{margin:3px 0}
+</style></head><body>
+<div class="hd"><div><h1>LRS Vitals</h1><div class="sub">Install guide - one page</div></div><img src="../../lshme/reports/lrs_logo.png" alt="LRS Services"></div>
+
+<h2>What you need</h2>
+<p>A Red Hat family server (RHEL, Oracle Linux or Rocky, versions 7 to 9) with <b>Python 3.6 or newer</b> and <b>OpenSSL</b>, and <b>root</b> access. LRS Vitals only reads from the server. It never restarts services or changes databases.</p>
+
+<h2>1. Install</h2>
+<pre>sudo dnf install ./lrs-vitals-1.3.0-1.el9.noarch.rpm</pre>
+<p>This adds the commands <code>vitals</code>, <code>systemhealth</code> and <code>healthcheck</code> (all the same program) and a short getting-started guide.</p>
+
+<h2>2. First-time setup</h2>
+<pre>sudo vitals</pre>
+<p>The first run scans the server and shows a few setup pages, one at a time: company and customer details, email, schedules and real-time monitoring. Parts that do not exist on the server (for example KVM) are left out of the reports automatically.</p>
+
+<h2>3. What happens by itself</h2>
+<table><tr><th>Report</th><th>When</th><th>What it shows</th></tr>
+<tr><td>Daily</td><td>Monday to Saturday, 09:00</td><td>Status, checklist, last 24 hours of CPU, memory, network, disks, databases, folders</td></tr>
+<tr><td>Weekly</td><td>Sunday, 12:00</td><td>The daily view over 7 days, growth by date, capacity forecast, comparison with last week</td></tr>
+<tr><td>Monthly</td><td>Day 1, 10:00</td><td>A summary and a comprehensive report with inventory, services and day-by-day growth</td></tr>
+<tr><td>Server scan</td><td>Sunday, 02:00</td><td>Finds new software (databases, KVM, backup tools) and adds it to the checks</td></tr></table>
+<p>Reports are saved in <code>/var/lib/lshme/reports/</code> and emailed once email is set up. Times can be changed in <code>vitals</code> &gt; Settings.</p>
+
+<h2>4. Set up email (recommended)</h2>
+<p>In <code>vitals</code> &gt; Settings &gt; smtp, enter the mail server, port, sender and recipients. Put the password in the credentials file (root only). Test with:</p>
+<pre>sudo vitals run --report-type daily --email</pre>
+
+<h2>5. Switch on live monitoring and alerts</h2>
+<pre>sudo vitals watch install</pre>
+<p>A light watcher (about 0.02% of one CPU and 30 MB) checks CPU, memory, disks and services every minute and sends alerts by email, Slack, Teams, a webhook or syslog. It also feeds the 24-hour graphs in the reports.</p>
+
+<h2>6. Open the web dashboard (optional)</h2>
+<pre>sudo vitals web install</pre>
+<p>Sign in with a Linux user name and password. <b>root</b> and members of <b>wheel</b> have full access; other users are read-only. Keep TLS switched on for network access.</p>
+
+<div class="n"><b>Upgrading:</b> <code>sudo dnf upgrade ./lrs-vitals-NEW.rpm</code>. Your settings in <code>/etc/lshme</code> are kept. <b>Removing:</b> <code>sudo dnf remove lrs-vitals</code> removes the program and timers and keeps your settings.</div>
+<div class="f">&copy; 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved. Private and proprietary: use only with the written permission of LRS Services Pvt Ltd.</div>
+</body></html>

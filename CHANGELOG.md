@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.0 (next)
+
+- **New report types: daily, weekly, monthly.** A short, colour-coded checklist report with a plain-English summary, status, CPU (every core), memory, network (every adapter, sent/received/total), filesystems, databases and folders with growth, and the top 10 programs and services by CPU, memory, network and connections. Weekly and monthly add growth by date and a comparison with the previous period. Monthly comes as a summary and a comprehensive report (inventory, roles, services, open ports, installed software). HTML with hover charts, PDF (with the LRS logo as a watermark), Excel, CSV. Defaults: daily Monday to Saturday 09:00, weekly Sunday 12:00, monthly day 1 at 10:00.
+- **Titles** read "Title (server, IP address, role)"; the role is added only when found.
+- **Capacity forecast** (when each filesystem fills, act-by date, speeding-up detection) in weekly and monthly reports; `[reports] capacity_forecast_in` chooses the report types.
+- **More report sections:** this period against the last one, repeating problems and log errors, patch and compliance, backup verification (age, size, sudden shrink), certificate and licence expiry calendar (`[licences]` in certificates.conf), every database / biggest tables / Oracle tablespaces with growth (also MongoDB and SQL Server sizes).
+- **Audiences:** a schedule can email the summary only to management (`to_summary`) and a database-only report to the DBA team (`to_database`).
+- **Alerts:** Slack and Microsoft Teams messages, quiet hours, minimum duration, routing to different people per area (`[alert_routes]`), acknowledgement from the dashboard, a daily digest.
+- **Automatic critical services:** enabled or running KVM and database services are watched without being listed (`[critical] auto_detect`).
+- **Web dashboard:** Alerts card, a Servers page for central monitoring of every server, Linux account sign-in (`system_users`, rights follow wheel/sudo), customer accounts tied to a group with branding (`[user_groups]`, `[branding:group]`), health of LRS Vitals itself, retention overview per report type, audit log viewer, downloadable configuration backups.
+- **Health of the tool itself:** a `selfcheck` module and dashboard card report a stopped watcher, missing timers, late reports, failed email and low disk space.
+- **Customer document pack** in `docs/customer`: one-page install guide, "what we monitor" sheet and sample reports (`tools/demo_reports.py` regenerates them).
+- **Licence:** strict proprietary licence, no use by anyone except the owner.
+
 ## 1.3.0
 
 - **Renamed to LRS Vitals.** The main command is `vitals`; `systemhealth` and `healthcheck` keep working. The RPM is `lrs-vitals`. Machine-facing names (the `/etc/lshme` folder, `lshme-*` service units, Nagios output, alert subject prefixes) are unchanged so existing installs, monitoring rules and mail filters keep working.

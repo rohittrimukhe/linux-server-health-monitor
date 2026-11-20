@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>LRS Vitals - What we monitor</title>
+<style>
+@page{size:A4;margin:14mm}
+body{font:10.5pt/1.45 "Segoe UI",Arial,sans-serif;color:#0f172a;margin:0}
+.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1d4ed8;padding-bottom:8px;margin-bottom:10px}
+.hd img{height:38px}h1{margin:0;font-size:21pt}.sub{color:#64748b;font-size:10pt}
+h2{font-size:12.5pt;margin:12px 0 4px;color:#1d4ed8}
+table{border-collapse:collapse;width:100%;font-size:9.8pt}td,th{border:1px solid #dfe5ec;padding:4px 8px;text-align:left;vertical-align:top}th{background:#eef2f7}
+td:first-child{font-weight:600;width:20%}
+.g{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.g div{background:#f1f5f9;border-radius:6px;padding:6px 10px}.g b{font-size:13pt;display:block}
+.f{color:#64748b;font-size:8.8pt;margin-top:10px}
+</style></head><body>
+<div class="hd"><div><h1>What LRS Vitals monitors</h1><div class="sub">Checks, how often, and where you see the result</div></div><img src="../../lshme/reports/lrs_logo.png" alt="LRS Services"></div>
+
+<div class="g"><div><b>Read-only</b>Never restarts services, changes databases or alters settings.</div>
+<div><b>Light</b>About 1.4 s of CPU per report at low priority; live watcher uses about 0.02% of one core.</div>
+<div><b>Automatic</b>Detects what is on the server and checks only that. Re-scans every week.</div></div>
+
+<h2>Server health</h2>
+<table><tr><th>Area</th><th>What is checked</th><th>You see it in</th></tr>
+<tr><td>CPU</td><td>Usage of the server and of every core, load, I/O wait, steal; busiest programs</td><td>Every report, live graphs</td></tr>
+<tr><td>Memory and swap</td><td>Used, available, cache, swap pressure; biggest memory users</td><td>Every report, live graphs</td></tr>
+<tr><td>Disks and filesystems</td><td>Usage, free space, inodes, read-only mounts, growth by day, forecast of when each fills up</td><td>Daily, weekly, monthly</td></tr>
+<tr><td>Folders</td><td>Size and growth of the biggest folders under /var, /home, /opt, /u01 and others you choose</td><td>Every report</td></tr>
+<tr><td>Network</td><td>Every adapter: IP address, state, speed, data sent and received, bandwidth and link use over time, open connections per program</td><td>Every report, live graphs</td></tr>
+<tr><td>Services</td><td>Failed services, restart loops, critical services, expected ports and processes. KVM and database services are added to the critical list automatically</td><td>Checklist, alerts</td></tr>
+<tr><td>Hardware</td><td>Temperatures, ECC errors, RAID and SMART status where available</td><td>Monthly comprehensive</td></tr>
+<tr><td>Logs</td><td>Out-of-memory kills, disk and kernel errors, failed logins, service failures, repeating problems</td><td>Weekly, monthly</td></tr>
+<tr><td>Security and patching</td><td>SELinux, firewall, SSH root login, accounts, sudo, auditd, pending security updates, last patch date; pass or fail against your baseline</td><td>Weekly, monthly</td></tr>
+<tr><td>Certificates and licences</td><td>Expiry calendar with 30, 60 and 90 day bands</td><td>Weekly, monthly</td></tr></table>
+
+<h2>Databases and applications</h2>
+<table><tr><th>Area</th><th>What is checked</th><th>You see it in</th></tr>
+<tr><td>Oracle 11g R2 to 23ai</td><td>Instance and open mode, tablespaces and growth, datafiles, FRA, archive logs, redo, sessions, RMAN backups, Data Guard, invalid objects, alert-log errors, listener</td><td>All reports, database report</td></tr>
+<tr><td>PostgreSQL, MySQL/MariaDB</td><td>Availability, connections, replication, size of every database, biggest tables and their growth, locks, long queries</td><td>All reports, database report</td></tr>
+<tr><td>MongoDB, SQL Server</td><td>Availability, replica set or database states, sizes, backups, failed jobs</td><td>All reports, database report</td></tr>
+<tr><td>Backups</td><td>Age and size of the newest backup (NetBackup, Veeam, RMAN, your own jobs); flags a backup that suddenly shrinks</td><td>Weekly, monthly</td></tr>
+<tr><td>KVM virtual machines</td><td>State, CPU, memory, disk and network of every VM, storage pools, snapshot age, overcommit</td><td>All reports</td></tr>
+<tr><td>Cluster, containers, Cockpit</td><td>Pacemaker or Corosync health; Docker or Podman containers; web console and its certificate</td><td>Checklist, alerts</td></tr></table>
+
+<h2>Alerts, reports and the dashboard</h2>
+<table><tr><td>Live alerts</td><td>Every minute for CPU, memory, disks and services. Email, Slack, Teams, webhook or syslog. Quiet hours, minimum duration, different recipients per area, acknowledge, and a daily digest.</td></tr>
+<tr><td>Reports</td><td>Daily, weekly and monthly (summary and comprehensive) as HTML with hover charts, PDF, Excel and CSV. A database report for the DBA team. The customer logo and the server name, IP address and role are in every title.</td></tr>
+<tr><td>Dashboard</td><td>Live CPU, memory, disks and network; all servers together; reports; alerts; settings; audit log; backups of the settings. Sign in with Linux accounts; customer accounts see only their own servers.</td></tr>
+<tr><td>Health of the tool</td><td>LRS Vitals checks itself: watcher running, timers installed, reports on time, email delivered, disk space.</td></tr></table>
+<div class="f">&copy; 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved. Private and proprietary.</div>
+</body></html>
