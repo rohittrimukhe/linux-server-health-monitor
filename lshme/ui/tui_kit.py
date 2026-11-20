@@ -19,6 +19,10 @@ Rect = namedtuple("Rect", "y x h w")
 
 MIN_ROWS, MIN_COLS = 20, 70
 YES = ("yes", "no")
+# Keys that work on any connection. Some Windows SSH clients (plink in a console) never send the arrow keys or
+# Esc, so Ctrl-N/Ctrl-P move and Ctrl-B goes back everywhere; j/k/q do the same where nothing is being typed.
+KEY_ALIASES = {"CTRL_N": "DOWN", "CTRL_P": "UP", "CTRL_B": "ESC"}
+NAV_ALIASES = {"j": "DOWN", "k": "UP", "q": "ESC"}
 
 
 def printable(key):
@@ -365,6 +369,10 @@ class UI(object):
         self.note_text, self.note_kind = "", "info"
         self.on_error = None  # called with the exception when a menu action fails unexpectedly
 
+    def key(self):
+        k = self.b.key()
+        return KEY_ALIASES.get(k, k)
+
     def working(self, text):
         """Show a small 'please wait' box (no key needed) before a slow operation."""
         r = self.window(5, max(30, len(text) + 6), "Please wait")
@@ -427,7 +435,7 @@ class UI(object):
                 self.b.put(r.y + 1 + i, r.x + 2, l, "error" if kind == "error" else "label")
             self.buttons(r.y + r.h - 2, r.x, r.w, ["OK"], 0)
             self.b.refresh()
-            if self.b.key() in ("ENTER", "ESC", " ", "q"):
+            if self.key() in ("ENTER", "ESC", " ", "q"):
                 return
 
     def confirm(self, text, title="Confirm", default=True):
@@ -440,7 +448,7 @@ class UI(object):
                 self.b.put(r.y + 1 + i, r.x + 2, l, "label")
             self.buttons(r.y + r.h - 2, r.x, r.w, ["Yes", "No"], focus)
             self.b.refresh()
-            k = self.b.key()
+            k = self.key()
             if k in ("LEFT", "RIGHT", "TAB", "BTAB", "UP", "DOWN"):
                 focus = 1 - focus
             elif k in ("y", "Y"):
@@ -468,7 +476,7 @@ class UI(object):
                 self.b.put(r.y + 1 + k, r.x + 2, (" %s" % opts[i][1]).ljust(r.w - 4)[:r.w - 4], "list_sel" if i == idx else "label")
             self.b.put(r.y + r.h - 2, r.x + 2, "Enter select   Esc cancel", "dim")
             self.b.refresh()
-            k = self.b.key()
+            k = self.key()
             if k == "UP":
                 idx = max(0, idx - 1)
             elif k == "DOWN":
@@ -513,7 +521,7 @@ class UI(object):
             self.b.put(r.y + r.h - 3, r.x + 2, "Space toggle  a all  n none", "dim")
             self.buttons(r.y + r.h - 2, r.x, r.w, ["OK", "Cancel"], None)
             self.b.refresh()
-            k = self.b.key()
+            k = self.key()
             if k == "UP":
                 idx = max(0, idx - 1)
             elif k == "DOWN":
@@ -547,7 +555,7 @@ class UI(object):
             self.b.put(r.y + r.h - 2, r.x + 2, "Enter accept   Esc cancel", "dim")
             self.b.set_cursor((r.y + 3, r.x + 3 + col))
             self.b.refresh()
-            res = edit.handle(self.b.key())
+            res = edit.handle(self.key())
             if res == "cancel":
                 self.b.set_cursor(None)
                 return None
@@ -572,7 +580,7 @@ class UI(object):
             if len(lines) > bh:
                 self.b.put(r.y + r.h - 1, r.x + r.w - 12, " %d/%d " % (min(len(lines), top + bh), len(lines)), "wtitle")
             self.b.refresh()
-            k = self.b.key()
+            k = self.key()
             if k in ("ESC", "ENTER", "q"):
                 return
             if k == "UP":
@@ -760,6 +768,7 @@ class Form(object):
             elif res == "cancel":
                 self.edit = None
             return None
+        key = NAV_ALIASES.get(key, key)
         kind, j = self.current()
         if key in ("DOWN", "TAB"):
             self.move(1)
@@ -803,7 +812,7 @@ class Form(object):
     def run(self):
         while True:
             self.draw()
-            key = self.ui.b.key()
+            key = self.ui.key()
             self.ui.clear_note()
             if key == "RESIZE":
                 continue
@@ -853,9 +862,10 @@ class Menu(object):
         on_button = False
         while True:
             self.draw(on_button)
-            key = self.ui.b.key()
+            key = self.ui.key()
+            key = NAV_ALIASES.get(key, key)  # j / k / q as down / up / back
             self.ui.clear_note()
-            if key == "ESC" or key == "q" and not on_button:
+            if key == "ESC":
                 return
             if key in ("TAB", "BTAB"):
                 on_button = not on_button
@@ -958,7 +968,8 @@ class ListScreen(object):
         while True:
             items = self.rows()
             self.draw(items)
-            key = self.ui.b.key()
+            key = self.ui.key()
+            key = NAV_ALIASES.get(key, key)  # j / k / q as down / up / back
             self.ui.clear_note()
             if key == "ESC":
                 return
