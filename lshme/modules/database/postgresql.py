@@ -77,6 +77,17 @@ def check(ctx, res, inst):
                  "databases": dbs, "replication": repl, "slots": slots})
     res.metric("postgresql.%s.connections_percent" % inst["name"], cpct)
     res.metric("postgresql.%s.total_bytes" % inst["name"], total)
+    for d in dbs:                                              # every database, and the biggest tables of the three largest
+        if len(d) >= 2:
+            res.metric("postgresql.%s.db_bytes:%s" % (inst["name"], d[0]), to_int(d[1], 0))
+    for d in dbs[:3]:
+        try:
+            _, tabs = q(ctx, dict(inst, dbname=d[0]), "SELECT schemaname || '.' || relname, pg_total_relation_size(relid) FROM pg_stat_user_tables ORDER BY 2 DESC LIMIT 10")
+        except Exception:
+            tabs = []
+        for t in tabs:
+            if len(t) >= 2 and to_int(t[1], 0) > 0:
+                res.metric("postgresql.%s.table_bytes:%s/%s" % (inst["name"], d[0], t[0]), to_int(t[1], 0))
     res.metric("postgresql.%s.max_xid_age" % inst["name"], max_age)
     res.table("PostgreSQL %s — overview" % inst["name"], ["Item", "Value"], [
         ["Version", version.split(",")[0]], ["Role", "standby (in recovery)" if in_recovery else "primary"],
