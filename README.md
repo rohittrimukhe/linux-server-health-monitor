@@ -19,7 +19,7 @@ whole fleet of servers from one central host.
 
 ```
  ==========================================================================
-   Linux Server Health Monitor Enterprise  v1.3.0
+   Linux Server Health Monitor Enterprise  v1.4.0
    © 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
    Host: db01   2026-11-12 09:00
  ==========================================================================
@@ -45,7 +45,7 @@ whole fleet of servers from one central host.
 **LRS Vitals** installs as an RPM and is run with one command, `vitals` (the older names `systemhealth` and `healthcheck` still work):
 
 ```bash
-sudo dnf install ./lrs-vitals-1.3.0-1.el9.noarch.rpm   # shows a getting-started guide
+sudo dnf install ./lrs-vitals-1.4.0-1.el9.noarch.rpm   # shows a getting-started guide
 sudo vitals                    # first time: scans the server, then a few setup pages, one at a time
 vitals                         # afterwards: live graphs, reports, settings (full-screen, like nmtui)
 vitals run                     # a complete health check now

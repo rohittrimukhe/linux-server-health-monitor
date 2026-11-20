@@ -3,7 +3,7 @@
 %global _python_bytecompile_errors_terminate_build 0
 
 Name:           lrs-vitals
-Version:        1.3.0
+Version:        1.4.0
 Release:        1%{?dist}
 Summary:        LRS Vitals - Linux server health monitor
 License:        Proprietary
@@ -134,6 +134,9 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 %changelog
+* Fri Nov 20 2026 LRS Services <support@lrsservices.example> - 1.4.0-1
+- Daily, weekly and monthly reports, alert rules, Servers page, Linux sign-in, customer portal, tool self-check (see CHANGELOG.md)
+
 * Fri Nov 20 2026 LRS Services <support@lrsservices.example> - 1.3.0-1
 - Renamed to LRS Vitals; the command is now 'vitals' (systemhealth and healthcheck still work)
 - Full-screen live dashboard, report browser, run-now, server scan and first-time setup
