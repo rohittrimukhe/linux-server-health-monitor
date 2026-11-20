@@ -32,8 +32,38 @@ skipped or reported as UNKNOWN: `/etc/shadow`, `sshd -T`, `smartctl`,
 
 ## 2. Configuration
 
-`healthcheck setup` walks through every area. Each step is also available from
-menu option 17. Files can be edited directly; every setting has a default.
+`healthcheck setup` opens full-screen configuration forms in the style of `nmtui`.
+Menu option 17 opens the same screens. Files can also be edited directly; every
+setting has a default.
+
+| Key | Action |
+|---|---|
+| Up / Down, Tab | Move between fields and buttons |
+| Enter | Edit a text or number, open a list of choices, or press a button |
+| Space | Switch yes/no, step through a short list, tick or untick in a checklist |
+| F10 | Validate and save |
+| Esc | Go back (asks first if there are unsaved changes) |
+| Ctrl-U / Ctrl-K | While typing: delete to the start / end of the line |
+
+Screens: organisation and report identity; monitoring modules (switch each on or
+off); thresholds (with a check that warning is not above critical); services,
+ports, processes and per-filesystem limits; databases (auto-discovery and
+instances, with passwords kept in `credentials.conf`); report settings; email
+(with a **Test email** button); schedules (with an **Install** button for the
+timers); retention and cleanup; real-time monitoring and alerts (with **Status**,
+**Run once**, **Install** and **Remove**); backup jobs; fleet servers; security,
+network and certificate policy; and tools to validate, back up and restore the
+configuration.
+
+Every value is checked before it is written. A save keeps the comments in the
+file, writes it with mode 600, takes a backup of the configuration first and
+adds an entry to the audit log. Run as root to save; as another user the screens
+open read-only. Terminals of at least 80 x 24 are best; on a terminal without
+curses, or when output is not a terminal, `healthcheck setup` falls back to plain
+prompts. Use `healthcheck setup --text` to choose the plain prompts, or
+`healthcheck setup --page smtp` to open one screen directly (`identity`,
+`modules`, `thresholds`, `services`, `databases`, `reports`, `smtp`, `schedules`,
+`retention`, `watch`, `backups`, `fleet`, `policy`, `tools`, `validate`, `backup`).
 
 | File | Purpose |
 |---|---|

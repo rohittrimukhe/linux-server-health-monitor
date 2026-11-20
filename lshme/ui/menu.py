@@ -58,7 +58,7 @@ class Menu(object):
         ("9", "Generate reports (choose formats / period)"), ("10", "SMTP & email settings"),
         ("11", "Scheduling & automation"), ("12", "Report & log retention"), ("13", "History & trends"),
         ("14", "Baseline & configuration drift"), ("15", "Maintenance mode"), ("16", "Multi-server (fleet)"),
-        ("17", "Configuration & setup wizard"), ("18", "Self-diagnostics"), ("19", "View logs"),
+        ("17", "Configuration (full-screen forms)"), ("18", "Self-diagnostics"), ("19", "View logs"),
         ("20", "Real-time monitoring & alerts"), ("21", "Exclusions (accepted findings)"),
         ("22", "Dashboard, SLA & inventory"), ("0", "Exit"),
     ]
@@ -252,6 +252,12 @@ class Menu(object):
             Wizard(self.app).step_fleet()
 
     def opt_17(self):
+        from lshme.ui import tui
+        ran, why = tui.run(self.app)  # the full-screen forms; everything below is the plain-prompt fallback
+        if ran:
+            self.app.reload()
+            return
+        C.out(C.c("Full-screen forms are not available here (%s); using plain prompts." % why, "yellow"))
         from lshme.ui.wizard import Wizard
         w = Wizard(self.app)
         C.out("  [1] Full setup wizard  [2] Thresholds  [3] Critical services  [4] Databases  [5] Report settings\n"

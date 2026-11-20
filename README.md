@@ -29,7 +29,7 @@ whole fleet of servers from one central host.
   [ 4] Services & processes              [14] Baseline & configuration drift
   [ 5] Database health                   [15] Maintenance mode
   [ 6] KVM virtual machines              [16] Multi-server (fleet)
-  [ 7] Cockpit web console               [17] Configuration & setup wizard
+  [ 7] Cockpit web console               [17] Configuration (full-screen forms)
   [ 8] Network & connectivity            [18] Self-diagnostics
   [ 9] Generate reports (choose forma... [19] View logs
   [10] SMTP & email settings             [20] Real-time monitoring & alerts
@@ -42,7 +42,7 @@ whole fleet of servers from one central host.
 
 ```bash
 sudo ./install.sh              # installs to /opt/lshme, config in /etc/lshme, command 'healthcheck'
-sudo healthcheck setup         # guided setup: identity, thresholds, services, databases, SMTP, schedules, retention
+sudo healthcheck setup         # full-screen forms (like nmtui): identity, thresholds, services, databases, SMTP, schedules, retention, alerts
 sudo healthcheck               # interactive menu
 sudo healthcheck run --formats all --email
 sudo healthcheck schedule install
