@@ -158,6 +158,7 @@ class Data(object):
         self.since = now - days * DAY
         self.cur = run.metrics() if run else {}
         self._cache = {}
+        self.forecast = False        # the "full in N days" forecast is only shown in the report types listed in [reports] capacity_forecast_in
 
     def points(self, key, days=None):
         """[(ts, value)] for a metric: history plus the current run if it is not stored yet."""
@@ -285,7 +286,7 @@ def growth_item(data, key, size_limit=None):
     out["per_day"] = (now_v - pts[0][1]) / (span / DAY) if span >= 6 * 3600 else None
     out["pct_week"] = (out["d7"] / (now_v - out["d7"]) * 100.0) if out["d7"] is not None and now_v - out["d7"] > 0 else None
     out["full_days"] = None
-    if size_limit and len(pts) >= 3 and span >= DAY:
+    if size_limit and data.forecast and len(pts) >= 3 and span >= DAY:
         secs = linear_forecast(pts, size_limit)
         out["full_days"] = secs / DAY if secs is not None else None
         out["forecast_ok"] = True
@@ -395,12 +396,13 @@ def fs_table(data, fs, win):
             row += [fmt_delta(it["d1"], f["size"]), fmt_delta(it["d7"], f["size"])]
             if win == "monthly":
                 row.append(fmt_delta(it["d30"], f["size"]))
-            row += [full_cell(it)]
+            if data.forecast:
+                row += [full_cell(it)]
         else:
-            row += [Cell("-", "fl")] * (3 if win == "monthly" else 2) + [Cell("n/a", "fl")]
+            row += [Cell("-", "fl")] * (3 if win == "monthly" else 2) + ([Cell("n/a", "fl")] if data.forecast else [])
         row.append(chip(lv))
         rows.append(row)
-    heads = ["Mount", "Usage", "Used", "Free", "Size", "Growth 24 h", "Growth 7 d"] + (["Growth 30 d"] if win == "monthly" else []) + ["Full in", "Status"]
+    heads = ["Mount", "Usage", "Used", "Free", "Size", "Growth 24 h", "Growth 7 d"] + (["Growth 30 d"] if win == "monthly" else []) + (["Full in"] if data.forecast else []) + ["Status"]
     return heads, rows
 
 
@@ -679,6 +681,8 @@ def build(run, cfg, paths, ptype, variant="summary", now=None):
 
 def _build(run, cfg, paths, ptype, variant, now, days, hist):
     data = Data(hist, run.host, now, days, run, cfg, paths)
+    from lshme.core.config import as_list
+    data.forecast = ptype in [x.lower() for x in as_list(cfg.get("reports", "reports", "capacity_forecast_in", "weekly, monthly"))]
     d = PDoc(ptype, variant)
     d.host = run.host
     d.tz_offset = time.localtime(now).tm_gmtoff if hasattr(time.localtime(now), "tm_gmtoff") else 0
@@ -762,6 +766,9 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
     if ptype != "daily":
         blocks += [charts(growth_charts(fs_items[:6], "Used space on", data.since))]
     d.add("Filesystem usage and growth", blocks)
+    if data.forecast and fs:
+        from lshme.reports import periodic_capacity
+        d.add("Capacity forecast", periodic_capacity.blocks(data, fs))
 
     dbs = databases(data)
     if dbs:

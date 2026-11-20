@@ -114,6 +114,22 @@ class PeriodicTest(unittest.TestCase):
         self.assertEqual(len(periodic.build_all(self.run, self.home.cfg, self.home.paths, "monthly")), 2)
         self.assertEqual(len(periodic.build_all(self.run, self.home.cfg, self.home.paths, "daily")), 1)
 
+    def test_capacity_forecast_is_weekly_and_monthly_by_default(self):
+        daily, weekly, monthly = self.doc("daily"), self.doc("weekly"), self.doc("monthly")
+        self.assertNotIn("Capacity forecast", self.titles(daily))
+        self.assertIn("Capacity forecast", self.titles(weekly))
+        self.assertIn("Capacity forecast", self.titles(monthly))
+        heads = lambda d: [b["headers"] for t, bl in d.sections if t == "Filesystem usage and growth" for b in bl if b["type"] == "table"][0]
+        self.assertNotIn("Full in", heads(daily))
+        self.assertIn("Full in", heads(weekly))
+        fc = [b for t, bl in weekly.sections if t == "Capacity forecast" for b in bl if b["type"] == "table"][0]
+        self.assertIn("Act by", fc["headers"])
+        self.assertEqual(len(fc["rows"]), 2)                 # /u01 and /
+        self.home.cfg.set("reports", "reports", "capacity_forecast_in", "daily")
+        daily2 = self.doc("daily")
+        self.assertIn("Capacity forecast", self.titles(daily2))
+        self.assertNotIn("Capacity forecast", self.titles(self.doc("weekly")))
+
     def test_plain_english_and_no_recommendations(self):
         d = self.doc("daily")
         short = dict(d.sections)["In short"][0]["items"]

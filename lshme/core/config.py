@@ -94,7 +94,7 @@ DEFAULTS = {
                       "subject_prefix": "[LSHME]", "send_policy": "always", "max_attachment_mb": "15",
                       "attach_formats": "pdf,xlsx,html", "retries": "3", "retry_delay": "20",
                       "timeout": "30", "sendmail_path": "/usr/sbin/sendmail"}},
-    "reports": {"reports": {"formats": "html,pdf,json", "report_type": "technical",
+    "reports": {"reports": {"formats": "html,pdf,json", "report_type": "technical", "capacity_forecast_in": "weekly, monthly", "forecast_lead_days": "14",
                             "include_appendix": "yes", "title": "", "max_evidence_chars": "3000"}},
     "schedule": {"scheduler": {"backend": "auto", "retries": "2", "retry_delay": "300",
                                "systemd_dir": "/etc/systemd/system", "cron_file": "/etc/cron.d/lshme"},

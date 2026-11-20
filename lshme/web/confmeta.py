@@ -37,7 +37,7 @@ CHOICES = {
     "weekday": WEEKDAYS, "frequency": ["hourly", "daily", "weekly", "monthly", "custom"], "backend": ["auto", "systemd", "cron"],
     "type": ["directory", "logfile"],
 }
-MULTI = {"formats": list(reports.FORMATS), "attach_formats": list(reports.FORMATS)}
+MULTI = {"formats": list(reports.FORMATS), "attach_formats": list(reports.FORMATS), "capacity_forecast_in": ["daily", "weekly", "monthly"]}
 EMAIL_KEYS = {"to", "cc", "bcc", "from", "critical_to", "alert_to"}
 PATH_KEYS = {"path", "logo", "archive_dir", "identity_file", "oracle_home", "defaults_file", "socket", "cert", "key", "data_dir", "report_dir",
              "log_dir", "checks_dir", "sendmail_path", "systemd_dir", "cron_file", "prometheus_textfile", "agent_dropdir"}
@@ -98,7 +98,7 @@ HELP = {
     "tls": "Encrypt with HTTPS (a self-signed certificate is created if none is given).", "cert": "TLS certificate file (PEM).", "key": "TLS private key file (PEM).",
     "session_minutes": "Minutes of inactivity before signing out.", "max_login_failures": "Wrong passwords allowed per address in 5 minutes.",
     "allow_plain_http": "Allow HTTP (no encryption) on a network address. Not recommended.", "code": "Finding code, wildcards allowed.", "reason": "Why this is accepted.",
-    "until": "Expiry date YYYY-MM-DD.", "target_percent": "Availability target used by the SLA report.", "title": "Title shown on pages and reports. Server name, IP address and role are added in brackets.",
+    "until": "Expiry date YYYY-MM-DD.", "target_percent": "Availability target used by the SLA report.", "capacity_forecast_in": "Report types that show the capacity forecast (when each filesystem fills up). Default weekly and monthly.", "forecast_lead_days": "Days before the full date that the forecast tells you to act by.", "title": "Title shown on pages and reports. Server name, IP address and role are added in brackets.",
 }
 KEY_RX = re.compile(r"^[A-Za-z0-9_.:/@*\- ]{1,100}$")
 SECTION_RX = re.compile(r"^[A-Za-z0-9_.:@\-]{1,80}$")
