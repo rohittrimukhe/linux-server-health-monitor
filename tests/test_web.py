@@ -202,8 +202,14 @@ class SignInTests(WebCase):
         self.assertIn("default-src 'self'", r.headers["Content-Security-Policy"])
         self.assertEqual(r.headers["X-Content-Type-Options"], "nosniff")
         self.assertEqual(r.headers["X-Frame-Options"], "SAMEORIGIN")
-        self.assertEqual(r.headers["Cache-Control"], "no-store")
-        self.assertIn("javascript", self.call("GET", "/app.js").ctype)
+        self.assertEqual(r.headers["Cache-Control"], "no-cache")              # the page holds no data; it is revalidated, never stale
+        js = self.call("GET", "/app.js", headers={"host": "testhost", "accept-encoding": "gzip, br"})
+        self.assertIn("javascript", js.ctype)
+        self.assertEqual(js.headers.get("Content-Encoding"), "gzip")
+        import gzip as _gz
+        self.assertIn(b"function", _gz.decompress(js.body))
+        self.assertEqual(self.call("GET", "/app.js", headers={"host": "testhost", "if-none-match": js.headers["ETag"]}).status, 304)
+        self.assertEqual(self.call("GET", "/api/live", user="viewer").headers["Cache-Control"], "no-store")   # data is never cached
         self.assertEqual(self.call("GET", "/lrs_logo.png").ctype, "image/png")
         self.assertEqual(self.call("GET", "/nothing").status, 404)
         self.assertEqual(self.call("GET", "/../etc/passwd").status, 404)

@@ -98,7 +98,7 @@
     }
     function bar(value, level) {
         var i = h("i"), b = h("div", { class: "bar lvl-" + level }, i);
-        i.style.width = Math.max(0, Math.min(100, value)) + "%";
+        i.style.transform = "scaleX(" + (Math.max(0, Math.min(100, value)) / 100).toFixed(4) + ")";
         return b;
     }
     function barrow(value, level, text) { return h("div", { class: "barrow" }, bar(value, level), h("span", { text: text === undefined ? pc(value, 0) : text })); }
@@ -231,6 +231,19 @@
         account: "<circle cx='12' cy='8' r='4'/><path d='M4 21c1.5-4 5-6 8-6s6.5 2 8 6'/>",
         help: "<circle cx='12' cy='12' r='9'/><path d='M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01'/>"
     };
+    var SYMBOLS = {
+        server: "<rect x='4' y='3' width='16' height='7' rx='2'/><rect x='4' y='14' width='16' height='7' rx='2'/><path d='M8 6.5h.01M8 17.5h.01M12 6.5h5M12 17.5h5'/>",
+        storage: "<ellipse cx='12' cy='5.5' rx='7.5' ry='2.5'/><path d='M4.5 5.5v13c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-13'/><path d='M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5'/>",
+        cpu: "<rect x='6' y='6' width='12' height='12' rx='2'/><rect x='9.5' y='9.5' width='5' height='5' rx='1'/><path d='M9 2.5v3M15 2.5v3M9 18.5v3M15 18.5v3M2.5 9h3M2.5 15h3M18.5 9h3M18.5 15h3'/>",
+        disk: "<circle cx='12' cy='12' r='8.5'/><circle cx='12' cy='12' r='2.5'/><path d='M12 3.5v3'/>",
+        network: "<circle cx='12' cy='5' r='2.5'/><circle cx='5' cy='19' r='2.5'/><circle cx='19' cy='19' r='2.5'/><path d='M12 7.5v4M12 11.5l-5.5 5.5M12 11.5l5.5 5.5'/>",
+        pulse: "<path d='M3 12h4l2.5-6 4 12 2.5-6H21'/>"
+    };
+    function sym(id, cls) {
+        var s = svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true", focusable: "false", "class": "sym" + (cls ? " " + cls : "") });
+        s.innerHTML = SYMBOLS[id] || SYMBOLS.pulse;
+        return s;
+    }
     function icon(id) {
         var s = svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true", focusable: "false" });
         s.innerHTML = ICONS[id] || ICONS.help;
@@ -304,6 +317,11 @@
         });
         clear(main);
         document.title = page.title + " - " + S.me.host + " - LRS Vitals";
+        main.classList.remove("enter");
+        void main.offsetWidth;                                    // restart the entrance for the new page
+        main.classList.add("enter");
+        clearTimeout(S.enterTimer);
+        S.enterTimer = setTimeout(function () { main.classList.remove("enter"); }, 700);   // later refreshes appear without motion
         page.draw(main, parts.slice(1));
     }
     window.addEventListener("hashchange", route);
@@ -428,7 +446,7 @@
         function sanTile(a) {
             var t = tone(a.status);
             var el = h("div", { class: "srv san st-" + (t === "ok" ? "HEALTHY" : t === "warn" ? "WARNING" : t === "crit" ? "CRITICAL" : "UNKNOWN") },
-                h("div", { class: "row space" }, h("b", { class: "nm", text: a.name + (a.system_name ? " (" + a.system_name + ")" : "") }), badge(a.status || "WAITING")),
+                h("div", { class: "row space" }, h("div", { class: "who-line" }, h("span", { class: "sym-badge" }, sym("storage")), h("b", { class: "nm", text: a.name + (a.system_name ? " (" + a.system_name + ")" : "") })), badge(a.status || "WAITING")),
                 h("div", { class: "muted small", text: [a.model || a.make, a.firmware ? "firmware " + a.firmware : ""].filter(Boolean).join(" - ") }));
             if (a.status === "WAITING") { el.appendChild(h("p", { class: "muted small", text: "Checking the storage (every few minutes)..." })); return open(el, "#/fleet", "SAN storage " + a.name); }
             if (a.error) { el.appendChild(h("p", { class: "muted small", text: a.error + (a.fetched ? " Checked " + dur(Date.now() / 1000 - a.fetched) + " ago." : "") })); return open(el, "#/fleet", "SAN storage " + a.name); }
@@ -453,7 +471,8 @@
         }
         function tile(s) {
             var t = tone(s.status), pts = (s.series || []).map(function (p) { return p[1] === null || p[1] === undefined ? 0 : p[1]; });
-            var head = h("div", { class: "row space" }, h("b", { class: "nm", text: s.name }), badge(s.status === "UNKNOWN" ? "NO DATA" : s.status === "OUTDATED" ? "UPGRADE" : (s.status || "WAITING")));
+            var head = h("div", { class: "row space" }, h("div", { class: "who-line" }, h("span", { class: "sym-badge" }, sym("server")), h("b", { class: "nm", text: s.name })),
+                badge(s.status === "UNKNOWN" ? "NO DATA" : s.status === "OUTDATED" ? "UPGRADE" : (s.status || "WAITING")));
             var meta = h("div", { class: "muted small", text: [s.group, s.environment, word(s.status)].filter(Boolean).join(" - ") });
             var el = h("div", { class: "srv st-" + (t === "ok" ? "HEALTHY" : t === "warn" ? "WARNING" : t === "crit" ? "CRITICAL" : "UNKNOWN") }, head, meta);
             open(el, "#/server/" + encodeURIComponent(s.key || "_local"), "Open " + s.name);
@@ -479,6 +498,7 @@
             var sans = (data && data.san) || [];
             if (!data || !data.enabled || !data.servers.length || (data.servers.length < 2 && !sans.length)) return;
             var sv = data.servers, bad = sv.filter(function (s) { return s.status !== "HEALTHY"; }).length;
+            box.appendChild(glance(sv, sans));
             var c = card("All servers, live", h("span", { class: "muted", text: sv.length + " servers - " + (bad ? bad + " need attention" : "all healthy") + " - " + (data.updated ? "updated " + dur(Date.now() / 1000 - data.updated) + " ago" : "collecting the first answers") + ", servers report every " + data.interval + " s. Click a server for its details." }),
                 h("div", { class: "fleet" }, sv.map(tile)));
             if (sans.length) {
@@ -486,6 +506,26 @@
                 c.appendChild(h("div", { class: "fleet" }, sans.map(sanTile)));
             }
             box.appendChild(c);
+        }
+        function gtile(id, label, value, meta, tone) {
+            return h("div", { class: "gl tone-" + tone }, h("span", { class: "sym-badge big" }, sym(id)),
+                h("div", { class: "gl-txt" }, h("div", { class: "gl-label", text: label }), h("div", { class: "gl-value", text: value }), h("div", { class: "gl-meta", text: meta })));
+        }
+        function glance(sv, sans) {
+            var ok = sv.filter(function (s) { return s.status === "HEALTHY"; }).length;
+            var live = sv.filter(function (s) { return s.ok && s.cpu !== null && s.cpu !== undefined; });
+            var avg = live.length ? live.reduce(function (t, s) { return t + s.cpu; }, 0) / live.length : null;
+            var busiest = live.slice().sort(function (a, b) { return b.cpu - a.cpu; })[0];
+            var disks = [];
+            sv.forEach(function (s) { (s.disks || []).forEach(function (d) { disks.push({ where: s.name + " " + d.mount, pct: d.pct }); }); });
+            sans.forEach(function (a) { (a.pools || []).forEach(function (p) { disks.push({ where: a.name + " " + p.name, pct: p.pct }); }); });
+            var full = disks.sort(function (a, b) { return b.pct - a.pct; })[0];
+            var sOk = sans.filter(function (a) { return a.status === "HEALTHY"; }).length, failed = sans.reduce(function (t, a) { return t + (a.failed_drives || 0); }, 0);
+            var tiles = [gtile("server", "Servers healthy", ok + " / " + sv.length, sv.length - ok ? (sv.length - ok) + " need attention" : "all running normally", ok === sv.length ? "ok" : (sv.some(function (s) { return s.status === "CRITICAL" || s.status === "UNREACHABLE"; }) ? "crit" : "warn"))];
+            if (sans.length) tiles.push(gtile("storage", "SAN storage optimal", sOk + " / " + sans.length, failed ? failed + " failed drive" + (failed > 1 ? "s" : "") : "no failed drives", sOk === sans.length ? "ok" : "crit"));
+            tiles.push(gtile("cpu", "Average CPU", avg === null ? "-" : Math.round(avg) + "%", busiest ? "busiest: " + busiest.name + " " + Math.round(busiest.cpu) + "%" : "waiting for live data", avg === null ? "info" : avg >= 85 ? "crit" : avg >= 70 ? "warn" : "ok"));
+            tiles.push(gtile("disk", "Fullest disk or pool", full ? Math.round(full.pct) + "%" : "-", full ? full.where : "waiting for live data", !full ? "info" : full.pct >= 90 ? "crit" : full.pct >= 80 ? "warn" : "ok"));
+            return h("div", { class: "glance", role: "group", "aria-label": "At a glance" }, tiles);
         }
         function load() {
             api("GET", "/api/live/fleet").then(function (d) {

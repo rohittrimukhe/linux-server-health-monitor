@@ -117,6 +117,27 @@ class WebApp(object):
             h.setdefault("Strict-Transport-Security", "max-age=31536000")
         return resp
 
+    def static_file(self, req, name, ctype):
+        """The page, its script and styles: compressed once (gzip), revalidated with an ETag so a reload costs a tiny 304."""
+        import gzip as _gz
+        p = os.path.join(STATIC_DIR, name)
+        st = os.stat(p)
+        tag = '"%x-%x"' % (int(st.st_mtime), st.st_size)
+        cache = self.__dict__.setdefault("_static", {})
+        hit = cache.get(name)
+        if not hit or hit[0] != tag:
+            with open(p, "rb") as f:
+                raw = f.read()
+            hit = (tag, raw, _gz.compress(raw, 6) if len(raw) > 1024 else None)
+            cache[name] = hit
+        headers = {"Cache-Control": "no-cache", "ETag": tag, "Vary": "Accept-Encoding"}
+        if req.headers.get("if-none-match") == tag:
+            return Resp(304, b"", ctype, headers)
+        if hit[2] is not None and "gzip" in (req.headers.get("accept-encoding") or ""):
+            headers["Content-Encoding"] = "gzip"
+            return Resp(200, hit[2], ctype, headers)
+        return Resp(200, hit[1], ctype, headers)
+
     # -- entry point -----------------------------------------------------------------------------------
     def handle(self, req):
         try:
@@ -133,9 +154,7 @@ class WebApp(object):
     def _route(self, req):
         path = req.path
         if req.method in ("GET", "HEAD") and path in STATIC:
-            name, ctype = STATIC[path]
-            with open(os.path.join(STATIC_DIR, name), "rb") as f:
-                return Resp(200, f.read(), ctype)
+            return self.static_file(req, *STATIC[path])
         if req.method == "GET" and path == "/lrs_logo.png" and os.path.isfile(BRAND_LOGO):
             with open(BRAND_LOGO, "rb") as f:
                 return Resp(200, f.read(), "image/png", {"Cache-Control": "max-age=86400"})
