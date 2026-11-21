@@ -95,7 +95,7 @@ DEFAULTS = {
     "database": {"discovery": {"oracle_autodiscover": "yes", "postgresql_autodiscover": "yes",
                                "mysql_autodiscover": "yes", "mongodb_autodiscover": "no"}},
     "smtp": {"smtp": {"method": "smtp", "host": "", "port": "587", "security": "starttls",
-                      "username": "", "from": "", "sender_name": "", "to": "", "cc": "", "bcc": "", "critical_to": "",
+                      "username": "", "from": "", "sender_name": "", "dashboard_url": "", "to": "", "cc": "", "bcc": "", "critical_to": "",
                       "subject_prefix": "[LSHME]", "send_policy": "always", "max_attachment_mb": "15",
                       "attach_formats": "pdf,xlsx,html", "retries": "3", "retry_delay": "20",
                       "timeout": "30", "sendmail_path": "/usr/sbin/sendmail"}},

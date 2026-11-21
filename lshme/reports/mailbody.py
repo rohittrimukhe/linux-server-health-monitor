@@ -82,20 +82,26 @@ def _bar(label, pct, lv, note=""):
     w = int(max(0, min(100, round(pct))))
     fill = "<td width='%d%%' bgcolor='%s' style='background:%s;height:10px;font-size:1px;line-height:1px;border-radius:5px'>&nbsp;</td>" % (w, BARC[lv], BARC[lv]) if w else ""
     rest = "<td bgcolor='#e8edf4' style='background:#e8edf4;height:10px;font-size:1px;line-height:1px'>&nbsp;</td>" if w < 100 else ""
-    return ("<tr><td style='padding:7px 0;width:150px;font-size:13px;color:#334155;%s'>%s</td>"
+    return ("<tr><td class='bl' style='padding:7px 0;width:150px;font-size:13px;color:#334155;%s'>%s</td>"
             "<td style='padding:7px 10px'><table role='presentation' width='100%%' cellpadding='0' cellspacing='0' style='border-collapse:collapse;background:#e8edf4;border-radius:5px'><tr>%s%s</tr></table></td>"
-            "<td style='padding:7px 0;width:118px;text-align:right;font-size:13px;font-weight:700;color:%s;%s'>%s</td></tr>") % (
+            "<td class='bv' style='padding:7px 0;width:118px;text-align:right;font-size:13px;font-weight:700;color:%s;%s'>%s</td></tr>") % (
         FONT, E(label), fill, rest, HEX[lv], FONT, E(("%.0f %%" % pct) + (" " + note if note else "")))
 
 
 def _section(title, inner):
-    return ("<tr><td style='padding:18px 28px 4px;%s'><div style='font-size:15px;font-weight:700;color:#0f172a;margin:0 0 8px'>%s</div>%s</td></tr>"
+    return ("<tr><td class='pad' style='padding:18px 28px 4px;%s'><div style='font-size:15px;font-weight:700;color:#0f172a;margin:0 0 8px'>%s</div>%s</td></tr>"
             % (FONT, E(title), inner))
 
 
 def summary(doc):
     """The figures the email shows, taken from the report itself (so the email and the attachment always agree)."""
-    s = {"kpis": [], "points": [], "checks": None, "bars": [], "actions": [], "closed": 0, "sla": None}
+    s = {"kpis": [], "points": [], "checks": None, "bars": [], "actions": [], "closed": 0, "sla": None, "compare": None}
+    _, c = _find(doc, "table", ("this period against", "this month against", "compared with the previous"))
+    if c and c.get("rows"):
+        want = ("health score (average)", "cpu used (average)", "memory used (average)", "filesystem space added", "oracle data added", "days with a critical finding")
+        rows = sorted((r for r in c["rows"] if str(r[0]).lower() in want), key=lambda r: want.index(str(r[0]).lower()))
+        if rows:
+            s["compare"] = (c["headers"], rows[:5])
     _, k = _find(doc, "kpis")
     if k:
         s["kpis"] = [(str(v), str(l), lv) for v, l, lv in k["items"]][:4]
@@ -147,7 +153,61 @@ def _logo(path, cid, images, height):
     return ""
 
 
-def build(doc, report_files=()):
+PHONE_CSS = ("<style>@media only screen and (max-width:540px){"
+             ".wrap{width:100%!important;max-width:100%!important}.outer{padding:8px 4px!important}"
+             ".logo img{max-width:140px!important;height:auto!important}"
+             ".tile{display:inline-block!important;width:50%!important;box-sizing:border-box}"
+             ".side{display:block!important;width:100%!important;text-align:left!important;padding-top:14px!important}"
+             ".pad{padding-left:16px!important;padding-right:16px!important}"
+             ".bl{width:92px!important;font-size:12px!important}.bv{width:56px!important}"
+             ".big{font-size:19px!important}}</style>")
+
+
+def dashboard_url(cfg, host=""):
+    """Where the email's button points: [smtp] dashboard_url, or this server's web interface when it listens on the network."""
+    if not cfg:
+        return ""
+    url = (cfg.get("smtp", "smtp", "dashboard_url", "") or "").strip()
+    if url:
+        return url if url.startswith(("https://", "http://")) else ""
+    try:
+        from lshme.core.config import as_bool
+        if not as_bool(cfg.get("web", "web", "enabled", "no"), False):
+            return ""
+        bind = cfg.get("web", "web", "bind", "127.0.0.1") or "127.0.0.1"
+        if bind.startswith("127.") or bind in ("localhost", "::1") or not host:
+            return ""
+        scheme = "https" if as_bool(cfg.get("web", "web", "tls", "yes"), True) else "http"
+        return "%s://%s:%s/" % (scheme, host if bind in ("0.0.0.0", "::") else bind, cfg.get("web", "web", "port", "8443"))
+    except Exception:
+        return ""
+
+
+def _compare(headers, rows):
+    colour = {"up": "#c5221f", "dn": "#1e8e3e"}
+    th = "padding:7px 8px;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;text-align:%s;border-bottom:1px solid #e2e8f0;" + FONT + ";"
+    head = "<tr><th style='%s'>&nbsp;</th><th style='%s'>%s</th><th style='%s'>%s</th><th style='%s'>%s</th></tr>" % (
+        th % "left", th % "right", E(headers[1]), th % "right", E(headers[2]), th % "left", E(headers[3] if len(headers) > 3 else "Change"))
+    body = []
+    for r in rows:
+        ch = r[3] if len(r) > 3 else ""
+        st = ch.style if isinstance(ch, Cell) else "fl"
+        txt = str(ch).replace("up ", "▲ ").replace("down ", "▼ ")
+        td = "padding:8px;font-size:13px;border-bottom:1px solid #f1f5f9;" + FONT + ";"
+        body.append("<tr><td style='%scolor:#334155'>%s</td><td style='%stext-align:right;font-weight:700;color:#0f172a'>%s</td>"
+                    "<td style='%stext-align:right;color:#64748b'>%s</td><td style='%scolor:%s;font-weight:%s'>%s</td></tr>" % (
+                        td, E(str(r[0])), td, E(str(r[1])), td, E(str(r[2])), td, colour.get(st, "#64748b"), "700" if st in colour else "400", E(txt)))
+    return ("<table role='presentation' width='100%%' cellpadding='0' cellspacing='0' style='border-collapse:collapse'>%s%s</table>"
+            "<div style='font-size:11.5px;color:#94a3b8;margin-top:6px;%s'>Green: better &middot; red: worse &middot; grey: about the same</div>" % (head, "".join(body), FONT))
+
+
+def _button(url):
+    return ("<tr><td class='pad' align='left' style='padding:20px 28px 0'><table role='presentation' cellpadding='0' cellspacing='0'><tr>"
+            "<td bgcolor='#0b5ed7' style='background:#0b5ed7;border-radius:8px'><a href='%s' style='display:inline-block;padding:11px 22px;color:#ffffff;"
+            "font-size:14px;font-weight:700;text-decoration:none;%s'>Open the full report &rarr;</a></td></tr></table></td></tr>") % (E(url), FONT)
+
+
+def build(doc, report_files=(), link=""):
     s = summary(doc)
     images = []
     status = doc.status
@@ -157,21 +217,21 @@ def build(doc, report_files=()):
     lrs = _logo(getattr(doc, "brand_logo", ""), "lrs-logo", images, 38)
     cust = _logo(getattr(doc, "customer_logo", ""), "customer-logo", images, 34)
     base = getattr(doc, "title_plain", "") or doc.title
-    head = ("<tr><td style='padding:16px 28px;background:#ffffff;border-bottom:1px solid #e2e8f0'><table role='presentation' width='100%%' cellpadding='0' cellspacing='0'><tr>"
-            "<td align='left'>%s</td><td align='right'>%s</td></tr></table></td></tr>") % (lrs or "<b style='%s;color:#0b3d91;font-size:16px'>LRS Vitals</b>" % FONT,
+    head = ("<tr><td class='pad' style='padding:16px 28px;background:#ffffff;border-bottom:1px solid #e2e8f0'><table role='presentation' width='100%%' cellpadding='0' cellspacing='0'><tr>"
+            "<td class='logo' align='left'>%s</td><td class='logo' align='right'>%s</td></tr></table></td></tr>") % (lrs or "<b style='%s;color:#0b3d91;font-size:16px'>LRS Vitals</b>" % FONT,
                                                                                          cust or "<span style='%s;color:#334155;font-size:14px;font-weight:700'>%s</span>" % (FONT, E(getattr(doc, "customer", "") or "")))
-    band = ("<tr><td bgcolor='#0b3d91' style='background:#0b3d91;padding:22px 28px;%s'>"
+    band = ("<tr><td class='pad' bgcolor='#0b3d91' style='background:#0b3d91;padding:22px 28px;%s'>"
             "<table role='presentation' width='100%%' cellpadding='0' cellspacing='0'><tr><td style='vertical-align:middle'>"
-            "<div style='color:#ffffff;font-size:22px;font-weight:700;line-height:1.2'>%s</div>"
+            "<div class='big' style='color:#ffffff;font-size:22px;font-weight:700;line-height:1.2'>%s</div>"
             "<div style='color:#c7d7f5;font-size:13px;margin-top:6px'>%s</div></td>"
-            "<td align='right' style='vertical-align:middle;width:170px'><table role='presentation' cellpadding='0' cellspacing='0'><tr>"
+            "<td class='side' align='right' style='vertical-align:middle;width:170px'><table role='presentation' cellpadding='0' cellspacing='0'><tr>"
             "<td bgcolor='%s' style='background:%s;border-radius:8px;padding:10px 16px;text-align:center;%s'>"
             "<div style='color:#fff;font-size:17px;font-weight:800;letter-spacing:.5px'>%s</div><div style='color:#fff;font-size:11.5px;margin-top:2px'>%s</div>"
             "</td></tr></table></td></tr></table></td></tr>") % (FONT, E(base), E(doc.subtitle), scol, scol, FONT, E(status), E(att_txt))
     rows = [head, band]
     if s["kpis"]:
         cells = "".join(
-            "<td width='%d%%' style='padding:6px;vertical-align:top'><table role='presentation' width='100%%' cellpadding='0' cellspacing='0'><tr>"
+            "<td class='tile' width='%d%%' style='padding:6px;vertical-align:top'><table role='presentation' width='100%%' cellpadding='0' cellspacing='0'><tr>"
             "<td bgcolor='%s' style='background:%s;border-left:4px solid %s;border-radius:8px;padding:12px 14px;%s'>"
             "<div style='font-size:22px;font-weight:800;color:#0f172a;line-height:1.15'>%s</div>"
             "<div style='font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;margin-top:4px'>%s</div></td></tr></table></td>" % (
@@ -200,7 +260,9 @@ def build(doc, report_files=()):
         extra = " &middot; ".join("%s %s" % (E(x), E(y.lower())) for x, y, _ in s["sla"][1:3])
         rows.append(_section("Service availability (SLA)",
                              "<div style='%s'><span style='font-size:26px;font-weight:800;color:%s'>%s</span> <span style='font-size:13px;color:#64748b'>%s</span>"
-                             "<div style='font-size:13px;color:#334155;margin-top:2px'>%s</div></div>" % (FONT, HEX[lv], E(v), E(l.lower()), extra)))
+                             "<div style='font-size:13px;color:#334155;margin-top:2px'>%s</div></div>" % (FONT, HEX[lv], E(v), E(l), extra)))
+    if s["compare"]:
+        rows.append(_section("Compared with the previous period", _compare(*s["compare"])))
     if s["points"]:
         icon = {"ok": ("&#10004;", "#1e8e3e"), "wn": ("!", "#e8830c"), "cr": ("&#10006;", "#c5221f")}
         pts = "".join(
@@ -220,16 +282,18 @@ def build(doc, report_files=()):
     if s["closed"]:
         rows.append(_section("Resolved", "<div style='font-size:14px;color:#334155;%s'>%d issue%s found in this period %s now closed and no longer count%s in the score.</div>" % (
             FONT, s["closed"], "" if s["closed"] == 1 else "s", "is" if s["closed"] == 1 else "are", "s" if s["closed"] == 1 else "")))
+    if link:
+        rows.append(_button(link))
     files = ", ".join(os.path.basename(p) for p in report_files)
     rows.append("<tr><td style='padding:18px 28px 22px;%s'><div style='border-top:1px solid #e2e8f0;padding-top:12px;font-size:12.5px;color:#64748b'>%s</div>"
                 "<div style='font-size:11.5px;color:#94a3b8;margin-top:6px'>%s &middot; %s</div></td></tr>" % (
                     FONT, ("The full report is attached: %s" % E(files)) if files else "Open the web dashboard for the full report.",
                     E(dict(doc.meta).get("Generated by", "LRS Vitals")), E(doc.copyright)))
     html = ("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-            "<meta name='color-scheme' content='light'><title>%s</title></head>"
+            "<meta name='color-scheme' content='light'><title>%s</title>%s</head>"
             "<body style='margin:0;padding:0;background:#eef2f7;%s'>"
             "<div style='display:none;max-height:0;overflow:hidden'>%s - %s</div>"
-            "<table role='presentation' width='100%%' cellpadding='0' cellspacing='0' bgcolor='#eef2f7' style='background:#eef2f7'><tr><td align='center' style='padding:20px 10px'>"
-            "<table role='presentation' width='660' cellpadding='0' cellspacing='0' bgcolor='#ffffff' style='width:100%%;max-width:660px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden'>"
-            "%s</table></td></tr></table></body></html>") % (E(doc.title), FONT, E(status), E(att_txt), "".join(rows))
+            "<table role='presentation' width='100%%' cellpadding='0' cellspacing='0' bgcolor='#eef2f7' style='background:#eef2f7'><tr><td class='outer' align='center' style='padding:20px 10px'>"
+            "<table class='wrap' role='presentation' width='660' cellpadding='0' cellspacing='0' bgcolor='#ffffff' style='width:100%%;max-width:660px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden'>"
+            "%s</table></td></tr></table></body></html>") % (E(doc.title), PHONE_CSS, FONT, E(status), E(att_txt), "".join(rows))
     return html, images

@@ -69,6 +69,7 @@ HELP = {
     "company": "Shown on the cover of every report.", "customer": "Who the reports are prepared for.",
     "customer_short": "Short customer name, e.g. PDHHK. Used in the email sender name and subject.",
     "sender_name": "Name shown as the email sender, e.g. {customer_short} Oracle Health Reports. Empty: '<short name> Health Reports'.",
+    "dashboard_url": "Link for the 'Open the full report' button in emails, e.g. https://172.16.101.52:8443/. Empty: this server's web interface when it is on the network.",
     "pdf_page_size": "Paper for PDF reports: a4, letter, legal or a3.", "pdf_orientation": "auto (sideways only when a table needs it), portrait or landscape.",
     "pdf_margin_mm": "PDF page margin in millimetres (5-25).", "environment": "For example Production, DR, UAT.",
     "prepared_by": "Your name or team.", "location": "Data centre or site.", "logo": "Customer logo shown next to the LRS logo on every report and in this dashboard. Upload any image here (it is converted and fitted), or type a full path to a PNG/JPG.",

@@ -245,14 +245,21 @@ class MailTest(unittest.TestCase):
             run = make_run(now)
             seed(home.paths, run)
             doc = periodic.build(run, home.cfg, home.paths, "weekly", "summary", now)
-            html, images = mailbody.build(doc, ["r.pdf"])
+            html, images = mailbody.build(doc, ["r.pdf"], "https://vitals.example:8443/")
+            self.assertIn("Open the full report", html)
+            self.assertIn("https://vitals.example:8443/", html)
+            self.assertIn("@media only screen and (max-width:540px)", html)                # tiles stack on a phone
+            self.assertEqual(mailbody.dashboard_url(home.cfg, "db01"), "")                      # web interface off: no button
+            home.cfg.set("web", "web", "enabled", "yes")
+            home.cfg.set("web", "web", "bind", "0.0.0.0")
+            self.assertEqual(mailbody.dashboard_url(home.cfg, "db01"), "https://db01:8443/")
             cids = [c for c, _ in images]
             self.assertIn("checks-donut", cids)
             for c, data in images:
                 self.assertTrue(data.startswith(b"\x89PNG"))
                 self.assertIn("cid:%s" % c, html)
             self.assertLess(len(dict(images)["checks-donut"]), 8 * 1024)                 # the chart stays light
-            for bad in ("<svg", "<script", "class=", "display:flex"):                      # nothing Outlook cannot show
+            for bad in ("<svg", "<script", "display:flex", "display:grid"):                # nothing Outlook cannot show
                 self.assertNotIn(bad, html)
             self.assertIn("Checks this period", html)
             self.assertIn("checks passed", html)
