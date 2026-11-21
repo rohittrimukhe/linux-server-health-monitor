@@ -165,19 +165,36 @@ class PdfLayoutTest(unittest.TestCase):
 
             def watch(self, x, y, s, size=9, font="F1", color=periodic_pdf.INK):
                 width = periodic_pdf.tw(s, size, font == "F2")
-                if x < MARGIN - 0.5 or x + width > PAGE_W - MARGIN + 0.5:
+                m, pw = periodic_pdf.MARGIN, periodic_pdf.PAGE_W              # the page being drawn (size and orientation vary)
+                if x < m - 0.5 or x + width > pw - m + 0.5 or y < 0 or y > periodic_pdf.PAGE_H:
                     over.append((round(x), round(width), s[:50]))
                 return real(self, x, y, s, size, font, color)
             periodic_pdf.PeriodicPDF.put = watch
             try:
-                for t in ("daily", "weekly", "monthly"):
-                    _, d, files, _ = reports.generate(run, home.cfg, home.paths, ["pdf"], t, t)
-                    self.assertTrue(files)
+                for size, orient in (("a4", "auto"), ("a4", "landscape"), ("letter", "portrait"), ("a3", "auto")):
+                    home.cfg.set("reports", "reports", "pdf_page_size", size)
+                    home.cfg.set("reports", "reports", "pdf_orientation", orient)
+                    for t in ("daily", "weekly", "monthly"):
+                        _, d, files, _ = reports.generate(run, home.cfg, home.paths, ["pdf"], t, t)
+                        self.assertTrue(files)
             finally:
                 periodic_pdf.PeriodicPDF.put = real
             self.assertEqual(over, [])
+            self.assertEqual((periodic_pdf.PAGE_W, periodic_pdf.MARGIN), (PAGE_W, MARGIN))     # the page settings are put back afterwards
         finally:
             home.cleanup()
+
+    def test_page_sizes_and_small_margins(self):
+        w, h, m = periodic_pdf.page_geometry("a4", "portrait", 8)
+        self.assertEqual((round(w), round(h), round(m, 1)), (595, 842, 22.7))
+        self.assertEqual(round(periodic_pdf.page_geometry("a4", "landscape", 8)[0]), 842)
+        self.assertEqual(round(periodic_pdf.page_geometry("letter", "portrait", 8)[1]), 792)
+        self.assertEqual(round(periodic_pdf.page_geometry("bogus", "portrait", 1)[2], 1), 14.2)   # unknown paper is A4; margin at least 5 mm
+
+        class Doc(object):
+            sections = [("Wide", [{"type": "table", "headers": ["COLUMN %d" % i for i in range(16)],
+                                   "rows": [["value-%d-long" % i for i in range(16)]]}])]
+        self.assertGreater(periodic_pdf.page_geometry("a4", "auto", 8, Doc())[0], 800)            # too wide for portrait: turned sideways
 
 
 if __name__ == "__main__":

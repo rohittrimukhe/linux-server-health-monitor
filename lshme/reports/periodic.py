@@ -129,6 +129,7 @@ class PDoc(object):
         self.brand_logo = BRAND_LOGO if os.path.isfile(BRAND_LOGO) else ""
         self.report_type = ptype
         self.attention = None             # number of items under 'What needs attention' (the header shows the same number)
+        self.page_size, self.orientation, self.margin_mm = "a4", "auto", 8      # PDF paper; kept with the report so a rebuild is identical
 
     def add(self, title, blocks):
         self.sections.append((title, [b for b in blocks if b]))
@@ -810,6 +811,13 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
     d.host = run.host
     d.tz_offset = time.localtime(now).tm_gmtoff if hasattr(time.localtime(now), "tm_gmtoff") else 0
     d.report_type = ptype
+    if cfg:
+        d.page_size = (cfg.get("reports", "reports", "pdf_page_size", "a4") or "a4").strip().lower()
+        d.orientation = (cfg.get("reports", "reports", "pdf_orientation", "auto") or "auto").strip().lower()
+        try:
+            d.margin_mm = float(cfg.get("reports", "reports", "pdf_margin_mm", "8") or 8)
+        except ValueError:
+            d.margin_mm = 8
     meta = run.meta or {}
     custom = cfg.get("reports", "reports", "title", "") if cfg else ""
     from lshme.ops import roles as _roles

@@ -222,6 +222,19 @@ class MailTest(unittest.TestCase):
         self.assertFalse(res["ok"])
         self.assertEqual(res["attempts"], 1)
 
+    def test_sender_name_from_customer_short_name(self):
+        self.assertEqual(mailer.sender_name("", "PDHHK", "HHK IT"), "PDHHK Health Reports")
+        self.assertEqual(mailer.sender_name("{customer_short} Oracle Health Reports", "PDHHK"), "PDHHK Oracle Health Reports")
+        self.assertEqual(mailer.sender_name("", "", "HHK IT"), "HHK IT Health Reports")
+        self.assertEqual(mailer.sender_name("", "", ""), "LRS Vitals")
+        ms = self.settings()
+        ms.sender, ms.sender_name = "vitals@example.com", "PDHHK Oracle Health Reports"
+        msg, _, _, _ = mailer.build_message(ms, "s", "b", None, [])
+        self.assertEqual(msg["From"], "PDHHK Oracle Health Reports <vitals@example.com>")
+        ms.sender = "Ops <ops@example.com>"                      # an address that already has a name is kept as it is
+        msg, _, _, _ = mailer.build_message(ms, "s", "b", None, [])
+        self.assertEqual(msg["From"], "Ops <ops@example.com>")
+
     def test_policy(self):
         self.assertFalse(mailer.should_send("issues", "HEALTHY")[0])
         self.assertTrue(mailer.should_send("issues", "WARNING")[0])

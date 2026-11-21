@@ -2,6 +2,8 @@
 
 ## 1.4.0
 
+- **PDF paper and layout:** 8 mm margins (`[reports] pdf_margin_mm`), paper size `pdf_page_size` (a4, letter, legal, a3) and `pdf_orientation` (auto turns the page sideways only when a table cannot fit; portrait; landscape). Wider pages show more status tiles and details per row. Every table cell (text, bars, status chips, headers) is centred top to bottom. The HTML report uses the full browser width and prints on any paper.
+- **Email sender name:** `[general] customer_short` (e.g. PDHHK) and `[smtp] sender_name` (e.g. `{customer_short} Oracle Health Reports`); empty gives "<short name> Health Reports". The old default subject prefix [LSHME] becomes [<short name>].
 - **New report types: daily, weekly, monthly.** A short, colour-coded checklist report with a plain-English summary, status, CPU (every core), memory, network (every adapter, sent/received/total), filesystems, databases and folders with growth, and the top 10 programs and services by CPU, memory, network and connections. Weekly and monthly add growth by date and a comparison with the previous period. Monthly comes as a summary and a comprehensive report (inventory, roles, services, open ports, installed software). HTML with hover charts, PDF (with the LRS logo as a watermark), Excel, CSV. Defaults: daily Monday to Saturday 09:00, weekly Sunday 12:00, monthly day 1 at 10:00.
 - **Titles** read "Title (server, IP address, role)"; the role is added only when found.
 - **Capacity forecast** (when each filesystem fills, act-by date, speeding-up detection) in weekly and monthly reports; `[reports] capacity_forecast_in` chooses the report types.

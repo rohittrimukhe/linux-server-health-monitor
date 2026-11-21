@@ -19,7 +19,7 @@ CSS = """
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:64px}
 body{font:15px/1.55 Inter,"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
-.page{max-width:1120px;margin:0 auto;padding:22px 20px 40px}
+.page{max-width:min(1440px,100%);margin:0 auto;padding:14px clamp(8px,1.6vw,20px) 28px}
 .hdr{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 26px;display:flex;justify-content:space-between;align-items:center;gap:20px;
 box-shadow:0 1px 2px #0f172a0d,0 8px 24px #0f172a0a;position:relative;overflow:hidden}
 .hdr:before{content:"";position:absolute;left:0;right:0;top:0;height:5px;background:linear-gradient(90deg,var(--brand2),var(--brand),#38bdf8)}
@@ -45,8 +45,8 @@ h2{font-size:19px;font-weight:720;margin:0 0 14px;display:flex;align-items:cente
 h2 .no{width:30px;height:30px;border-radius:9px;background:var(--brand);color:#fff;font-size:14px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
 h3{font-size:15.5px;margin:20px 0 8px;font-weight:700;color:#1e293b}
 table{border-collapse:collapse;width:100%;font-size:14.5px;margin-bottom:4px}
-th{background:#f8fafc;text-align:left;padding:10px 12px;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:#475569;font-weight:700;border-bottom:1.5px solid var(--line)}
-td{padding:11px 12px;border-bottom:1px solid #eef2f7;vertical-align:top}
+th{background:#f8fafc;text-align:left;vertical-align:middle;padding:10px 12px;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:#475569;font-weight:700;border-bottom:1.5px solid var(--line)}
+td{padding:11px 12px;border-bottom:1px solid #eef2f7;vertical-align:middle}
 tbody tr:hover td{background:#f8fafc}
 td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
 td.wrap{white-space:pre-line}td.nw{white-space:nowrap}
@@ -87,8 +87,10 @@ td.cr{background:var(--crbg)!important;color:var(--cr);font-weight:700}
 .tip{position:absolute;pointer-events:none;background:#0f172af2;color:#fff;padding:9px 13px;border-radius:10px;font-size:13.5px;line-height:1.5;white-space:nowrap;display:none;z-index:5;box-shadow:0 8px 24px #0f172a55}
 .tip b{font-size:17px}.tip small{display:block;color:#94a3b8;font-size:12px}
 .foot{color:var(--mut);font-size:12.5px;margin:22px 4px 0;text-align:center}
+@media(max-width:560px){.hdr{padding:16px}.details{grid-template-columns:1fr 1fr}.kpi b{font-size:26px}td,th{padding:8px}}
 @media(max-width:820px){.grid2{grid-template-columns:1fr}.hdr{flex-direction:column;align-items:flex-start}.hr{width:100%;justify-content:space-between}section{padding:16px}}
-@media print{body{background:#fff}nav{display:none}.page{max-width:none;padding:0}section,.hdr{box-shadow:none;break-inside:auto}tr{break-inside:avoid}h2{break-after:avoid}}
+@page{size:auto;margin:8mm}
+@media print{body{background:#fff;font-size:12px}.page{width:100%}.grid2{grid-template-columns:1fr 1fr}nav{display:none}.page{max-width:none;padding:0}section,.hdr{box-shadow:none;break-inside:auto}tr{break-inside:avoid}h2{break-after:avoid}}
 """
 
 JS = r"""

@@ -7,10 +7,17 @@ Layout rules: text is measured with the real Helvetica widths, so nothing runs p
 first has a slim running header; a heading always stays with the first rows of what it introduces; tables choose the largest font size
 at which every column fits; the logo watermark is faint and only a quarter of the page wide."""
 import os
+import threading
 import time
 
+from lshme.reports import minipdf as _mp
 from lshme.reports.minipdf import MARGIN, PAGE_H, PAGE_W, MiniPDF, _esc
 from lshme.reports.periodic import Bar, Cell
+
+# paper sizes in points (portrait); the layout is worked out from the page width, so every size and orientation fits
+PAGES = {"a4": (595.28, 841.89), "letter": (612.0, 792.0), "legal": (612.0, 1008.0), "a3": (841.89, 1190.55)}
+DEFAULT_MARGIN_MM = 8           # small margins: as much room for the content as printers allow
+_PAGE_LOCK = threading.RLock()  # the page geometry is module state while one PDF is drawn
 
 BLUE = (0.043, 0.369, 0.843)
 DARK = (0.04, 0.25, 0.62)
@@ -25,8 +32,9 @@ SOLID = {"HEALTHY": (0.12, 0.56, 0.24), "WARNING": (0.94, 0.56, 0.0), "CRITICAL"
 USABLE = PAGE_W - 2 * MARGIN
 TXT = 9.2          # table text size (largest tried)
 TEXT_SIZES = (9.2, 8.6, 8.0, 7.4)
-TOP_OTHER = 62     # first line of content on pages after the first (below the running header)
-BOTTOM = 52        # last line of content (above the footer)
+TOP_OTHER = 54     # first line of content on pages after the first (below the running header)
+BOTTOM = 42        # last line of content (above the footer)
+RUN_TOP = 16       # distance of the running header from the top edge
 PALETTE = ["#0b5ed7", "#d9730d", "#1e8e3e", "#7b3fe4", "#c5221f", "#0d8a72", "#b8860b", "#c2185b", "#5d4037", "#00838f", "#6a1b9a", "#455a64"]
 SERIES = {"#0b5ed7": BLUE, "#7b3fe4": (0.48, 0.25, 0.89), "#d9730d": (0.85, 0.45, 0.05), "#0d8a72": (0.05, 0.54, 0.45)}
 
@@ -139,7 +147,7 @@ class PeriodicPDF(MiniPDF):
         if not self.running:
             return
         title, host, lrs, cust, cname = self.running
-        top = PAGE_H - 24
+        top = PAGE_H - RUN_TOP
         if lrs:
             self.fit_image(lrs, MARGIN, top - 20, 70, 22)
         self.put(MARGIN + (80 if lrs else 0), top - 9, fit_one(title, USABLE * 0.6, 9.5, True), 9.5, "F2", INK)
@@ -226,7 +234,7 @@ class PeriodicPDF(MiniPDF):
         self.y = top - band - 14
         det = getattr(doc, "details", [])
         if det:
-            cols = 3
+            cols = 4 if USABLE > 700 else 3
             gap = 8
             cw = (USABLE - gap * (cols - 1)) / float(cols)
             for i in range(0, len(det), cols):
@@ -256,7 +264,8 @@ class PeriodicPDF(MiniPDF):
 
     def kpis(self, items):
         """Tiles sized to their content, in rows of at most four (three when there are five or six); a long label wraps to a second line."""
-        per = len(items) if len(items) <= 4 else (3 if len(items) in (5, 6) else 4)
+        cap = 6 if USABLE > 700 else 4                             # a landscape or A3 page has room for more tiles in a row
+        per = len(items) if len(items) <= cap else ((len(items) + 1) // 2 if len(items) <= 2 * cap else cap)
         self.need(68 * ((len(items) + per - 1) // per) + 8)
         for i in range(0, len(items), per):
             self.kpi_row(items[i:i + per])
@@ -381,12 +390,15 @@ class PeriodicPDF(MiniPDF):
             self.put(MARGIN, self.y - 12, b["title"], 11.5, "F2", INK)
             self.y -= title_h
 
+        hmax = max(len(l) for l in hlines)
+
         def draw_header():
             self.fill(MARGIN, self.y - hh, USABLE, hh, HEADBG)
             for i, lines in enumerate(hlines):
+                first = self.y - hh / 2.0 + (len(lines) - 1) * 9.5 / 2.0 - hs * 0.36   # every header label is centred top to bottom
                 for k, s in enumerate(lines):
                     x = xs[i + 1] - 4 - tw(s, hs, True) if (i < len(align) and align[i] == "r") else xs[i] + 4
-                    self.put(x, self.y - 12 - k * 9.5, s, hs, "F2", (0.2, 0.25, 0.35))
+                    self.put(x, first - k * 9.5, s, hs, "F2", (0.2, 0.25, 0.35))
             self.y -= hh
         draw_header()
         for ri, r in enumerate(rows):
@@ -398,18 +410,19 @@ class PeriodicPDF(MiniPDF):
                 self.fill(MARGIN, top - h, USABLE, h, ZEBRA)
             for i, (c, lines) in enumerate(cells):
                 x0, w = xs[i], widths[i]
+                mid = top - h / 2.0                                     # every cell is centred top to bottom in its row
                 if isinstance(c, Bar):
                     bw = w - 10
-                    self.fill(x0 + 5, top - 15, bw, 11, (0.89, 0.91, 0.93))
-                    self.fill(x0 + 5, top - 15, bw * min(c.pct, 100) / 100.0, 11, FG[c.level()])
+                    self.fill(x0 + 5, mid - 5.5, bw, 11, (0.89, 0.91, 0.93))
+                    self.fill(x0 + 5, mid - 5.5, bw * min(c.pct, 100) / 100.0, 11, FG[c.level()])
                     s = "%.0f%%" % c.pct
-                    self.put(x0 + 5 + bw / 2 - tw(s, 7.5, True) / 2, top - 12.6, s, 7.5, "F2", (0.07, 0.07, 0.07))
+                    self.put(x0 + 5 + bw / 2 - tw(s, 7.5, True) / 2, mid - 2.6, s, 7.5, "F2", (0.07, 0.07, 0.07))
                     continue
                 if isinstance(c, Cell) and c.style.startswith("chip-"):
                     lv = c.style[-2:]
                     cw = min(tw(c.text, size, True) + 14, w - 6)
-                    self.fill(x0 + 4, top - 16, cw, 14, BG.get(lv, BG["na"]))
-                    self.put(x0 + 4 + (cw - tw(c.text, size, True)) / 2, top - 12.5, str(c.text), size, "F2", FG.get(lv, FG["na"]))
+                    self.fill(x0 + 4, mid - 7, cw, 14, BG.get(lv, BG["na"]))
+                    self.put(x0 + 4 + (cw - tw(c.text, size, True)) / 2, mid - size * 0.36, str(c.text), size, "F2", FG.get(lv, FG["na"]))
                     continue
                 color, font = INK, "F1"
                 if isinstance(c, Cell):
@@ -420,9 +433,10 @@ class PeriodicPDF(MiniPDF):
                     elif st in ("up", "dn", "fl", "b"):
                         color = {"up": FG["cr"], "dn": FG["ok"], "fl": MUT, "b": INK}[st]
                         font = "F2" if st in ("up", "dn", "b") else "F1"
+                first = mid + (len(lines) - 1) * lh / 2.0 - size * 0.36   # the block of lines sits on the row's centre line
                 for li, line in enumerate(lines):
                     x = (x0 + w - 4.5 - tw(line, size, font == "F2")) if (i < len(align) and align[i] == "r") else x0 + 4.5
-                    self.put(x, top - 11.5 - li * lh, line, size, font, color)
+                    self.put(x, first - li * lh, line, size, font, color)
             self.ops.append("%.3f %.3f %.3f RG 0.4 w %.1f %.1f m %.1f %.1f l S" % (LINE + (MARGIN, top - h, MARGIN + USABLE, top - h)))
             self.y -= h
         if b.get("legend"):
@@ -537,14 +551,15 @@ class PeriodicPDF(MiniPDF):
         cw = (USABLE - 2 * lw) / 2.0
         for r in rows:
             vals = [wrap(str(r[j * 2 + 1]), cw - 12, 9.6, False, 3) for j in range(2)]
-            h = max(len(v) for v in vals) * 12 + 10
+            most = max(len(v) for v in vals)
+            h = most * 12 + 10
             self.need(h + 2)
             for j in range(2):
                 x = MARGIN + j * (lw + cw)
                 self.fill(x, self.y - h, lw, h, HEADBG)
-                self.put(x + 6, self.y - 14, fit_one(str(r[j * 2]).upper(), lw - 10, 7.6, True), 7.6, "F2", (0.2, 0.25, 0.35))
+                self.put(x + 6, self.y - 14 - (most - 1) * 6, fit_one(str(r[j * 2]).upper(), lw - 10, 7.6, True), 7.6, "F2", (0.2, 0.25, 0.35))
                 for k, line in enumerate(vals[j]):
-                    self.put(x + lw + 6, self.y - 14 - k * 12, line, 9.6, "F1", INK)
+                    self.put(x + lw + 6, self.y - 14 - (most - len(vals[j])) * 6 - k * 12, line, 9.6, "F1", INK)
             self.ops.append("%.3f %.3f %.3f RG 0.4 w %.1f %.1f m %.1f %.1f l S" % (LINE + (MARGIN, self.y - h, MARGIN + USABLE, self.y - h)))
             self.y -= h
         self.y -= 8
@@ -555,7 +570,7 @@ def first_height(b):
     t = b.get("type")
     if t == "kpis":
         n = len(b.get("items", []))
-        return 70 * (1 if n <= 4 else 2)
+        return 70 * (1 if n <= (6 if USABLE > 700 else 4) else 2)
     if t == "points":
         return 44
     if t == "table":
@@ -567,8 +582,58 @@ def first_height(b):
     return 50
 
 
+def page_geometry(size="a4", orientation="auto", margin_mm=DEFAULT_MARGIN_MM, doc=None):
+    """(width, height, margin) in points. 'auto' turns the page sideways only when a table cannot fit across a portrait page."""
+    w, h = PAGES.get(str(size or "a4").strip().lower(), PAGES["a4"])
+    try:
+        m = max(5.0, min(25.0, float(margin_mm))) * 72 / 25.4
+    except (TypeError, ValueError):
+        m = DEFAULT_MARGIN_MM * 72 / 25.4
+    o = str(orientation or "auto").strip().lower()
+    if o == "landscape":
+        return h, w, m
+    if o == "auto" and doc is not None:
+        usable = w - 2 * m
+        for _, blocks in doc.sections:
+            for b in blocks:
+                if b.get("type") == "table" and not b.get("excel_only") and b.get("rows"):
+                    _, mn = PeriodicPDF._metrics(PeriodicPDF, b["headers"], b["rows"], TEXT_SIZES[-1], 7.8)
+                    if sum(mn) > usable + 0.5:
+                        return h, w, m
+    return w, h, m
+
+
+def set_page(w, h, m):
+    """Point the drawing code (this module and the PDF writer) at one page size and margin."""
+    global PAGE_W, PAGE_H, MARGIN, USABLE, BOTTOM, TOP_OTHER, RUN_TOP
+    PAGE_W, PAGE_H, MARGIN, USABLE = w, h, m, w - 2 * m
+    RUN_TOP = max(12.0, m - 6)
+    TOP_OTHER = RUN_TOP + 38
+    BOTTOM = m + 20
+    _mp.PAGE_W, _mp.PAGE_H, _mp.MARGIN = w, h, m
+    _mp.FOOT_LINE, _mp.FOOT_TEXT = m + 8, m - 4
+
+
 def render(doc, path, logo=""):
-    foot = "%s - %s - %s" % (getattr(doc, "title_plain", "") or doc.title, time.strftime("%Y-%m-%d %H:%M", time.localtime(doc.generated)), doc.copyright)
+    """Draw the report on the paper size, orientation and margin stored with it (A4, auto orientation and 8 mm when not set)."""
+    geo = page_geometry(getattr(doc, "page_size", "a4"), getattr(doc, "orientation", "auto"), getattr(doc, "margin_mm", DEFAULT_MARGIN_MM), doc)
+    with _PAGE_LOCK:
+        saved = (PAGE_W, PAGE_H, MARGIN, USABLE, BOTTOM, TOP_OTHER, RUN_TOP, _mp.PAGE_W, _mp.PAGE_H, _mp.MARGIN, _mp.FOOT_LINE, _mp.FOOT_TEXT)
+        set_page(*geo)
+        try:
+            return _render(doc, path, logo)
+        finally:
+            _restore(saved)
+
+
+def _restore(s):
+    global PAGE_W, PAGE_H, MARGIN, USABLE, BOTTOM, TOP_OTHER, RUN_TOP
+    PAGE_W, PAGE_H, MARGIN, USABLE, BOTTOM, TOP_OTHER, RUN_TOP = s[:7]
+    _mp.PAGE_W, _mp.PAGE_H, _mp.MARGIN, _mp.FOOT_LINE, _mp.FOOT_TEXT = s[7:]
+
+
+def _render(doc, path, logo=""):
+    foot ="%s - %s - %s" % (getattr(doc, "title_plain", "") or doc.title, time.strftime("%Y-%m-%d %H:%M", time.localtime(doc.generated)), doc.copyright)
     p = PeriodicPDF(doc.title, foot)
     mark = doc.brand_logo or logo
     p.watermark = p.add_image(mark) if mark and os.path.isfile(mark) else None

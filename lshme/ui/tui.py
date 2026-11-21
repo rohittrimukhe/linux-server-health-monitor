@@ -231,6 +231,7 @@ def page_identity(ctx):
     settings(ctx, "Organisation & report identity", [
         b("Company name", "company", help="Shown on the cover of every report."),
         b("Customer name", "customer", help="Who the reports are prepared for."),
+        b("Customer short name", "customer_short", help="For example PDHHK. Used in the email sender name and subject."),
         b("Environment", "environment", help="For example Production, DR, UAT or Development."),
         b("Location / data centre", "location", help="Shown in report headers."),
         b("Prepared by", "prepared_by", help="Your name or team."),
@@ -496,6 +497,7 @@ def page_smtp(ctx):
               help="Kept in credentials.conf (mode 600). Leave as is to keep the saved one."),
         Heading("Addresses"),
         b("Sender (From)", "from", validate=v_emails, help="For example lshme@yourhost.example.com"),
+        b("Sender name", "sender_name", help="E.g. {customer_short} Oracle Health Reports (empty: short name)"),
         b("Recipients (To)", "to", validate=v_emails, help="Comma-separated addresses."),
         b("CC", "cc", validate=v_emails, help="Optional, comma-separated."),
         b("BCC", "bcc", validate=v_emails, help="Optional, comma-separated."),

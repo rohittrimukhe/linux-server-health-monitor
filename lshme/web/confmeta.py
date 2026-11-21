@@ -66,7 +66,11 @@ SECTION_KINDS = {
     "credentials": [{"prefix": "", "label": "Password entry", "keys": ["password"]}],
 }
 HELP = {
-    "company": "Shown on the cover of every report.", "customer": "Who the reports are prepared for.", "environment": "For example Production, DR, UAT.",
+    "company": "Shown on the cover of every report.", "customer": "Who the reports are prepared for.",
+    "customer_short": "Short customer name, e.g. PDHHK. Used in the email sender name and subject.",
+    "sender_name": "Name shown as the email sender, e.g. {customer_short} Oracle Health Reports. Empty: '<short name> Health Reports'.",
+    "pdf_page_size": "Paper for PDF reports: a4, letter, legal or a3.", "pdf_orientation": "auto (sideways only when a table needs it), portrait or landscape.",
+    "pdf_margin_mm": "PDF page margin in millimetres (5-25).", "environment": "For example Production, DR, UAT.",
     "prepared_by": "Your name or team.", "location": "Data centre or site.", "logo": "Customer logo shown next to the LRS logo on every report and in this dashboard. Upload any image here (it is converted and fitted), or type a full path to a PNG/JPG.",
     "command_timeout": "Longest any single system command may run (seconds).", "run_timeout": "Longest a complete health check may run (seconds).",
     "disabled": "Comma-separated modules never run.", "auto_excluded": "Managed by the server scan: modules with nothing to check on this server.",

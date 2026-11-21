@@ -35,11 +35,18 @@ class MailSettings(object):
         self.username = s.get("username", "")
         self.password = cfg.secret("smtp", "password")
         self.sender = s.get("from", "")
+        g = cfg.section("main", "general") if hasattr(cfg, "section") else {}
+        self.short = (g.get("customer_short", "") or "").strip()
+        self.customer = (g.get("customer", "") or "").strip()
+        self.sender_name = sender_name(s.get("sender_name", ""), self.short, self.customer)
         self.to = as_list(s.get("to"))
         self.cc = as_list(s.get("cc"))
         self.bcc = as_list(s.get("bcc"))
         self.critical_to = as_list(s.get("critical_to"))
         self.prefix = s.get("subject_prefix", "[LSHME]")
+        if self.short and self.prefix.strip() in ("", "[LSHME]"):       # the old default becomes the customer's short name
+            self.prefix = "[%s]" % self.short
+        self.prefix = self.prefix.replace("{customer_short}", self.short).replace("{customer}", self.customer)
         self.policy = s.get("send_policy", "always").lower()
         self.max_mb = float(s.get("max_attachment_mb") or 15)
         self.attach_formats = as_list(s.get("attach_formats", "pdf,xlsx,html"))
@@ -61,6 +68,24 @@ class MailSettings(object):
         if self.username and not self.password:
             problems.append("username set but no password in credentials.conf [smtp] or LSHME_SMTP_PASSWORD")
         return problems
+
+
+def sender_name(template, short="", customer=""):
+    """The name people see as the sender, e.g. 'PDHHK Oracle Health Reports'.
+    Empty setting: '<customer short name> Health Reports' (or the customer name, or 'LRS Vitals')."""
+    t = (template or "").strip()
+    if not t:
+        who = short or customer
+        return ("%s Health Reports" % who) if who else "LRS Vitals"
+    name = t.replace("{customer_short}", short or customer).replace("{customer}", customer or short)
+    return " ".join(name.split())
+
+
+def from_header(ms):
+    """'Name <address>' unless the address already carries a name."""
+    if not ms.sender or "<" in ms.sender or not getattr(ms, "sender_name", ""):
+        return ms.sender
+    return email.utils.formataddr((ms.sender_name, ms.sender))
 
 
 def should_send(policy, status, maintenance=False, force=False):
@@ -86,12 +111,13 @@ def build_message(ms, subject, text, html_body, attachments, status="HEALTHY", t
     cc = list(cc_override) if cc_override is not None else list(ms.cc)
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = ms.sender
+    msg["From"] = from_header(ms)
     msg["To"] = ", ".join(to)
     if cc:
         msg["Cc"] = ", ".join(cc)
     msg["Date"] = email.utils.formatdate(localtime=True)
-    msg["Message-ID"] = email.utils.make_msgid(domain=(ms.sender.split("@")[-1] if "@" in ms.sender else socket.getfqdn()))
+    addr = email.utils.parseaddr(ms.sender)[1] or ms.sender
+    msg["Message-ID"] = email.utils.make_msgid(domain=(addr.split("@")[-1].rstrip(">") if "@" in addr else socket.getfqdn()))
     msg["X-Mailer"] = "LSHME"
     if status == "CRITICAL":
         msg["X-Priority"] = "1"

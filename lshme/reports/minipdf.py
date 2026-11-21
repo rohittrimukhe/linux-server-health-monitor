@@ -13,6 +13,7 @@ from lshme.reports import stable
 
 PAGE_W, PAGE_H = 595.28, 841.89
 MARGIN = 42
+FOOT_LINE, FOOT_TEXT = 36, 24      # heights of the footer rule and text (the periodic reports move them with their margin)
 
 
 def _esc(s):
@@ -136,8 +137,9 @@ class MiniPDF(object):
         total = len(self.pages)
         for i, ops in enumerate(self.pages, 1):
             pg = "Page %d of %d" % (i, total)
-            foot = ("0.87 0.9 0.93 RG 0.5 w %.1f 36 m %.1f 36 l S 0.4 0.4 0.4 rg BT /F1 8 Tf %.1f 24 Td (%s) Tj ET BT /F1 8 Tf %.1f 24 Td (%s) Tj ET" % (
-                MARGIN, PAGE_W - MARGIN, MARGIN, _esc(self.footer), PAGE_W - MARGIN - len(pg) * 4.45, pg))
+            fl, ft = FOOT_LINE, FOOT_TEXT
+            foot = ("0.87 0.9 0.93 RG 0.5 w %.1f %g m %.1f %g l S 0.4 0.4 0.4 rg BT /F1 8 Tf %.1f %g Td (%s) Tj ET BT /F1 8 Tf %.1f %g Td (%s) Tj ET" % (
+                MARGIN, fl, PAGE_W - MARGIN, fl, MARGIN, ft, _esc(self.footer), PAGE_W - MARGIN - len(pg) * 4.45, ft, pg))
             stream = "\n".join(ops + [foot]).encode("cp1252", "replace")
             content = add("<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream.decode("latin-1")))
             kids.append(add("<< /Type /Page /Parent %d 0 R /MediaBox [0 0 %.2f %.2f] /Resources %s /Contents %d 0 R >>" % (
