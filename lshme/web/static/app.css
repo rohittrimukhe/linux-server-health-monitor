@@ -278,3 +278,9 @@ pre.logs { background: var(--input); border: 1px solid var(--line); border-radiu
 .srv .mini { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+
+/* forms in dialogs: each label sits above its field; checkboxes stay on one line */
+.modal .stack > label, .modal .row > label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 13px; color: var(--text); }
+.modal .row > label { flex: 1 1 200px; }
+.modal .stack > label > input:not([type="checkbox"]), .modal .stack > label > select, .modal .row > label > input:not([type="checkbox"]), .modal .row > label > select { width: 100%; font-weight: 400; }
+.modal label.check { flex-direction: row; align-items: center; gap: 8px; font-weight: 400; }

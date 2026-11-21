@@ -224,10 +224,11 @@ def build_parser():
     e.add_argument("--output", help="file path (default stdout)")
     e.add_argument("--modules")
 
-    from lshme.ui import archivecmd, logocmd, rawcmd, templatecmd
+    from lshme.ui import archivecmd, logocmd, rawcmd, sancmd, templatecmd
     archivecmd.add_parser(sub)
     rawcmd.add_parser(sub)
     logocmd.add_parser(sub)
+    sancmd.add_parser(sub)
     templatecmd.add_parser(sub)
 
     rp = sub.add_parser("report", help="re-render reports from a saved JSON run")
@@ -844,6 +845,9 @@ def dispatch(app, cmd, args):
     elif cmd == "logo":
         from lshme.ui import logocmd
         return logocmd.run(app, args)
+    elif cmd == "san":
+        from lshme.ui import sancmd
+        return sancmd.run(app, args)
     elif cmd == "raw":
         from lshme.ui import rawcmd
         return rawcmd.run(app, args)

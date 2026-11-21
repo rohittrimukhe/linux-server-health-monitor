@@ -878,6 +878,10 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
         kp = periodic_kvm.summary_point(run)
         if kp:
             story["items"].insert(min(3, len(story["items"])), kp)
+        from lshme.reports import periodic_san
+        sp = periodic_san.summary_point(run)
+        if sp:
+            story["items"].insert(min(4, len(story["items"])), sp)
     except Exception:                                        # the report must never fail because of this line
         pass
     d.add("In short", [story])
@@ -927,6 +931,13 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
             d.add("Virtual machines (KVM)", kb)
     except Exception as e:
         d.add("Virtual machines (KVM)", [note("The virtual machine details could not be built: %s" % e)])
+    try:
+        from lshme.reports import periodic_san
+        sb = periodic_san.blocks(data, ptype, variant)
+        if sb:
+            d.add("SAN storage", sb)
+    except Exception as e:
+        d.add("SAN storage", [note("The SAN storage details could not be built: %s" % e)])
 
     dbs = databases(data)
     dbmod = run.module("database")

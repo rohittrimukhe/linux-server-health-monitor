@@ -26,7 +26,7 @@ from lshme.core.model import ModuleResult, SEV_RANK
 from lshme.core.util import NETWORK_FS, PSEUDO_FS, listening_ports_from_proc, owned_by, to_int
 
 DEFAULTS = {"interval": "60", "confirm": "2", "repeat_minutes": "360", "recovery_alerts": "yes",
-            "rotation_modules": "services,database,kvm,cockpit,network,backup,cluster,certificates,selfcheck",
+            "rotation_modules": "services,database,kvm,san,cockpit,network,backup,cluster,certificates,selfcheck",
             "rotation_minutes": "15", "alert_min_severity": "WARNING", "alert_email": "yes", "alert_to": "",
             "quiet_hours": "", "quiet_min_severity": "CRITICAL", "min_minutes": "0", "min_minutes_critical": "0",
             "slack_webhook_url": "", "teams_webhook_url": "", "webhook_format": "auto",

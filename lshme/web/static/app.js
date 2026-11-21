@@ -295,8 +295,8 @@
     }
     function drawDashboard(box) {
         var bannerBox = h("div"), live = h("div", { class: "stack" });
-        var alerts = alertsCard(), fleetLive = liveFleetCard();
-        box.appendChild(h("div", { class: "stack" }, bannerBox, fleetLive.el, alerts.el, live));
+        var alerts = alertsCard(), fleetLive = liveFleetCard(), findings = exclusionsCard();
+        box.appendChild(h("div", { class: "stack" }, bannerBox, fleetLive.el, alerts.el, findings.el, live));
         var run = runWidget(function () { tick(); });
         var stopped = false, timer = null;
         function paintBanner(hl) {
@@ -498,9 +498,119 @@
     }
 
     /* ---------------------------------------------------------------- all servers */
+    /* Open findings: one click to accept one (exclude) or to take a rule back (un-exclude) */
+    function exclusionsCard() {
+        var box = card("Open findings and exceptions", null, h("p", { class: "muted", text: "Loading..." }));
+        function load() { api("GET", "/api/exclusions").then(paint).catch(function () { /* signed out */ }); }
+        function paint(d) {
+            clear(box);
+            box.appendChild(h("h2", null, h("span", { text: "Open findings and exceptions" }), h("span", { class: "muted", text: d.checked ? "from the health check " + ago(d.checked) : "" })));
+            var admin = S.me.role === "admin";
+            box.appendChild(d.findings.length ? table(["Level", "Where", "Finding", ""], d.findings.map(function (f) {
+                return [h("span", { class: "pri " + (f.severity === "CRITICAL" ? "p1" : "p2"), text: f.severity === "CRITICAL" ? "CRIT" : "WARN" }),
+                    h("div", null, h("b", { text: f.component || f.module }), h("div", { class: "muted small", text: f.module + " - " + f.code })),
+                    h("div", null, f.message, f.recommendation ? h("div", { class: "muted small", text: f.recommendation }) : null),
+                    admin ? h("button", { class: "small", type: "button", text: "Exclude", title: "Accept this finding: it leaves the score, the alerts and the open lists, and is listed under Accepted exceptions", onclick: function () { form(f); } }) : ""];
+            })) : h("p", { class: "okline" }, h("span", { class: "dot ok" }), "No open warnings or critical findings in the latest health check."));
+            var rules = d.rules;
+            box.appendChild(h("h3", { text: "Accepted exceptions (" + rules.length + ")" }));
+            box.appendChild(rules.length ? table(["Rule", "Finding", "Where", "Reason", "Approved by", "Until", "Status", ""], rules.map(function (r) {
+                return [h("span", { class: "mono", text: r.name }), r.code, r.component + (r.hosts && r.hosts !== "*" ? " on " + r.hosts : ""), r.reason, r.owner || "-", r.until || "no end",
+                    h("span", { class: "st st-" + (r.status === "active" ? "resolved" : r.status === "expired" ? "muted" : "open"), text: r.status }),
+                    admin ? h("button", { class: "small", type: "button", text: "Un-exclude", onclick: function () {
+                        ask("Take back the exception " + r.name + "? '" + r.code + "' counts again in the score and alerts from the next check.", function () {
+                            api("POST", "/api/exclusions", { action: "remove", name: r.name }).then(function () { toast("Un-excluded: " + r.code + " counts again from the next check", "good"); load(); }).catch(fail);
+                        });
+                    } }) : ""];
+            })) : h("p", { class: "muted", text: "No exceptions. Exclude a finding above when it is accepted (for example root SSH login by policy)." }));
+            box.appendChild(h("p", { class: "muted small", text: "An exclusion needs a reason and is shown in every report under 'Accepted exceptions', so nothing is hidden. Give an end date to have it come back automatically." }));
+        }
+        function form(f) {
+            var reason = h("input", { type: "text", placeholder: "why it is accepted (required)", maxlength: 300 });
+            var owner = h("input", { type: "text", placeholder: "approved by", value: S.me.user, maxlength: 80 });
+            var until = h("input", { type: "date" });
+            var scope = h("select", null, h("option", { value: "this", text: "Only " + (f.component || "this item") }), h("option", { value: "all", text: "Every " + f.code + " finding" }));
+            var close = modal("Exclude: " + (f.component || f.code), h("div", { class: "stack" },
+                h("p", { text: f.message }),
+                h("label", null, "Applies to ", scope),
+                h("label", null, "Reason ", reason),
+                h("div", { class: "row" }, h("label", null, "Approved by ", owner), h("label", null, "Until (optional) ", until)),
+                h("div", { class: "row" }, h("button", { class: "primary", type: "button", text: "Exclude", onclick: function () {
+                    if (!reason.value.trim()) return toast("Give a reason; it is shown in the reports", "bad");
+                    api("POST", "/api/exclusions", { action: "add", code: f.code, component: scope.value === "all" ? "*" : f.component, module: f.module,
+                        reason: reason.value.trim(), owner: owner.value.trim(), until: until.value }).then(function (r) {
+                        toast("Excluded (" + r.name + "). It leaves the score and alerts from the next check.", "good"); close(); load();
+                    }).catch(fail);
+                } }), h("button", { type: "button", text: "Cancel", onclick: function () { close(); } }))));
+        }
+        load();
+        return { el: box, load: load };
+    }
+
+    /* SAN storage: add any make, test the connection, remove (administrators) */
+    function sanCard() {
+        var box = card("SAN storage", h("span", { class: "muted", text: "any make, read-only" }), h("p", { class: "muted", text: "Loading..." }));
+        if (S.me.role !== "admin") { clear(box); box.appendChild(h("h2", null, h("span", { text: "SAN storage" }))); box.appendChild(h("p", { class: "muted", text: "Administrators add and test SAN storage here." })); return box; }
+        function load() { api("GET", "/api/san").then(paint).catch(fail); }
+        function paint(d) {
+            clear(box);
+            box.appendChild(h("h2", null, h("span", { text: "SAN storage" }), h("span", { class: "muted", text: d.arrays.length + " added" })));
+            var label = {};
+            d.types.forEach(function (t) { label[t.type] = t; });
+            box.appendChild(d.arrays.length ? table(["Name", "Make", "Controllers", "User", "Password", ""], d.arrays.map(function (a) {
+                return [h("b", { text: a.name }), a.type_label, a.controllers.join(", ") + " : " + a.port, a.username || "-", a.has_password ? "saved" : (a.type === "reach" ? "-" : h("span", { class: "err", text: "missing" })),
+                    h("div", { class: "row" },
+                        h("button", { class: "small", type: "button", text: "Test", onclick: function () {
+                            toast("Testing " + a.name + "...", "");
+                            api("POST", "/api/san", { action: "test", saved: true, name: a.name }).then(function (r) { toast(r.message, r.ok ? "good" : "bad"); }).catch(fail);
+                        } }),
+                        h("button", { class: "small", type: "button", text: "Edit", onclick: function () { form(d, a); } }),
+                        h("button", { class: "small danger", type: "button", text: "Remove", onclick: function () {
+                            ask("Remove SAN storage " + a.name + " and its saved password? Its history stays.", function () { api("POST", "/api/san", { action: "remove", name: a.name }).then(function () { toast("Removed " + a.name, "good"); load(); }).catch(fail); }, true);
+                        } }))];
+            })) : h("p", { class: "muted", text: "No SAN storage added. Add one to check its controllers, drives, pools, volumes, hardware and I/O with every health check and alert on failures." }));
+            box.appendChild(h("div", { class: "row" }, h("button", { class: "primary", type: "button", text: "Add SAN storage", onclick: function () { form(d, null); } })));
+        }
+        function form(d, a) {
+            var type = h("select", { "aria-label": "Make" }, d.types.map(function (t) { return h("option", { value: t.type, text: t.label, selected: a ? a.type === t.type : t.type === "santricity" }); }));
+            var howto = h("p", { class: "muted small" });
+            var name = h("input", { type: "text", placeholder: "short name, e.g. hhk-de", value: a ? a.name : "", disabled: !!a });
+            var ca = h("input", { type: "text", placeholder: "Controller A management IP", value: a ? (a.controllers[0] || "") : "" });
+            var cb = h("input", { type: "text", placeholder: "Controller B management IP (optional)", value: a ? (a.controllers[1] || "") : "" });
+            var port = h("input", { type: "number", min: 1, max: 65535, value: a ? a.port : 8443 });
+            var user = h("input", { type: "text", placeholder: "read-only user", autocomplete: "off", value: a ? a.username : "monitor" });
+            var pass = h("input", { type: "password", autocomplete: "new-password", placeholder: a && a.has_password ? "saved - leave empty to keep" : "password (API token for Pure)" });
+            var tls = h("input", { type: "checkbox", checked: a ? a.verify_tls : false });
+            var result = h("p", { class: "muted", text: "" });
+            function sync() { var t = type.value, x = d.types.filter(function (y) { return y.type === t; })[0]; howto.textContent = "How to connect: " + x.howto; if (!a) port.value = x.port; }
+            type.addEventListener("change", sync); sync();
+            function body(action) { return { action: action, name: a ? a.name : name.value.trim(), type: type.value, controllers: [ca.value.trim(), cb.value.trim()], port: +port.value, username: user.value.trim(), password: pass.value, verify_tls: tls.checked }; }
+            var close = modal(a ? "Edit SAN storage " + a.name : "Add SAN storage", h("div", { class: "stack" },
+                h("label", null, "Make ", type), howto,
+                h("div", { class: "row" }, h("label", null, "Name ", name), h("label", null, "Port ", port)),
+                h("div", { class: "row" }, h("label", null, "Controller A ", ca), h("label", null, "Controller B ", cb)),
+                h("div", { class: "row" }, h("label", null, "User ", user), h("label", null, "Password ", pass)),
+                h("label", { class: "check" }, tls, " Check the storage's HTTPS certificate (leave off for the usual self-signed one)"),
+                result,
+                h("div", { class: "row" },
+                    h("button", { type: "button", text: "Test connection", onclick: function () {
+                        result.className = "muted"; result.textContent = "Testing...";
+                        api("POST", "/api/san", body("test")).then(function (r) { result.className = r.ok ? "okline" : "err"; result.textContent = r.message; }).catch(function (e) { result.className = "err"; result.textContent = e.message; });
+                    } }),
+                    h("button", { class: "primary", type: "button", text: "Save", onclick: function () {
+                        api("POST", "/api/san", body("save")).then(function (r) { toast("Saved SAN storage " + r.name + ". It is checked with every health check.", "good"); close(); load(); }).catch(fail);
+                    } }))), true);
+        }
+        load();
+        return box;
+    }
+
     function drawFleet(box) {
+        var outer = h("div", { class: "stack" });
+        box.appendChild(outer);
         var wrap = h("div", { class: "stack" });
-        box.appendChild(wrap);
+        outer.appendChild(wrap);
+        outer.appendChild(sanCard());
         var timer = null, stopped = false, busy = false;
         function tile(label, value, cls) { return h("div", { class: "card tile " + (cls || "") }, h("div", { class: "big", text: String(value) }), h("div", { class: "muted", text: label })); }
         function paint(d) {

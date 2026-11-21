@@ -178,7 +178,7 @@ class WebApp(object):
         if req.method not in ("GET", "HEAD") and sess["role"] != "admin" and name != "password":
             self.audit("web-denied", sess, route=name)
             raise PermissionError("your account is read-only")
-        if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file", "branding", "branding/logo") and sess["role"] != "admin":
+        if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file", "branding", "branding/logo", "san") and sess["role"] != "admin":
             raise PermissionError("administrators only")
         return handler(req, sess)
 
@@ -461,6 +461,97 @@ class WebApp(object):
             if getattr(self, "_livefleet", None) is None:
                 self._livefleet = livefleet.LiveFleet(self.app)
         return self._livefleet
+
+    def api_exclusions(self, req, sess):
+        """Open findings with a one-click Exclude, and the exclusion rules with Un-exclude. Writes exclusions.conf like 'vitals exclude add'."""
+        import re as _re
+        from lshme.engine import exclusions
+        if req.method == "POST":
+            d = req.json()
+            action = d.get("action")
+            if action == "remove":
+                name = str(d.get("name", ""))
+                if ("exclude:" + name) not in self.app.cfg.parsers["exclusions"].sections():
+                    raise ValueError("no exclusion rule named %s" % name)
+                self.app.cfg.remove_section("exclusions", "exclude:" + name)
+                self.app.save_config("exclusions")
+                self.audit("web-exclusion-remove", sess, rule=name)
+                return jr({"ok": True})
+            if action != "add":
+                raise ValueError("unknown action")
+            code, comp = str(d.get("code", "")).strip(), str(d.get("component", "")).strip() or "*"
+            if not _re.match(r"^[A-Z0-9_*]+$", code):
+                raise ValueError("not a finding code: %s" % code)
+            until = str(d.get("until", "")).strip()
+            fields = {"code": code, "component": comp, "module": str(d.get("module", "")).strip(), "hosts": str(d.get("hosts", "")).strip(),
+                      "reason": str(d.get("reason", "")).strip()[:300], "owner": str(d.get("owner", "")).strip()[:80] or sess["user"], "until": until}
+            base = _re.sub(r"[^\w.-]+", "-", ("%s-%s" % (code, comp if comp != "*" else "all")).lower()).strip("-")[:50] or "rule"
+            name, n = base, 2
+            while ("exclude:" + name) in self.app.cfg.parsers["exclusions"].sections():
+                name, n = "%s-%d" % (base, n), n + 1
+            problems = exclusions.Rule(name, fields).validate()
+            if problems:
+                raise ValueError("; ".join(problems))
+            for k, v in fields.items():
+                if v:
+                    self.app.cfg.set("exclusions", "exclude:" + name, k, v)
+            self.app.save_config("exclusions")
+            self.audit("web-exclusion-add", sess, rule=name, **fields)
+            return jr({"ok": True, "name": name})
+        now = time.time()
+        rules = []
+        for r in exclusions.load(self.app.cfg):
+            st = "disabled" if not r.enabled else ("invalid" if r.validate() else "expired" if r.expired(now) else "active")
+            rules.append({"name": r.name, "code": r.code, "component": r.component, "module": r.module, "hosts": ",".join(r.hosts),
+                          "reason": r.reason, "owner": r.owner, "until": r.until, "status": st})
+        findings, excluded = [], []
+        try:
+            with open(os.path.join(self.app.paths.data_dir, "latest.json"), encoding="utf-8") as f:
+                latest = json.load(f)
+            for m in latest.get("modules", []):
+                for x in m.get("findings", []):
+                    if x.get("severity") in ("CRITICAL", "WARNING"):
+                        findings.append({"severity": x["severity"], "code": x.get("code", ""), "component": x.get("component", ""), "module": m.get("name", ""),
+                                         "message": x.get("message", ""), "recommendation": x.get("recommendation", "")})
+            excluded = latest.get("excluded", [])
+            host, checked = latest.get("host", ""), latest.get("collected_at")
+        except (OSError, ValueError):
+            host, checked = "", None
+        findings.sort(key=lambda x: (0 if x["severity"] == "CRITICAL" else 1, x["module"], x["component"]))
+        return jr({"findings": findings, "excluded": excluded, "rules": rules, "host": host, "checked": checked})
+
+    def api_san(self, req, sess):
+        """SAN storage: list (never the password), add or change, test (saved or not yet saved), remove. Administrators only."""
+        from lshme.ops import san
+        if req.method != "POST":
+            return jr({"arrays": [san.public(a) for a in san.arrays(self.app.cfg)],
+                       "types": [{"type": t, "label": l, "port": p, "howto": san.HOWTO[t]} for t, (l, p) in san.TYPES.items()]})
+        d = req.json()
+        action = d.get("action")
+        name = str(d.get("name", ""))[:40]
+        if action == "remove":
+            san.find(self.app.cfg, name)
+            san.remove(self.app, name)
+            self.audit("web-san-remove", sess, name=name)
+            return jr({"ok": True})
+        if action == "test" and d.get("saved"):
+            return jr(san.test(san.find(self.app.cfg, name)))
+        t = san.kind(d.get("type", ""))
+        ctl = [str(x).strip() for x in (d.get("controllers") or []) if str(x).strip()][:4]
+        a = {"name": san.safe_name(name), "type": t, "controllers": ctl, "port": int(d.get("port") or san.TYPES[t][1]), "username": str(d.get("username", ""))[:80],
+             "password": str(d.get("password", "")), "verify_tls": bool(d.get("verify_tls")), "enabled": True}
+        if not a["password"]:                                    # empty password: use the saved one
+            try:
+                a["password"] = san.find(self.app.cfg, a["name"])["password"]
+            except san.SanError:
+                pass
+        if action == "test":
+            return jr(san.test(a))
+        if action == "save":
+            san.save(self.app, a["name"], t, ctl, a["username"], d.get("password") or None, a["port"], a["verify_tls"], bool(d.get("enabled", True)))
+            self.audit("web-san-save", sess, name=a["name"], type=t, controllers=",".join(ctl))
+            return jr({"ok": True, "name": a["name"]})
+        raise ValueError("unknown action")
 
     def api_live_fleet(self, req, sess):
         from lshme.ops import livefleet

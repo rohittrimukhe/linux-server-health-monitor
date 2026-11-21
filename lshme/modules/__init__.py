@@ -8,7 +8,7 @@ run(ctx, res) which fills a ModuleResult. Modules are strictly read-only.
 import importlib
 
 MODULE_ORDER = (
-    "system", "cpu_memory", "storage", "folders", "services", "network", "hardware", "kvm", "cockpit",
+    "system", "cpu_memory", "storage", "san", "folders", "services", "network", "hardware", "kvm", "cockpit",
     "database", "backup", "logs", "security", "certificates", "containers", "cluster",
     "applications", "custom", "selfcheck",
 )
