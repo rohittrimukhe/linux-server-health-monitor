@@ -873,6 +873,13 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
     cov_text = data.coverage_text()
     if cov_text:
         story["items"].append(("wn", cov_text))
+    try:
+        from lshme.reports import periodic_kvm
+        kp = periodic_kvm.summary_point(run)
+        if kp:
+            story["items"].insert(min(3, len(story["items"])), kp)
+    except Exception:                                        # the report must never fail because of this line
+        pass
     d.add("In short", [story])
     sla_blocks = None
     try:
@@ -913,7 +920,17 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
         from lshme.reports import periodic_capacity
         d.add("Capacity forecast", periodic_capacity.blocks(data, fs))
 
+    try:
+        from lshme.reports import periodic_kvm
+        kb = periodic_kvm.blocks(data, ptype, variant)
+        if kb:
+            d.add("Virtual machines (KVM)", kb)
+    except Exception as e:
+        d.add("Virtual machines (KVM)", [note("The virtual machine details could not be built: %s" % e)])
+
     dbs = databases(data)
+    dbmod = run.module("database")
+    db_present = bool(dbs) or bool(dbmod and dbmod.status not in ("SKIPPED", "ERROR") and (dbmod.data or {}).get("instances"))
     if dbs:
         rows = []
         for x in dbs:
@@ -930,7 +947,7 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
         from lshme.reports import periodic_db
         blocks += periodic_db.blocks(data, 8 if ptype == "daily" else 40 if variant != "summary" else 15)
         d.add("Database size and growth", blocks)
-    else:
+    elif db_present:                                         # a database is installed but has no sizes yet; a server without one gets no section
         d.add("Database size and growth", [note("No database sizes recorded yet. They are measured by the health check for Oracle, PostgreSQL and MySQL/MariaDB.")])
 
     fo = folders(data, mounts)

@@ -198,11 +198,12 @@ def inventory_sections(doc, cfg):
     if inv.get("Databases"):
         blocks.append(table("Database engines", ["Engine", "Instance", "Version", "Location", "Owner"],
                             [[Cell(d["engine"], "b"), d["instance"], d["version"], d["home_or_path"], d["owner"]] for d in inv["Databases"]]))
-    if inv.get("VMs"):
+    has_kvm = any(t == "Virtual machines (KVM)" for t, _ in doc.sections)      # the KVM section already lists every VM in detail
+    if inv.get("VMs") and not has_kvm:
         blocks.append(table("Virtual machines", ["Name", "State", "vCPUs", "Memory", "Starts automatically"],
                             [[Cell(v["vm"], "b"), v["state"], v["vcpus"], v["memory"], v["autostart"]] for v in inv["VMs"]]))
     if blocks:
-        doc.add("Databases and virtual machines", blocks)
+        doc.add("Database engines" if has_kvm or not inv.get("VMs") else "Databases and virtual machines", blocks)
     pk = inv.get("Packages", [])
     if pk:
         newest = sorted(pk, key=lambda p: p.get("installed", ""), reverse=True)[:40]

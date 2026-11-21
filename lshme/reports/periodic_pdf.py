@@ -573,8 +573,8 @@ def first_height(b):
         return 70 * (1 if n <= (6 if USABLE > 700 else 4) else 2)
     if t == "points":
         return 44
-    if t == "table":
-        return 96
+    if t == "table":                                      # title, header and the first two rows
+        return (19 if b.get("title") else 0) + 40 + 2 * 30 + 14
     if t in ("charts", "wide_charts"):
         return 190
     if t == "actions":

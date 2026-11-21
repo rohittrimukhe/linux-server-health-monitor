@@ -128,6 +128,11 @@ def run(ctx, res):
             nics.append(b.get(p + "name", ""))
             rx += (to_int(b.get(p + "rx.bytes"), 0) - to_int(a.get(p + "rx.bytes"), 0)) / elapsed
             tx += (to_int(b.get(p + "tx.bytes"), 0) - to_int(a.get(p + "tx.bytes"), 0)) / elapsed
+        if not disks:                                   # a shut-off VM has no live block statistics: read its disk files directly
+            paths = dict((r.get("Target", ""), r.get("Source", "")) for r in parse_table(v("domblklist", name, "--details").out) if r.get("Device") == "disk")
+            for r in parse_table(v("domblkinfo", name, "--all").out):
+                if r.get("Target") in paths:
+                    disks.append({"name": r["Target"], "path": paths[r["Target"]], "capacity": to_int(r.get("Capacity")), "allocation": to_int(r.get("Allocation"))})
         snaps = parse_table(v("snapshot-list", name).out)
         oldest = None
         for s in snaps:
@@ -144,6 +149,20 @@ def run(ctx, res):
               "snapshots": len(snaps), "oldest_snapshot_days": round((time.time() - oldest) / 86400, 1) if oldest else None,
               "uptime_hint": info.get("CPU time", "")}
         vms.append(vm)
+        # history per VM, so the reports can show on/off time, CPU over the period and disk growth
+        res.metric("kvm.vm_running:" + name, 1 if state == "running" else 0)
+        if cpu_pct is not None:
+            res.metric("kvm.vm_cpu:" + name, cpu_pct)
+        if mem_used_pct is not None:
+            res.metric("kvm.vm_mem:" + name, mem_used_pct)
+        alloc = sum(d["allocation"] or 0 for d in disks)
+        cap = sum(d["capacity"] or 0 for d in disks)
+        if disks:
+            res.metric("kvm.vm_disk_alloc:" + name, alloc)
+            res.metric("kvm.vm_disk_cap:" + name, cap)
+        for d in disks:
+            if d["allocation"]:
+                res.metric("kvm.disk_alloc:%s|%s" % (name, d["name"]), d["allocation"])
         if state == "running":
             total_vcpu += vcpus
             total_mem_running += mem_kib * 1024
@@ -176,6 +195,8 @@ def run(ctx, res):
                       "capacity": cap, "allocation": alloc, "available": avail, "used_percent": used})
         if used is not None:
             res.metric("kvm.pool_used_percent:" + p, used)
+        if alloc is not None:
+            res.metric("kvm.pool_alloc:" + p, alloc)
         sev = severity_for(used, pw, pc)
         if sev:
             res.add(sev, "KVM_POOL_FULL", p, "Storage pool %s is %.1f%% used (%s free)" % (p, used, fmt_bytes(avail)),
@@ -200,7 +221,8 @@ def run(ctx, res):
     res.metric("kvm.vms_running", running)
     res.metric("kvm.vcpu_overcommit", vcpu_ratio)
     res.data = {"uri": uri, "version": version, "node": node, "vms": vms, "pools": pools, "networks": nets,
-                "vcpu_overcommit": vcpu_ratio, "memory_commit_ratio": mem_ratio}
+                "vcpu_overcommit": vcpu_ratio, "memory_commit_ratio": mem_ratio, "host_cpus": host_cpus, "host_memory": host_mem,
+                "vcpu_running": total_vcpu, "memory_running": total_mem_running}
     res.table("Hypervisor capacity", ["Item", "Value"], [
         ["libvirt URI", uri], ["Host CPUs / memory", "%d / %s" % (host_cpus, fmt_bytes(host_mem))],
         ["VMs (running / total)", "%d / %d" % (running, len(vms))],

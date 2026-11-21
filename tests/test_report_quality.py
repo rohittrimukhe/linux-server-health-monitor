@@ -309,3 +309,48 @@ class ClosedIssuesTest(unittest.TestCase):
         self.assertFalse([a for b in attention for a in b["items"] if "mpatha" in a[1]])
         ex = dict(periodic.build(self.run, self.home.cfg, self.home.paths, "weekly", "executive", self.now).sections)
         self.assertIn("Resolved during the period", ex)
+
+
+class OnlyWhatIsInstalledTest(unittest.TestCase):
+    """A section appears only for what the server has: no database section on a KVM host, a KVM section only on one."""
+
+    def test_kvm_host_without_a_database(self):
+        from lshme.core.model import ModuleResult
+        home = TempHome()
+        try:
+            now = time.time()
+            run = make_run(now)
+            seed(home.paths, run)
+            run.modules = [m for m in run.modules if m.name != "database"]
+            h = History(home.paths.history_db)
+            h.con.execute("DELETE FROM metrics WHERE key LIKE 'oracle.%' OR key LIKE 'postgresql.%' OR key LIKE 'mysql.%'")
+            h.con.commit()
+            h.close()
+            d = periodic.build(run, home.cfg, home.paths, "weekly", "summary", now)
+            titles = [t for t, _ in d.sections]
+            self.assertNotIn("Database size and growth", titles)
+            self.assertNotIn("Virtual machines (KVM)", titles)                     # not a KVM host either
+            k = ModuleResult("kvm", "KVM Virtualisation", 10)
+            k.status = "OK"
+            disk = {"name": "vda", "path": "/VM/app.qcow2", "capacity": 100 * 2 ** 30, "allocation": 40 * 2 ** 30}
+            k.data = {"node": {"CPU(s)": "32"}, "host_cpus": 32, "host_memory": 256 * 2 ** 30, "vcpu_running": 8, "memory_running": 32 * 2 ** 30,
+                      "vcpu_overcommit": 0.25, "memory_commit_ratio": 0.12, "networks": [],
+                      "vms": [{"name": "app01", "state": "running", "vcpus": 8, "memory": 32 * 2 ** 30, "cpu_percent": 20.0, "autostart": True, "disks": [disk], "snapshots": 0},
+                              {"name": "test01", "state": "shut off", "vcpus": 2, "memory": 4 * 2 ** 30, "cpu_percent": None, "autostart": True, "disks": [], "snapshots": 1,
+                               "oldest_snapshot_days": 20.0}],
+                      "pools": [{"name": "images", "state": "running", "capacity": 2 ** 40, "allocation": 2 ** 39, "available": 2 ** 39, "used_percent": 50.0}]}
+            run.modules.append(k)
+            for variant in ("summary", "comprehensive"):
+                d = periodic.build(run, home.cfg, home.paths, "monthly", variant, now)
+                blocks = dict(d.sections)["Virtual machines (KVM)"]
+                names = [b.get("title") for b in blocks if b.get("type") == "table"]
+                self.assertIn("Virtual machines", names)
+                self.assertIn("Storage pools", names)
+                self.assertEqual("Virtual machine disks" in names, variant == "comprehensive")   # the full inventory only in comprehensive
+                story = dict(d.sections)["In short"][0]["items"]
+                self.assertTrue(any("virtual machine" in t for _, t in story))
+                self.assertTrue(any(lv == "wn" and "test01" in t for lv, t in story))   # set to start automatically but off
+                files = reports.write_periodic([d], ["html", "pdf"], home.dir, "kvm_" + variant, "")[0]
+                self.assertEqual(len(files), 2)
+        finally:
+            home.cleanup()
