@@ -677,10 +677,61 @@ def health_by_day(data):
                  legend=trimmed_legend("", dropped, dates).strip())
 
 
-def recurring_table(data):
+def open_keys(data):
+    """(code, component) of every problem the latest check still finds."""
+    return set((f.code, f.component) for f in (data.run.findings("WARNING") if data.run else []))
+
+
+def accepted_keys(data):
+    return set((x.get("code"), x.get("component")) for x in (getattr(data.run, "excluded", None) or []))
+
+
+def closed_blocks(data):
+    """The 'Closed issues' section: problems that were found in the period and are not there any more, and incidents that ended.
+    They are history: they do not count in the health score, the status or the lists of open problems."""
+    from lshme.ops import sla
+    blocks = []
+    skip = open_keys(data) | accepted_keys(data)
     rows = []
     if data.hist:
+        q = ("SELECT severity, code, component, COUNT(DISTINCT run_id), MIN(ts), MAX(ts), MAX(message) FROM findings "
+             "WHERE host=? AND ts>=? AND code<>'RECURRING_CRITICAL' GROUP BY severity, code, component ORDER BY MAX(ts) DESC LIMIT 80")
+        for sev, code, comp, n, first, last, msg in data.hist.con.execute(q, (data.host, data.since)).fetchall():
+            if (code, comp) in skip:
+                continue
+            fmt = "%d %b %H:%M" if data.days <= 7 else "%d %b"
+            rows.append([Cell("CRIT" if sev == "CRITICAL" else "WARN", "chip-cr" if sev == "CRITICAL" else "chip-wn"), (comp or code)[:40], redact(msg or "")[:110], n,
+                         stamp(first, fmt), stamp(last, fmt), Cell("closed", "ok")])
+    if rows:
+        blocks.append(table("Problems that were found and are now closed", ["Was", "Where", "What", "Checks", "First seen", "Last seen", "Now"], rows,
+                            align=["", "", "", "r", "", "", ""],
+                            legend="'Was' is how serious it was when it was found. 'Last seen' is the last health check that found it; the latest check does not."))
+    inc = []
+    if data.paths:
+        try:
+            events = sla.load_events(os.path.join(data.paths.data_dir, "watch_events.jsonl"))
+            for i in sla.incidents_from(events, data.now):
+                if i.get("ongoing") or i["end"] < data.since:
+                    continue
+                inc.append([stamp(i["start"], "%d %b %H:%M"), stamp(i["end"], "%d %b %H:%M"), fmt_duration(i["end"] - i["start"]),
+                            Cell("CRIT" if i["severity"] == "CRITICAL" else "WARN", "chip-cr" if i["severity"] == "CRITICAL" else "chip-wn"),
+                            i["component"], redact(i["message"])[:100]])
+        except Exception:
+            inc = []
+    if inc:
+        blocks.append(table("Incidents seen by the live watcher that ended", ["Started", "Ended", "Lasted", "Was", "Where", "Problem"], inc[-25:], align=["", "", "r", "", "", ""]))
+    if blocks:
+        blocks.insert(0, note("These problems are closed. They are shown here only as history and do not count in the health score or the status."))
+    return blocks
+
+
+def recurring_table(data):
+    rows = []
+    now_open = open_keys(data)
+    if data.hist:
         for code, comp, sev, n, msg in data.hist.recurring(data.host, data.since, 2):
+            if (code, comp) not in now_open:
+                continue
             rows.append([Cell(sev, "chip-cr" if sev == "CRITICAL" else "chip-wn"), code, comp, n, (msg or "")[:100]])
     if not rows:
         return None
@@ -942,6 +993,10 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
         d.add("What needs attention", [actions(acts[:10])])
     else:
         d.add("What needs attention", [note("Nothing needs attention. Every check is within its limits.")])
+    if variant != "database":
+        closed = closed_blocks(data)
+        if closed:
+            d.add("Closed issues", closed)
     if variant == "comprehensive":
         X.inventory_sections(d, cfg)
     if variant == "executive":
@@ -981,7 +1036,10 @@ def period_findings(data):
     q = ("SELECT severity, code, component, COUNT(DISTINCT run_id), MIN(ts), MAX(ts), MAX(message) FROM findings "
          "WHERE host=? AND ts>=? GROUP BY severity, code, component ORDER BY severity, 4 DESC LIMIT 200")
     rows = []
+    now_open = open_keys(data)
     for sev, code, comp, n, first, last, msg in data.hist.con.execute(q, (data.host, data.since)).fetchall():
+        if (code, comp) not in now_open:                    # closed problems are listed under 'Closed issues'
+            continue
         rows.append([Cell(sev, "chip-cr" if sev == "CRITICAL" else "chip-wn"), code, comp, n, stamp(first, "%d %b %H:%M"), stamp(last, "%d %b %H:%M"), (msg or "")[:90]])
     if not rows:
         rows = [[Cell("OK", "chip-ok"), "", "", "", "", "", "No warnings or criticals in this period"]]

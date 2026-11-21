@@ -36,7 +36,7 @@ TEMPLATES = [
      "pages": "12-18", "formats": "PDF, HTML, Excel, CSV, text, JSON",
      "about": "The daily content for 7 days plus growth by date, health by day, this week against last week, repeating problems, patch compliance and capacity forecast.",
      "sections": ["In short", "Overall status", "SLA achieved", "Checklist for the period", "CPU and memory", "Network", "Capacity forecast", "Data growth by date",
-                  "Health by day", "This period against the last one", "Repeating problems and log errors", "Patch and compliance", "What needs attention"],
+                  "Health by day", "This period against the last one", "Repeating problems and log errors", "Patch and compliance", "What needs attention", "Closed issues"],
      "sent_to": "to and cc of the weekly schedule"},
     {"id": "monthly", "name": "Monthly server report (summary)", "ptype": "monthly", "variant": "summary", "audience": "IT management",
      "pages": "15-20", "formats": "PDF, HTML, Excel, CSV, text, JSON",

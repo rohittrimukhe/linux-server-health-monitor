@@ -66,6 +66,11 @@ def compose(d, data, run, ptype):
         sections.append(("What needs a decision", [actions(acts[:5])]))
     else:
         sections.append(("What needs a decision", [note("Nothing needs a decision. Every check is within its limits.")]))
+    closed = section(d, "Closed issues")
+    n_closed = sum(len(b["rows"]) for b in closed if b["type"] == "table" and b["title"].startswith("Problems"))
+    if n_closed:
+        sections.append(("Resolved during the period", [note("%d issue%s found during this period %s now closed. Closed issues do not count in the score." % (
+            n_closed, "" if n_closed == 1 else "s", "is" if n_closed == 1 else "are"))]))
     exceptions = section(d, "Accepted exceptions")
     if exceptions:
         n = sum(len(b["rows"]) for b in exceptions if b["type"] == "table")

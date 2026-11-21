@@ -284,6 +284,11 @@ The **executive summary** (daily, weekly, monthly) is for the CEO and management
 decisions that are needed, with no technical tables. Put management's addresses in `to_summary` of a schedule and they receive only that
 report; everyone else keeps the technical report.
 
+**Closed issues.** A problem that has been fixed is history: it is listed once, under **Closed issues** (what it was, when it was
+first and last seen, and the incidents the live watcher saw end), and it stops counting. It no longer lowers the health score, no longer
+raises a "has been critical in N runs" warning, and no longer appears in "What needs attention" or "Repeating problems". Only what the
+latest health check still finds is open.
+
 **Report logos.** The customer logo is shown at the top right of every report (PDF, HTML, Excel) and in the running header of every PDF page.
 Upload it in the dashboard (**Reports > Report logos**: PNG or JPEG up to 700 KB, PNG up to 700,000 pixels) or run
 `vitals logo set /path/logo.png`. With several servers every server writes its own reports, so the central server keeps one logo for all

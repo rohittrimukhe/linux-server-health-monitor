@@ -254,6 +254,8 @@ def analyse(hist, run, cfg):
                         "Storage pool %s forecast to fill in about %s" % (key.split(":", 1)[1], fmt_duration(secs)))
 
     rec = hist.recurring(host, now - window * 86400)
+    still_open = set((f.code, f.component) for f in run.findings("WARNING"))
+    rec = [r for r in rec if (r[0], r[1]) in still_open]         # an issue that has been fixed is closed: it is history, not a repeating problem
     if rec:
         res.table("Recurring issues (last %d days)" % window, ["Code", "Component", "Severity", "Runs affected", "Latest message"],
                   [list(r) for r in rec])

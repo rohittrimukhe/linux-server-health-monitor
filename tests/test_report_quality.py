@@ -236,3 +236,59 @@ class ExecutiveTemplateTest(unittest.TestCase):
         pdf, ctype = templates.preview(app, "daily", "pdf")
         self.assertTrue(pdf.startswith(b"%PDF") and ctype == "application/pdf")
         self.assertEqual(os.listdir(os.path.join(self.home.dir, "data")).count("preview"), 0)    # nothing is left behind
+
+
+class ClosedIssuesTest(unittest.TestCase):
+    """A problem that has been fixed is history: it is listed as closed and no longer weighs on the score."""
+
+    def setUp(self):
+        self.home = TempHome()
+        self.now = time.time()
+        self.run = make_run(self.now)
+        seed(self.home.paths, self.run)
+        h = History(self.home.paths.history_db)
+        h.con.executemany("INSERT INTO findings VALUES(?,?,?,?,?,?,?,?)",
+                          [(9000 + i, self.run.host, self.now - 5 * 3600 + i * 600, "CRITICAL", "MULTIPATH_ALL_FAILED", "mpatha", "storage", "All 2 paths of mpatha have failed")
+                           for i in range(6)])
+        h.con.commit()
+        h.close()
+
+    def tearDown(self):
+        self.home.cleanup()
+
+    def analyse(self):
+        from lshme.engine import history
+        h = History(self.home.paths.history_db)
+        try:
+            res = history.analyse(h, self.run, self.home.cfg)
+        finally:
+            h.close()
+        return [f for f in res.findings if f.code == "RECURRING_CRITICAL"]
+
+    def test_a_fixed_problem_no_longer_raises_a_repeating_warning(self):
+        self.assertEqual(self.analyse(), [])                                    # six old criticals, none now: closed
+        self.run.module("storage").add("CRITICAL", "MULTIPATH_ALL_FAILED", "mpatha", "All 2 paths of mpatha have failed")
+        found = self.analyse()                                                  # still failing: it is a repeating problem
+        self.assertEqual([f.component for f in found], ["mpatha"])
+
+    def test_closed_problems_are_listed_under_closed_only(self):
+        events = os.path.join(self.home.paths.data_dir, "watch_events.jsonl")
+        os.makedirs(self.home.paths.data_dir, exist_ok=True)
+        with open(events, "w", encoding="utf-8") as f:
+            for e in (ev("full", "disk:/VM-OS-DATA", "/VM-OS-DATA", self.now - 4 * 3600, 43)):
+                f.write(json.dumps(e) + "\n")
+        sections = dict(periodic.build(self.run, self.home.cfg, self.home.paths, "weekly", "summary", self.now).sections)
+        closed = [b for b in sections["Closed issues"] if b["type"] == "table"]
+        self.assertEqual([b["title"][:8] for b in closed], ["Problems", "Incident"])
+        self.assertEqual(str(closed[0]["rows"][0][1]), "mpatha")
+        self.assertEqual(str(closed[0]["rows"][0][-1]), "closed")
+        self.assertIn("/VM-OS-DATA", [str(c) for c in closed[1]["rows"][0]])
+        self.assertTrue([b for b in sections["Closed issues"] if b["type"] == "note" and "do not count" in b["text"]])
+        for title in ("Repeating problems and log errors", "Health by day"):
+            for b in sections.get(title, []):
+                if b["type"] == "table":
+                    self.assertFalse([r for r in b["rows"] if "mpatha" in " ".join(str(c) for c in r)], title)
+        attention = [b for b in sections["What needs attention"] if b["type"] == "actions"]
+        self.assertFalse([a for b in attention for a in b["items"] if "mpatha" in a[1]])
+        ex = dict(periodic.build(self.run, self.home.cfg, self.home.paths, "weekly", "executive", self.now).sections)
+        self.assertIn("Resolved during the period", ex)
