@@ -109,6 +109,9 @@ def build_message(ms, subject, text, html_body, attachments, status="HEALTHY", t
             if r not in to:
                 to.append(r)
     cc = list(cc_override) if cc_override is not None else list(ms.cc)
+    seen = set()
+    to = [r for r in to if not (r.lower() in seen or seen.add(r.lower()))]       # each person once, even when listed twice
+    cc = [r for r in cc if not (r.lower() in seen or seen.add(r.lower()))]
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = from_header(ms)
@@ -152,7 +155,7 @@ def build_message(ms, subject, text, html_body, attachments, status="HEALTHY", t
         msg.add_attachment(blob if blob is not None else archive.read_bytes(path), maintype=maintype, subtype=subtype, filename=shown)
         used += size
         attached.append(shown)
-    recipients = to + cc + list(ms.bcc)
+    recipients = to + cc + [r for r in ms.bcc if r.lower() not in seen]
     return msg, recipients, attached, skipped
 
 
