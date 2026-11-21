@@ -37,7 +37,7 @@ DEFAULTS = {
         "applications": {"http_checks": "", "check_mail_queue": "yes"},
         "history": {"enabled": "yes"},
         "integrations": {"prometheus_textfile": "", "agent_dropdir": ""},
-        "watch": {"interval": "60", "confirm": "2", "repeat_minutes": "60", "recovery_alerts": "yes",
+        "watch": {"interval": "60", "confirm": "2", "repeat_minutes": "360", "recovery_alerts": "yes",
                   "rotation_modules": "services,database,kvm,cockpit,network,backup,cluster,certificates,selfcheck",
                   "rotation_minutes": "15", "alert_min_severity": "WARNING", "alert_email": "yes", "alert_to": "",
                   "quiet_hours": "", "quiet_min_severity": "CRITICAL", "min_minutes": "0", "min_minutes_critical": "0",

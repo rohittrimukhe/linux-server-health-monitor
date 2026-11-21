@@ -221,6 +221,8 @@ svg.chart .dot.warn { fill: var(--warn); } svg.chart .dot.crit { fill: var(--cri
 .st::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .st-open { color: var(--crit-ink); background: var(--crit-soft); }
 .st-acknowledged { color: var(--info-ink); background: var(--info-soft); }
+.st-muted { color: var(--muted); background: var(--surface2); }
+select.small { min-height: 32px; padding: 4px 8px; font-size: 13px; }
 .st-resolved { color: var(--ok-ink); background: var(--ok-soft); }
 .chip { display: inline-block; padding: 2px 9px; border-radius: 8px; background: var(--track); font-size: 12px; margin: 2px 4px 2px 0; }
 .chip.crit { background: var(--crit-soft); color: var(--crit-ink); } .chip.warn { background: var(--warn-soft); color: var(--warn-ink); }

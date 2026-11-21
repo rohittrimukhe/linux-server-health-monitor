@@ -413,7 +413,7 @@ Settings are in `main.conf [watch]`:
 |---|---|---|
 | `interval` | 60 | Seconds between checks |
 | `confirm` | 2 | Consecutive bad checks before alerting (prevents flapping alerts) |
-| `repeat_minutes` | 60 | Reminder interval while a problem continues (0 = never) |
+| `repeat_minutes` | 360 | Reminder interval while a problem continues (0 = never). A single problem can also be muted from the dashboard (Alerts > Mute) |
 | `recovery_alerts` | yes | Send a message when a problem clears, and an IMPROVED message when it eases (e.g. CRITICAL to WARNING) |
 | `rotation_modules` | services, database, kvm, cockpit, network, backup, cluster, certificates | Heavier modules run one per check, in turn |
 | `rotation_minutes` | 15 | How often each rotated module repeats |

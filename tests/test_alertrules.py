@@ -61,6 +61,35 @@ class RuleTests(unittest.TestCase):
         out = A.drop_acknowledged([alert("cpu", kind="STILL"), alert("cpu", "CRITICAL", kind="ESCALATED"), alert("mem", kind="STILL")], acks)
         self.assertEqual([(a["key"], a["kind"]) for a in out], [("cpu", "ESCALATED"), ("mem", "STILL")])
 
+    def test_muted_problems_send_nothing_until_the_time_is_up(self):
+        from fakes import TempHome
+        from lshme.ops import watch as W
+        home = TempHome()
+        try:
+            now = at(12)
+            W.mute(home.paths, "disk:/u01", "admin", 6, now)
+            W.mute(home.paths, "svc:chronyd", "admin", 0, now)                          # until it ends
+            acks = W.load_acks(home.paths)
+            self.assertTrue(W.is_muted(acks["disk:/u01"], now + 5 * 3600))
+            self.assertFalse(W.is_muted(acks["disk:/u01"], now + 7 * 3600))
+            self.assertTrue(W.is_muted(acks["svc:chronyd"], now + 30 * 86400))
+            problems = {"disk:/u01": {}, "svc:chronyd": {}, "cpu": {}}
+            alerts = [alert("disk:/u01", kind="STILL"), alert("disk:/u01", "CRITICAL", kind="ESCALATED"), alert("cpu", kind="NEW")]
+            out, rec, changed = W.apply_mutes(acks, alerts, [alert("svc:chronyd", kind="RECOVERED")], problems, now + 3600)
+            self.assertEqual([a["key"] for a in out], ["cpu"])                           # reminders and escalations of muted problems: none
+            self.assertEqual(rec, [])                                                     # nor the recovery notice
+            self.assertFalse(changed)
+            out, _, changed = W.apply_mutes(acks, alerts, [], problems, now + 7 * 3600)  # six hours later the mute has ended
+            self.assertEqual(len(out), 3)
+            self.assertTrue(changed and "disk:/u01" not in acks)
+            W.unmute(home.paths, "svc:chronyd")
+            self.assertNotIn("svc:chronyd", W.load_acks(home.paths))
+            with self.assertRaises(ValueError):
+                W.mute(home.paths, "x", "admin", -1)
+            self.assertEqual(W.DEFAULTS["repeat_minutes"], "360")                         # reminders every 6 hours by default
+        finally:
+            home.cleanup()
+
     def test_slack_and_teams_messages(self):
         self.assertEqual(A.detect_format("https://hooks.slack.com/services/T/B/x"), "slack")
         self.assertEqual(A.detect_format("https://contoso.webhook.office.com/webhookb2/x"), "teams")

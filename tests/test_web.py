@@ -516,6 +516,15 @@ class AlertsAndFleetTests(WebCase):
         self.assertEqual(self.call("POST", "/api/alerts", {"action": "ack", "key": key}, user="admin").status, 200)
         r = self.call("GET", "/api/alerts", user="admin")
         self.assertEqual(r.json["active"][0]["ack"]["by"], "admin")
+        self.assertFalse(r.json["active"][0]["muted"])
+        self.assertEqual(self.call("POST", "/api/alerts", {"action": "mute", "key": key, "hours": 6}, user="viewer").status, 403)
+        self.assertEqual(self.call("POST", "/api/alerts", {"action": "mute", "key": key, "hours": 5}, user="admin").status, 400)   # only the offered choices
+        self.assertEqual(self.call("POST", "/api/alerts", {"action": "mute", "key": key, "hours": 6}, user="admin").status, 200)
+        a = self.call("GET", "/api/alerts", user="admin").json["active"][0]
+        self.assertTrue(a["muted"])
+        self.assertAlmostEqual(a["mute_until"], time.time() + 6 * 3600, delta=60)
+        self.assertEqual(self.call("POST", "/api/alerts", {"action": "unmute", "key": key}, user="admin").status, 200)
+        self.assertFalse(self.call("GET", "/api/alerts", user="admin").json["active"][0]["muted"])
 
     def test_fleet_lists_servers_and_refuses_to_run_without_any(self):
         from lshme.ops import dashboard

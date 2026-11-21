@@ -25,7 +25,7 @@ from lshme.core.config import as_bool, as_list
 from lshme.core.model import ModuleResult, SEV_RANK
 from lshme.core.util import NETWORK_FS, PSEUDO_FS, listening_ports_from_proc, owned_by, to_int
 
-DEFAULTS = {"interval": "60", "confirm": "2", "repeat_minutes": "60", "recovery_alerts": "yes",
+DEFAULTS = {"interval": "60", "confirm": "2", "repeat_minutes": "360", "recovery_alerts": "yes",
             "rotation_modules": "services,database,kvm,cockpit,network,backup,cluster,certificates,selfcheck",
             "rotation_minutes": "15", "alert_min_severity": "WARNING", "alert_email": "yes", "alert_to": "",
             "quiet_hours": "", "quiet_min_severity": "CRITICAL", "min_minutes": "0", "min_minutes_critical": "0",
@@ -432,6 +432,46 @@ def acknowledge(paths, key, user, now=None):
     save_acks(paths, acks)
 
 
+MUTE_HOURS = (1, 6, 24, 168, 0)          # 0 = until the problem ends
+
+
+def mute(paths, key, user, hours, now=None):
+    """Silence one problem: no reminders, escalations or recovery emails for it until the time is up (0 hours = until it ends).
+    The incident log still records it."""
+    now = now or time.time()
+    hours = float(hours)
+    if hours < 0 or hours > 24 * 31:
+        raise ValueError("mute for 0 to 744 hours")
+    acks = load_acks(paths)
+    acks[key] = {"by": user, "at": now, "mute_until": (now + hours * 3600) if hours else 0}
+    save_acks(paths, acks)
+
+
+def unmute(paths, key):
+    acks = load_acks(paths)
+    if acks.pop(key, None) is not None:
+        save_acks(paths, acks)
+
+
+def is_muted(ack, now=None):
+    if not isinstance(ack, dict) or "mute_until" not in ack:
+        return False
+    until = ack.get("mute_until") or 0
+    return until == 0 or (now or time.time()) < until
+
+
+def apply_mutes(acks, alerts, recovered, problems, now):
+    """Drop every alert and recovery notice of a muted problem; forget acknowledgements of problems that ended and mutes
+    whose time is up (their reminders start again). Returns (alerts, recovered, acks changed)."""
+    muted = set(k for k, a in acks.items() if is_muted(a, now))
+    alerts = [a for a in alerts if a.get("key") not in muted]
+    recovered = [r for r in recovered if r.get("key") not in muted]            # a muted problem stays quiet when it ends, too
+    stale = [k for k in acks if k not in problems or ("mute_until" in acks[k] and k not in muted)]
+    for k in stale:
+        acks.pop(k)
+    return alerts, recovered, bool(stale)
+
+
 def read_events(paths, limit=800):
     out = []
     try:
@@ -606,10 +646,8 @@ class Watcher(object):
         from lshme.ops import alertrules
         host = os.uname()[1]
         acks = load_acks(self.app.paths)
-        stale = [k for k in acks if k not in self.state.get("problems", {})]
-        if stale:                                        # a problem that ended no longer needs its acknowledgement
-            for k in stale:
-                acks.pop(k)
+        alerts, recovered, changed = apply_mutes(acks, alerts, recovered, self.state.get("problems", {}), now)
+        if changed:
             save_acks(self.app.paths, acks)
         alerts = alertrules.drop_acknowledged(alerts, acks)
         alerts, held = alertrules.apply_rules(alerts, now, setting(cfg, "quiet_hours"), setting(cfg, "quiet_min_severity"),

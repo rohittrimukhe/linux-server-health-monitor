@@ -265,13 +265,24 @@ class WebApp(object):
     def api_alerts(self, req, sess):
         from lshme.core.config import as_bool
         from lshme.ops import watch as W
-        if req.method == "POST":                                 # acknowledge a problem: its reminders stop until it gets worse or ends
+        if req.method == "POST":                                 # acknowledge, mute or unmute one problem
             data = req.json()
-            if data.get("action") != "ack":
-                raise ValueError("unknown action")
+            action = data.get("action")
             key = str(data.get("key", ""))[:300]
-            W.acknowledge(self.app.paths, key, sess["user"])
-            self.audit("web-alert-ack", sess, key=key)
+            if not key:
+                raise ValueError("no problem given")
+            if action == "ack":
+                W.acknowledge(self.app.paths, key, sess["user"])
+            elif action == "mute":
+                hours = float(data.get("hours", 6))
+                if hours not in W.MUTE_HOURS:
+                    raise ValueError("mute for 1, 6, 24 or 168 hours, or 0 (until it ends)")
+                W.mute(self.app.paths, key, sess["user"], hours)
+            elif action == "unmute":
+                W.unmute(self.app.paths, key)
+            else:
+                raise ValueError("unknown action")
+            self.audit("web-alert-" + action, sess, key=key, hours=data.get("hours"))
             return jr({"ok": True})
         acks = W.load_acks(self.app.paths)
         d, cfg = self.app.paths.data_dir, self.app.cfg
@@ -296,7 +307,8 @@ class WebApp(object):
         for key, p in problems.items():
             e = last.get(key) or {}
             active.append({"key": key, "severity": p.get("severity"), "component": e.get("component") or key, "message": e.get("message") or key,
-                           "since": p.get("since"), "count": p.get("count"), "alerted": p.get("alerted"), "ack": acks.get(key)})
+                           "since": p.get("since"), "count": p.get("count"), "alerted": p.get("alerted"), "ack": acks.get(key),
+                           "muted": W.is_muted(acks.get(key)), "mute_until": (acks.get(key) or {}).get("mute_until")})
         active.sort(key=lambda a: (0 if a["severity"] == "CRITICAL" else 1, -(a["since"] or 0)))
         s = lambda k: W.setting(cfg, k)
         channels = {"email": as_bool(s("alert_email"), True), "to": s("alert_to"), "syslog": as_bool(s("syslog"), True), "webhook": bool(s("webhook_url")),

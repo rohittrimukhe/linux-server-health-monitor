@@ -398,7 +398,7 @@
             clear(box);
             if (!data || !data.enabled || !data.servers.length || (data.servers.length < 2)) return;
             var sv = data.servers, bad = sv.filter(function (s) { return s.status !== "HEALTHY"; }).length;
-            box.appendChild(card("All servers, live", h("span", { class: "muted", text: sv.length + " servers - " + (bad ? bad + " need attention" : "all healthy") + " - updated " + dur(Date.now() / 1000 - data.updated) + " ago, servers report every " + data.interval + " s" }),
+            box.appendChild(card("All servers, live", h("span", { class: "muted", text: sv.length + " servers - " + (bad ? bad + " need attention" : "all healthy") + " - " + (data.updated ? "updated " + dur(Date.now() / 1000 - data.updated) + " ago" : "collecting the first answers") + ", servers report every " + data.interval + " s" }),
                 h("div", { class: "fleet" }, sv.map(tile))));
         }
         function load() {
@@ -434,6 +434,27 @@
         function pri(i) { return h("span", { class: "pri " + (i.priority === "P1" ? "p1" : "p2"), title: i.severity === "CRITICAL" ? "Critical" : "Warning", text: i.priority }); }
         function status(s) { return h("span", { class: "st st-" + s.toLowerCase(), text: s }); }
         function tile(label, value, tone, sub) { return h("div", { class: "card tile " + tone }, h("div", { class: "muted", text: label }), h("div", { class: "big", text: String(value) }), h("div", { class: "muted", text: sub || "" })); }
+        function post(body, msg) { api("POST", "/api/alerts", body).then(function () { toast(msg, "good"); load(); }).catch(fail); }
+        function alertActions(a) {
+            var admin = S.me.role === "admin";
+            if (a.muted) {
+                var until = a.mute_until ? "until " + when(a.mute_until) : "until it ends";
+                return h("div", { class: "row" }, h("span", { class: "st st-muted", text: "Muted " + until, title: "by " + a.ack.by + " " + ago(a.ack.at) }),
+                    admin ? h("button", { class: "small", type: "button", text: "Unmute", onclick: function () { post({ action: "unmute", key: a.key }, "Unmuted: alerts for this problem start again"); } }) : "");
+            }
+            if (!admin) return a.ack ? h("span", { class: "muted", text: "acknowledged by " + a.ack.by + " " + ago(a.ack.at) }) : "";
+            var pick = h("select", { "aria-label": "Mute " + a.component, class: "small" },
+                [["", "Mute..."], [6, "Mute 6 hours"], [24, "Mute 24 hours"], [168, "Mute 7 days"], [0, "Mute until it ends"]].map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
+            pick.addEventListener("change", function () {
+                if (pick.value === "") return;
+                var hrs = +pick.value;
+                post({ action: "mute", key: a.key, hours: hrs }, hrs ? "Muted for " + (hrs >= 24 ? hrs / 24 + " day" + (hrs > 24 ? "s" : "") : hrs + " hours") + ": no emails for this problem" : "Muted until it ends: no emails for this problem");
+            });
+            return h("div", { class: "row" },
+                a.ack ? h("span", { class: "muted", text: "acknowledged by " + a.ack.by + " " + ago(a.ack.at) })
+                    : h("button", { class: "small", type: "button", text: "Acknowledge", title: "Stop reminders until it gets worse or ends", onclick: function () { post({ action: "ack", key: a.key }, "Acknowledged: reminders stop until it gets worse or ends"); } }),
+                pick);
+        }
         function paint(d) {
             clear(box);
             var sm = d.incident_summary, inc = d.incidents, ch = d.channels, how = [];
@@ -451,10 +472,7 @@
             var active = d.active.length ? table(["Priority", "Problem", "Since", "Checks", "Alert", ""], d.active.map(function (a) {
                 return [h("span", { class: "pri " + (a.severity === "CRITICAL" ? "p1" : "p2"), text: a.severity === "CRITICAL" ? "P1" : "P2", title: a.severity }),
                     h("div", null, h("b", { text: a.component }), h("div", { class: "muted", text: a.message })), ago(a.since), a.count, a.alerted ? "sent" : "waiting",
-                    a.ack ? h("span", { class: "muted", text: "acknowledged by " + a.ack.by + " " + ago(a.ack.at) })
-                        : (S.me.role === "admin" ? h("button", { class: "small", text: "Acknowledge", onclick: function () {
-                            api("POST", "/api/alerts", { action: "ack", key: a.key }).then(function () { toast("Acknowledged: reminders stop until it gets worse or ends", "good"); load(); }).catch(fail);
-                        } }) : "")];
+                    alertActions(a)];
             }), [3]) : h("p", { class: "okline" }, h("span", { class: "dot ok" }), "No active problems. CPU, memory, disks, services and ports are within their limits.");
             box.appendChild(card("Active problems", info, active));
             var tab = st.tab || (sm.open ? "open" : "resolved");
