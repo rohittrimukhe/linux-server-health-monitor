@@ -30,7 +30,7 @@ PROGRAM_DIRS = ("lshme", "docs", "tools")
 UA = "lrs-vitals-updater"
 
 
-class UpdateError(Exception):
+class UpdateError(ValueError):              # a plain message, never a traceback
     pass
 
 

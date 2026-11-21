@@ -301,16 +301,16 @@ h3.sub { margin: 18px 0 10px; font-size: 14px; font-weight: 700; color: var(--te
 @media (min-width: 981px) {
   html.nav-auto { --side-w: 72px; }
   html.nav-auto .top { width: 72px; overflow-x: hidden; transition: width .18s ease, box-shadow .18s ease; }
-  html.nav-auto .top:hover, html.nav-auto .top:focus-within { width: 248px; box-shadow: 10px 0 34px rgba(0, 0, 0, .28); }
-  html.nav-auto .top:not(:hover):not(:focus-within) .in { padding: 14px 8px; }
-  html.nav-auto .top:not(:hover):not(:focus-within) .pin { align-self: center; }
-  html.nav-auto .top:not(:hover):not(:focus-within) .brand { align-items: center; padding: 0 0 12px; }
-  html.nav-auto .top:not(:hover):not(:focus-within) .brand img.lrs { height: 28px; padding: 4px 5px; }
-  html.nav-auto .top:not(:hover):not(:focus-within) .brand img.cust, html.nav-auto .top:not(:hover):not(:focus-within) .brand .cust,
-  html.nav-auto .top:not(:hover):not(:focus-within) .who { display: none; }
-  html.nav-auto .top:not(:hover):not(:focus-within) nav a { justify-content: center; padding: 12px 0; }
-  html.nav-auto .top:not(:hover):not(:focus-within) nav a span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  html.nav-auto .top:not(:hover):not(:focus-within) nav a.on::before { left: -8px; }
+  html.nav-auto .top:hover, html.nav-auto .top:has(:focus-visible) { width: 248px; box-shadow: 10px 0 34px rgba(0, 0, 0, .28); }
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .in { padding: 14px 8px; }
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .pin { align-self: center; }
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .brand { align-items: center; padding: 0 0 12px; }
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .brand img.lrs { height: 28px; padding: 4px 5px; }
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .brand img.cust, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .brand .cust,
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .who { display: none; }
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) nav a { justify-content: center; padding: 12px 0; }
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) nav a span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) nav a.on::before { left: -8px; }
 }
 @media (prefers-reduced-motion: reduce) { html.nav-auto .top { transition: none; } }
 /* server page */
@@ -370,20 +370,20 @@ main.enter > .stack > *:nth-child(n+6) { animation-delay: 200ms; }
 /* the folding menu: fixed width revealed with clip-path (no layout work while it opens); labels fade */
 @media (min-width: 981px) {
   html.nav-auto .top { width: 248px !important; clip-path: inset(0 176px 0 0); transition: clip-path 220ms var(--ease-out); overflow-x: hidden; box-shadow: none; }
-  html.nav-auto .top:hover, html.nav-auto .top:focus-within { width: 248px; clip-path: inset(0 0 0 0); box-shadow: none; }
-  html.nav-auto .top .in, html.nav-auto .top:not(:hover):not(:focus-within) .in { padding: 18px 14px 14px; }
-  html.nav-auto .top .pin, html.nav-auto .top:not(:hover):not(:focus-within) .pin { align-self: flex-start; margin-left: 7px; }
-  html.nav-auto .top .brand, html.nav-auto .top:not(:hover):not(:focus-within) .brand { align-items: flex-start; padding: 4px 4px 14px; }
-  html.nav-auto .top nav a, html.nav-auto .top:not(:hover):not(:focus-within) nav a { justify-content: flex-start; padding: 10px 12px; }
-  html.nav-auto .top nav a span, html.nav-auto .top:not(:hover):not(:focus-within) nav a span { position: static; width: auto; height: auto; overflow: visible; clip: auto; white-space: nowrap; }
+  html.nav-auto .top:hover, html.nav-auto .top:has(:focus-visible) { width: 248px; clip-path: inset(0 0 0 0); box-shadow: none; }
+  html.nav-auto .top .in, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .in { padding: 18px 14px 14px; }
+  html.nav-auto .top .pin, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .pin { align-self: flex-start; margin-left: 7px; }
+  html.nav-auto .top .brand, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .brand { align-items: flex-start; padding: 4px 4px 14px; }
+  html.nav-auto .top nav a, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) nav a { justify-content: flex-start; padding: 10px 12px; }
+  html.nav-auto .top nav a span, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) nav a span { position: static; width: auto; height: auto; overflow: visible; clip: auto; white-space: nowrap; }
   html.nav-auto .top nav a.on::before { left: -14px; }
   html.nav-auto .top .brand img.cust, html.nav-auto .top .brand .cust, html.nav-auto .top .who,
-  html.nav-auto .top:not(:hover):not(:focus-within) .brand img.cust, html.nav-auto .top:not(:hover):not(:focus-within) .who { display: revert; }
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .brand img.cust, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .who { display: revert; }
   html.nav-auto .top .brand img.lrs, html.nav-auto .top .brand img.cust, html.nav-auto .top .brand .cust, html.nav-auto .top .who, html.nav-auto .top nav a span {
     opacity: 1; transition: opacity 160ms ease; }
-  html.nav-auto .top:not(:hover):not(:focus-within) .brand img.lrs, html.nav-auto .top:not(:hover):not(:focus-within) .brand img.cust,
-  html.nav-auto .top:not(:hover):not(:focus-within) .brand .cust, html.nav-auto .top:not(:hover):not(:focus-within) .who,
-  html.nav-auto .top:not(:hover):not(:focus-within) nav a span { opacity: 0; }
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .brand img.lrs, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .brand img.cust,
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .brand .cust, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .who,
+  html.nav-auto .top:not(:hover):not(:has(:focus-visible)) nav a span { opacity: 0; }
   html.nav-auto .top .who { display: block; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -413,3 +413,51 @@ main.enter > .stack > *:nth-child(n+6) { animation-delay: 200ms; }
 .who-line { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .who-line .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .srv { border-radius: var(--radius); }
+
+/* ---- design critique fixes ---- */
+.fleetbar { --tone: var(--accent); --tone-soft: var(--accent-soft); display: flex; align-items: center; gap: 16px; min-width: 0; flex: 1; }
+.fleetbar.tone-ok { --tone: var(--ok); --tone-soft: var(--ok-soft); } .fleetbar.tone-warn { --tone: var(--warn); --tone-soft: var(--warn-soft); }
+.fleetbar.tone-crit { --tone: var(--crit); --tone-soft: var(--crit-soft); }
+.fleetbar .sym-badge.big { width: 56px; height: 56px; border-radius: 16px; }
+.fleetbar .sym-badge.big .sym { width: 28px; height: 28px; }
+.fb-sentence { font-size: 15px; color: var(--text); margin: 4px 0 2px; max-width: 80ch; }
+.fleet { align-items: start; }
+.srv.compact p { margin: 8px 0 6px; }
+.srv details summary { cursor: pointer; color: var(--muted); }
+.srv details .mono { overflow-wrap: anywhere; margin-top: 4px; }
+.gl-label { text-transform: none; letter-spacing: 0; font-size: 12.5px; }
+.menu { position: relative; display: inline-block; }
+.menu > summary { list-style: none; } .menu > summary::-webkit-details-marker { display: none; }
+.menu-list { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 190px; display: flex; flex-direction: column; padding: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow); transform-origin: top right;
+  animation: menuin 160ms var(--ease-out, ease-out) both; }
+.menu-list button { justify-content: flex-start; border: 0; background: transparent; width: 100%; padding: 9px 10px; font-weight: 500; }
+.menu-list button:hover, .menu-list button:focus-visible { background: var(--hover, var(--accent-soft)); }
+@keyframes menuin { from { opacity: 0; transform: scale(.97) translateY(-2px); } to { opacity: 1; transform: none; } }
+.top .brand { position: relative; }
+.top .brand .mark { position: absolute; left: 4px; top: 4px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; background: #fff; color: #1d4f9a; font-weight: 800; font-size: 12px; letter-spacing: .02em; opacity: 0; pointer-events: none; transition: opacity 160ms ease; }
+@media (min-width: 981px) { html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .brand .mark { opacity: 1; } }
+@media (min-width: 981px) and (max-width: 1259px) { html:not(.nav-auto) .top .brand .mark { display: none; } }
+@media (pointer: coarse) { .top .pin { width: 44px; height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .menu-list { animation: none; } }
+
+/* ---- live graphs in the Windows Task Manager style: page colours, faint grid, filled area, thin line ---- */
+.tm-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 10px 0 6px; }
+.tm { --tm: #117dbb; min-width: 0; }
+.tm-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 12px; margin-bottom: 3px; }
+.tm-title { font-weight: 600; color: var(--text); }
+.tm-val { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-svg { display: block; width: 100%; height: 64px; border: 1px solid color-mix(in srgb, var(--tm) 55%, transparent); border-radius: 4px;
+  background: color-mix(in srgb, var(--tm) 4%, var(--surface)); }
+.tm-grid { stroke: color-mix(in srgb, var(--tm) 14%, transparent); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.tm-area { fill: color-mix(in srgb, var(--tm) 18%, transparent); stroke: none; }
+.tm-line { fill: none; stroke: var(--tm); stroke-width: 1.5; stroke-linejoin: round; }
+.tm-line.second { stroke-dasharray: 4 3; opacity: .85; }
+.tm-scale { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+.tm-scale span:first-child:empty { visibility: hidden; }
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .tm-svg { border-color: var(--line); background: var(--surface); } .tm-grid { stroke: var(--line); } .tm-area { fill: var(--tm); opacity: .16; }
+}
+@media (forced-colors: active) { .tm-svg { background: Canvas; border-color: CanvasText; } .tm-line { stroke: CanvasText; } .tm-area { fill: none; } }
+.tm-row.big { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; } .tm-row.big .tm-svg { height: 120px; } .tm-row.big .tm-head { font-size: 13.5px; }

@@ -200,6 +200,7 @@ class SignInTests(WebCase):
         self.assertEqual(r.status, 200)
         self.assertIn(b"/app.js", r.body)
         self.assertIn("default-src 'self'", r.headers["Content-Security-Policy"])
+        self.assertIn("img-src 'self' data: blob:", r.headers["Content-Security-Policy"])   # the logo upload reads the chosen picture through a blob: URL
         self.assertEqual(r.headers["X-Content-Type-Options"], "nosniff")
         self.assertEqual(r.headers["X-Frame-Options"], "SAMEORIGIN")
         self.assertEqual(r.headers["Cache-Control"], "no-cache")              # the page holds no data; it is revalidated, never stale

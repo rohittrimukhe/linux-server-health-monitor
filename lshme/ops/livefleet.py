@@ -112,7 +112,7 @@ class LiveFleet(object):
                     continue
                 self.latest[name] = dict(p, ok=True, error="", fetched=now)
                 h = self.history.setdefault(name, deque(maxlen=KEEP))
-                h.append([now, p.get("cpu"), p.get("mem")])
+                h.append([now, p.get("cpu"), p.get("mem"), p.get("net_rx"), p.get("net_tx")])
             self.updated = now
         return self.snapshot()
 
@@ -140,7 +140,7 @@ class LiveFleet(object):
         row.update(p)
         row["name"] = meta["name"]
         row["key"] = key or "_local"                       # what the server page is opened with
-        row["series"] = [[t, c, m] for t, c, m in list(self.history.get(key, []))[-90:]] or p.get("series", [])
+        row["series"] = [list(x) for x in list(self.history.get(key, []))[-90:]] or p.get("series", [])
         return row
 
     # -- SAN storage --------------------------------------------------------------------------------

@@ -67,7 +67,7 @@ ALIASES = {"lenovo-de": "santricity", "e-series": "santricity", "netapp-e": "san
 TIMEOUT = 20
 
 
-class SanError(Exception):
+class SanError(ValueError):                 # shown as a plain message in the terminal and the web, never a traceback
     pass
 
 
@@ -495,7 +495,8 @@ def find(cfg, name):
     for a in arrays(cfg):
         if a["name"] == name:
             return a
-    raise SanError("no SAN storage named %r" % name)
+    names = [a["name"] for a in arrays(cfg)]
+    raise SanError("no SAN storage named %r (%s)" % (name, ("added: " + ", ".join(names)) if names else "none added yet: vitals san add"))
 
 
 def public(a):

@@ -91,6 +91,22 @@
                 h("button", { text: "Cancel", onclick: function () { close(); } }))));
     }
     function badge(s) { return h("span", { class: "badge b-" + s, text: s }); }
+    var UPGRADE_CMD = "curl -fsSL https://raw.githubusercontent.com/rohittrimukhe/linux-server-health-monitor/main/tools/upgrade_from_github.sh -o /tmp/upgrade.sh && bash /tmp/upgrade.sh";
+    function copyText(text, done) {
+        function fallback() { var t = h("textarea", { "aria-hidden": "true" }); t.value = text; t.style.position = "fixed"; t.style.opacity = "0"; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); toast(done, "good"); } catch (e) { toast(text, ""); } document.body.removeChild(t); }
+        if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(function () { toast(done, "good"); }, fallback); else fallback();
+    }
+    /* A small menu button: a native disclosure, so keyboard and screen readers work; closes after a choice or a click elsewhere. */
+    function menu(label, items) {
+        var d = h("details", { class: "menu" }), list = h("div", { class: "menu-list", role: "menu" });
+        d.appendChild(h("summary", { class: "btn small", text: label + " \u25BE" }));
+        items.forEach(function (it) {
+            list.appendChild(h("button", { type: "button", role: "menuitem", title: it[1], text: it[0], onclick: function () { d.removeAttribute("open"); it[2](); } }));
+        });
+        d.appendChild(list);
+        document.addEventListener("click", function off(e) { if (!document.body.contains(d)) { document.removeEventListener("click", off); return; } if (!d.contains(e.target)) d.removeAttribute("open"); });
+        return d;
+    }
     function ring(value, level, text, big) {
         var g = h("div", { class: "gauge lvl-" + level + (big ? " big" : "") }, h("b", { text: text }));
         g.style.setProperty("--p", Math.max(0, Math.min(100, value)));
@@ -149,6 +165,37 @@
         }), opts.note ? h("span", { class: "muted", text: opts.note }) : null);
         return h("div", { class: "ecg" + (opts.small ? " small" : "") }, s, legend);
     }
+    /* Small live graphs in the style of the Windows Task Manager performance view: a light panel in the page's own colours,
+       a faint grid, the newest value at the right edge, a filled area under a thin line, the name and current value above.
+       series = [{ name, pts: [[t, v], ...] }] (a second series is drawn as a dashed line); opts: { title, color, max, unit, fmt } */
+    var TM = { cpu: "#117dbb", mem: "#8b12ae", net: "#a74f01", disk: "#4da60c", lat: "#c2410c" };
+    function tmGraph(title, series, opts) {
+        opts = opts || {};
+        var W = 300, H = 70, col = opts.color || TM.cpu, fmt = opts.fmt || function (v) { return (Math.abs(v) >= 100 ? Math.round(v) : (+v).toFixed(1)) + (opts.unit || ""); };
+        var clean = series.map(function (x) { return { name: x.name, pts: x.pts.filter(function (p) { return p[1] !== null && p[1] !== undefined; }) }; });
+        var all = [], t1 = -Infinity, t0 = Infinity;
+        clean.forEach(function (x) { x.pts.forEach(function (p) { all.push(p[1]); t1 = Math.max(t1, p[0]); t0 = Math.min(t0, p[0]); }); });
+        var top = opts.max || Math.max(1, Math.max.apply(null, all.length ? all : [1]) * 1.15);
+        var span = Math.max(opts.window || 0, t1 - t0, 1);
+        var s = svg("svg", { viewBox: "0 0 " + W + " " + H, preserveAspectRatio: "none", "class": "tm-svg", role: "img",
+            "aria-label": title + ": " + clean.map(function (x) { var l = x.pts[x.pts.length - 1]; return x.name + " " + (l ? fmt(l[1]) : "no data"); }).join(", ") });
+        s.style.setProperty("--tm", col);
+        for (var gx = W; gx >= 0; gx -= W / 10) s.appendChild(svg("line", { x1: gx, y1: 0, x2: gx, y2: H, "class": "tm-grid" }));
+        for (var gy = 0; gy <= H; gy += H / 4) s.appendChild(svg("line", { x1: 0, y1: gy, x2: W, y2: gy, "class": "tm-grid" }));
+        clean.forEach(function (x, i) {
+            if (x.pts.length < 2) return;
+            var xy = x.pts.map(function (p) { return [W - (t1 - p[0]) / span * W, H - Math.min(p[1], top) / top * (H - 2) - 1]; });
+            var line = xy.map(function (q) { return q[0].toFixed(1) + "," + q[1].toFixed(1); }).join(" ");
+            if (i === 0) s.appendChild(svg("polygon", { "class": "tm-area", points: xy[0][0].toFixed(1) + "," + H + " " + line + " " + xy[xy.length - 1][0].toFixed(1) + "," + H }));
+            s.appendChild(svg("polyline", { "class": "tm-line" + (i ? " second" : ""), points: line, "vector-effect": "non-scaling-stroke" }));
+        });
+        var cur = clean.map(function (x) { var l = x.pts[x.pts.length - 1]; return (clean.length > 1 ? x.name + " " : "") + (l ? fmt(l[1]) : "-"); }).join("  /  ");
+        var box = h("div", { class: "tm" }, h("div", { class: "tm-head" }, h("span", { class: "tm-title", text: title }), h("span", { class: "tm-val", text: cur })), s);
+        box.style.setProperty("--tm", col);
+        if (opts.max) box.appendChild(h("div", { class: "tm-scale" }, h("span", { text: opts.scale || "" }), h("span", { text: fmt(opts.max) })));
+        return box;
+    }
+    function rate(v) { v = v || 0; return v >= 1048576 ? (v / 1048576).toFixed(1) + " MB/s" : v >= 1024 ? Math.round(v / 1024) + " KB/s" : Math.round(v) + " B/s"; }
     function table(heads, rows, nums, rowClass) {
         var t = h("table", { class: "tbl" }), tr = h("tr");
         heads.forEach(function (x, i) { tr.appendChild(h("th", { text: x, "class": nums && nums.indexOf(i) >= 0 ? "num" : "" })); });
@@ -267,7 +314,7 @@
         if (S.me.branding && S.me.branding.color) document.documentElement.style.setProperty("--accent", S.me.branding.color);
         PAGES.forEach(function (p) {
             if (!allowed(p) || p.hidden) return;
-            nav.appendChild(h("a", { href: "#/" + p.id, "data-page": p.id }, icon(p.id), h("span", { text: p.title })));
+            nav.appendChild(h("a", { href: "#/" + p.id, "data-page": p.id, onclick: function () { if (navAuto()) this.blur(); } }, icon(p.id), h("span", { text: p.title })));
         });
         var br = S.me.branding || {};
         var pin = h("button", { class: "pin", type: "button" });
@@ -279,10 +326,10 @@
             pin.setAttribute("aria-label", pin.getAttribute("title"));
             pin.innerHTML = auto ? "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M9 6l6 6-6 6'/></svg>" : "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M15 6l-6 6 6 6'/></svg>";
         }
-        pin.addEventListener("click", function () { setNavAuto(!navAuto()); paintPin(); });
+        pin.addEventListener("click", function () { setNavAuto(!navAuto()); paintPin(); pin.blur(); });   // a mouse click must not hold the menu open
         paintPin();
         var top = h("header", { class: "top" }, h("div", { class: "in" }, pin,
-            h("div", { class: "brand" }, h("img", { src: "/lrs_logo.png", alt: "LRS Services", class: "lrs" }),
+            h("div", { class: "brand" }, h("span", { class: "mark", "aria-hidden": "true", text: "LRS" }), h("img", { src: "/lrs_logo.png", alt: "LRS Services", class: "lrs" }),
                 br.logo ? h("img", { src: "/brand/logo?t=" + Date.now(), alt: br.customer || "customer logo", class: "cust" }) : (br.customer ? h("span", { class: "cust", text: br.customer }) : null)),
             nav,
             h("div", { class: "who" }, h("span", { class: "host", text: S.me.host }), h("span", { text: S.me.user + " (" + S.me.role + ")" }),
@@ -362,10 +409,28 @@
         box.appendChild(h("div", { class: "stack" }, bannerBox, fleetLive.el, alerts.el, findings.el, live));
         var run = runWidget(function () { tick(); });
         var stopped = false, timer = null;
+        var lastHl = null;
+        S.onFleet = function () { paintBanner(lastHl); };
+        function why(s) { return s.status === "OUTDATED" ? "needs an upgrade" : s.status === "UNREACHABLE" ? "cannot be reached" : s.status === "CRITICAL" ? "critical" : s.status === "WARNING" ? "warning" : s.status === "STALE" ? "watcher not reporting" : "no live data"; }
         function paintBanner(hl) {
+            lastHl = hl;
             clear(bannerBox);
-            var inner = h("div", { class: "row space" });
-            if (hl) {
+            var inner = h("div", { class: "row space" }), F = S.fleet;
+            if (F && F.enabled && (F.servers.length > 1 || (F.san || []).length)) {     // the estate first; this server's own score is one line below
+                var sv = F.servers, sa = F.san || [];
+                var badS = sv.filter(function (s) { return s.status !== "HEALTHY" && !(s.status === "UNKNOWN" && s.health_status === "HEALTHY"); });
+                var badA = sa.filter(function (a) { return a.status !== "HEALTHY" && a.status !== "WAITING"; });
+                var crit = badS.some(function (s) { return s.status === "CRITICAL" || s.status === "UNREACHABLE"; }) || badA.some(function (a) { return a.status === "CRITICAL" || a.status === "UNREACHABLE"; });
+                var st = crit ? "CRITICAL" : (badS.length || badA.length) ? "WARNING" : "HEALTHY";
+                var parts = badS.map(function (s) { return s.name + " " + why(s); }).concat(badA.map(function (a) { return a.name + " " + (a.status === "UNREACHABLE" ? "cannot be reached" : (a.failed_drives ? a.failed_drives + " failed drive" + (a.failed_drives > 1 ? "s" : "") : a.status.toLowerCase())); }));
+                var total = sv.length + " server" + (sv.length === 1 ? "" : "s") + (sa.length ? " and " + sa.length + " storage system" + (sa.length === 1 ? "" : "s") : "");
+                var sentence = parts.length ? parts.length + " of " + (sv.length + sa.length) + " need" + (parts.length === 1 ? "s" : "") + " attention: " + parts.join(", ") + "." : "All " + total + " are healthy.";
+                inner.appendChild(h("div", { class: "fleetbar tone-" + (st === "HEALTHY" ? "ok" : st === "WARNING" ? "warn" : "crit") },
+                    h("span", { class: "sym-badge big" }, sym(st === "HEALTHY" ? "pulse" : "server")),
+                    h("div", null, h("div", { class: "big" }, h("span", { text: (st === "HEALTHY" ? "All healthy" : st === "WARNING" ? "Needs attention" : "Action needed") + " " }), badge(st)),
+                        h("div", { class: "fb-sentence", text: sentence }),
+                        hl ? h("div", { class: "muted small", text: "This server (" + S.me.host + "): score " + (hl.score === null ? "-" : hl.score) + ", " + hl.status.toLowerCase() + ", last health check " + hl.when.slice(0, 16) }) : null)));
+            } else if (hl) {
                 var c = hl.counts, st = hl.status;
                 inner.appendChild(h("div", { class: "row" }, ring(hl.score || 0, statusLvl(st), String(hl.score === null ? "-" : hl.score), true),
                     h("div", null, h("div", { class: "big" }, h("span", { text: st + " " }), badge(st)),
@@ -457,9 +522,10 @@
             });
             var pf = a.perf || {}, ss = a.series || [];
             if (ss.length) {
-                el.appendChild(ecg([{ name: "Read", unit: " IOPS", pts: ss.map(function (p) { return [p[0], p[1]]; }) }, { name: "Write", unit: " IOPS", pts: ss.map(function (p) { return [p[0], p[2]]; }) }], { small: true }));
-                el.appendChild(ecg([{ name: "Read", unit: " MB/s", pts: ss.map(function (p) { return [p[0], p[3]]; }) }, { name: "Write", unit: " MB/s", pts: ss.map(function (p) { return [p[0], p[4]]; }) },
-                                    { name: "Response", unit: " ms", pts: ss.map(function (p) { return [p[0], p[5]]; }) }], { small: true }));
+                el.appendChild(h("div", { class: "tm-row" },
+                    tmGraph("IOPS", [{ name: "Read", pts: ss.map(function (p) { return [p[0], p[1]]; }) }, { name: "Write", pts: ss.map(function (p) { return [p[0], p[2]]; }) }], { color: TM.disk, fmt: function (v) { return Math.round(v); } }),
+                    tmGraph("Transfer rate", [{ name: "Read", pts: ss.map(function (p) { return [p[0], p[3]]; }) }, { name: "Write", pts: ss.map(function (p) { return [p[0], p[4]]; }) }], { color: TM.disk, unit: " MB/s" }),
+                    tmGraph("Response time", [{ name: "Response", pts: ss.map(function (p) { return [p[0], p[5]]; }) }], { color: TM.lat, unit: " ms" })));
             } else if (pf.read_iops !== undefined) el.appendChild(h("div", { class: "muted small", text: "I/O " + Math.round((pf.read_iops || 0) + (pf.write_iops || 0)) + " IOPS, " + ((pf.read_mbps || 0) + (pf.write_mbps || 0)).toFixed(1) + " MB/s" + (pf.latency_ms ? ", " + pf.latency_ms.toFixed(1) + " ms" : "") }));
             if ((a.volumes_top || []).length) el.appendChild(h("div", { class: "vols" }, h("div", { class: "muted small", text: "Busiest volumes now" }), a.volumes_top.slice(0, 4).map(function (v) {
                 return h("div", { class: "row space small" }, h("span", { text: v.name }), h("span", { class: "muted", text: Math.round(v.iops) + " IOPS  " + v.mbps.toFixed(1) + " MB/s  " + v.ms.toFixed(1) + " ms" }));
@@ -471,22 +537,41 @@
         }
         function tile(s) {
             var t = tone(s.status), pts = (s.series || []).map(function (p) { return p[1] === null || p[1] === undefined ? 0 : p[1]; });
+            var shown = s.status === "UNKNOWN" && s.health_status ? s.health_status : s.status;     // no live data: the latest health check speaks
             var head = h("div", { class: "row space" }, h("div", { class: "who-line" }, h("span", { class: "sym-badge" }, sym("server")), h("b", { class: "nm", text: s.name })),
-                badge(s.status === "UNKNOWN" ? "NO DATA" : s.status === "OUTDATED" ? "UPGRADE" : (s.status || "WAITING")));
+                badge(shown === "UNKNOWN" ? "NO DATA" : shown === "OUTDATED" ? "UPGRADE" : (shown || "WAITING")));
             var meta = h("div", { class: "muted small", text: [s.group, s.environment, word(s.status)].filter(Boolean).join(" - ") });
             var el = h("div", { class: "srv st-" + (t === "ok" ? "HEALTHY" : t === "warn" ? "WARNING" : t === "crit" ? "CRITICAL" : "UNKNOWN") }, head, meta);
             open(el, "#/server/" + encodeURIComponent(s.key || "_local"), "Open " + s.name);
             if (!s.ok) {
-                el.appendChild(h("p", { class: "muted small", text: s.status === "WAITING" ? "Waiting for the first answer." : (s.error || "No answer.") + (s.fetched ? " Last seen " + dur(Date.now() / 1000 - s.fetched) + " ago." : "") }));
+                el.classList.add("compact");
+                if (s.status === "WAITING") { el.appendChild(h("p", { class: "muted small", text: "Waiting for the first answer." })); return el; }
+                if (s.status === "OUTDATED") {
+                    el.appendChild(h("p", { class: "small", text: "Reachable, but its LRS Vitals is older and has no live data. Upgrade it once:" }));
+                    el.appendChild(h("div", { class: "row" }, h("button", { class: "small", type: "button", text: "Copy upgrade command", onclick: function (e) {
+                        e.stopPropagation();
+                        copyText(UPGRADE_CMD, "Upgrade command copied: run it as root on " + s.name);
+                    } })));
+                } else {
+                    el.appendChild(h("p", { class: "small", text: "Cannot connect over SSH from this server." + (s.fetched ? " Last tried " + dur(Date.now() / 1000 - s.fetched) + " ago." : "") }));
+                }
+                if (s.error && s.status !== "OUTDATED") el.appendChild(h("details", { class: "small" }, h("summary", { text: "Details" }), h("div", { class: "mono muted", text: s.error })));
                 return el;
             }
             el.appendChild(h("div", { class: "mini" }, h("span", { class: "muted", text: "CPU" }), barrow(s.cpu || 0, (s.cpu || 0) >= 90 ? "crit" : (s.cpu || 0) >= 75 ? "warn" : "ok", s.cpu === null || s.cpu === undefined ? "-" : Math.round(s.cpu) + "%")));
             el.appendChild(h("div", { class: "mini" }, h("span", { class: "muted", text: "Memory" }), barrow(s.mem || 0, (s.mem || 0) >= 90 ? "crit" : (s.mem || 0) >= 80 ? "warn" : "ok", s.mem === null || s.mem === undefined ? "-" : Math.round(s.mem) + "%")));
             var d0 = (s.disks || [])[0];
             if (d0) el.appendChild(h("div", { class: "mini" }, h("span", { class: "muted", text: "Disk " + d0.mount }), barrow(d0.pct, d0.pct >= 90 ? "crit" : d0.pct >= 80 ? "warn" : "ok", Math.round(d0.pct) + "%")));
-            var ser = s.series || [];
-            if (ser.length > 1) el.appendChild(ecg([{ name: "CPU", unit: "%", pts: ser.map(function (p) { return [p[0], p[1]]; }) },
-                                                    { name: "Memory", unit: "%", pts: ser.map(function (p) { return [p[0], p[2]]; }) }], { max: 100, small: true }));
+            var ser = (s.series || []).filter(function (p) { return p[1] !== null && p[1] !== undefined; });
+            if (ser.length < 2) el.appendChild(h("p", { class: "muted small", text: "The live graph starts when this server's watcher reports." }));
+            else {
+                var g = h("div", { class: "tm-row" },
+                    tmGraph("CPU", [{ name: "CPU", pts: ser.map(function (p) { return [p[0], p[1]]; }) }], { color: TM.cpu, max: 100, unit: "%" }),
+                    tmGraph("Memory", [{ name: "Memory", pts: ser.map(function (p) { return [p[0], p[2]]; }) }], { color: TM.mem, max: 100, unit: "%" }));
+                if (ser.some(function (p) { return p[3] || p[4]; }))
+                    g.appendChild(tmGraph("Network", [{ name: "Receive", pts: ser.map(function (p) { return [p[0], p[3]]; }) }, { name: "Send", pts: ser.map(function (p) { return [p[0], p[4]]; }) }], { color: TM.net, fmt: rate }));
+                el.appendChild(g);
+            }
             var openN = (s.critical || 0) + (s.warning || 0);
             el.appendChild(h("div", { class: "row space small" }, h("span", { class: openN ? "" : "muted", text: openN ? (s.critical || 0) + " critical, " + (s.warning || 0) + " warning open" : "No open problems" }),
                 h("span", { class: "muted", text: s.score !== null && s.score !== undefined ? "score " + s.score : "" })));
@@ -496,9 +581,10 @@
         function paint() {
             clear(box);
             var sans = (data && data.san) || [];
-            if (!data || !data.enabled || !data.servers.length || (data.servers.length < 2 && !sans.length)) return;
+            if (!data || !data.enabled || !data.servers.length) return;
             var sv = data.servers, bad = sv.filter(function (s) { return s.status !== "HEALTHY"; }).length;
             box.appendChild(glance(sv, sans));
+            if (data.servers.length < 2 && !sans.length) return;            // one server alone: the strip is enough
             var c = card("All servers, live", h("span", { class: "muted", text: sv.length + " servers - " + (bad ? bad + " need attention" : "all healthy") + " - " + (data.updated ? "updated " + dur(Date.now() / 1000 - data.updated) + " ago" : "collecting the first answers") + ", servers report every " + data.interval + " s. Click a server for its details." }),
                 h("div", { class: "fleet" }, sv.map(tile)));
             if (sans.length) {
@@ -523,13 +609,15 @@
             var sOk = sans.filter(function (a) { return a.status === "HEALTHY"; }).length, failed = sans.reduce(function (t, a) { return t + (a.failed_drives || 0); }, 0);
             var tiles = [gtile("server", "Servers healthy", ok + " / " + sv.length, sv.length - ok ? (sv.length - ok) + " need attention" : "all running normally", ok === sv.length ? "ok" : (sv.some(function (s) { return s.status === "CRITICAL" || s.status === "UNREACHABLE"; }) ? "crit" : "warn"))];
             if (sans.length) tiles.push(gtile("storage", "SAN storage optimal", sOk + " / " + sans.length, failed ? failed + " failed drive" + (failed > 1 ? "s" : "") : "no failed drives", sOk === sans.length ? "ok" : "crit"));
+            var probs = sv.reduce(function (t, s) { return t + (s.ok ? (s.critical || 0) + (s.warning || 0) : 0); }, 0) + sans.reduce(function (t, a) { return t + (a.failed_drives || 0) + (a.hardware_bad || []).length; }, 0);
+            tiles.push(gtile("pulse", "Open problems", String(probs), probs ? "see Active problems below" : "nothing open right now", probs ? (sv.some(function (s) { return s.critical; }) || failed ? "crit" : "warn") : "ok"));
             tiles.push(gtile("cpu", "Average CPU", avg === null ? "-" : Math.round(avg) + "%", busiest ? "busiest: " + busiest.name + " " + Math.round(busiest.cpu) + "%" : "waiting for live data", avg === null ? "info" : avg >= 85 ? "crit" : avg >= 70 ? "warn" : "ok"));
             tiles.push(gtile("disk", "Fullest disk or pool", full ? Math.round(full.pct) + "%" : "-", full ? full.where : "waiting for live data", !full ? "info" : full.pct >= 90 ? "crit" : full.pct >= 80 ? "warn" : "ok"));
             return h("div", { class: "glance", role: "group", "aria-label": "At a glance" }, tiles);
         }
         function load() {
             api("GET", "/api/live/fleet").then(function (d) {
-                data = d; try { paint(); } catch (e) { if (window.console) console.error("live servers card:", e); }
+                data = d; S.fleet = d; try { paint(); if (S.onFleet) S.onFleet(); } catch (e) { if (window.console) console.error("live servers card:", e); }
                 if (d.servers.some(function (s) { return s.status === "WAITING"; })) setTimeout(load, 4000);   // the first answers come in shortly
             }).catch(function () { /* signed out or not available */ });
         }
@@ -565,7 +653,14 @@
                     h("div", { class: "muted small", text: L.uptime_s ? "up " + Math.floor(L.uptime_s / 86400) + " d " + Math.floor(L.uptime_s % 86400 / 3600) + " h" : "" })));
                 wrap.appendChild(g);
                 var pts = (d.series || []).map(function (p) { return p[1] || 0; }), mpts = (d.series || []).map(function (p) { return p[2] || 0; });
-                if (pts.length > 1) wrap.appendChild(card("CPU and memory, last hour", h("span", { class: "muted", text: "CPU above, memory below" }), spark(pts, 100), spark(mpts, 100)));
+                var se = (d.series || []).filter(function (p) { return p[1] !== null && p[1] !== undefined; });
+                if (se.length > 1) {
+                    var big = h("div", { class: "tm-row big" },
+                        tmGraph("CPU", [{ name: "CPU", pts: se.map(function (p) { return [p[0], p[1]]; }) }], { color: TM.cpu, max: 100, unit: "%", scale: "last " + Math.max(1, Math.round((se[se.length - 1][0] - se[0][0]) / 60)) + " min" }),
+                        tmGraph("Memory", [{ name: "Memory", pts: se.map(function (p) { return [p[0], p[2]]; }) }], { color: TM.mem, max: 100, unit: "%" }));
+                    if (se.some(function (p) { return p[3] || p[4]; })) big.appendChild(tmGraph("Network", [{ name: "Receive", pts: se.map(function (p) { return [p[0], p[3]]; }) }, { name: "Send", pts: se.map(function (p) { return [p[0], p[4]]; }) }], { color: TM.net, fmt: rate }));
+                    wrap.appendChild(card("Performance", h("span", { class: "muted", text: "live, newest on the right" }), big));
+                }
                 if ((L.disks || []).length) wrap.appendChild(card("Disks (live)", null, h("div", { class: "stack" }, L.disks.map(function (x) {
                     return h("div", { class: "mini" }, h("span", { text: x.mount }), barrow(x.pct, lvl(x.pct, 80, 90), Math.round(x.pct) + "%"));
                 }))));
@@ -637,17 +732,12 @@
                     admin ? h("button", { class: "small", type: "button", text: "Unmute", onclick: function () { post({ action: "unmute", key: a.key }, "Unmuted: alerts for this problem start again"); } }) : "");
             }
             if (!admin) return a.ack ? h("span", { class: "muted", text: "acknowledged by " + a.ack.by + " " + ago(a.ack.at) }) : "";
-            var pick = h("select", { "aria-label": "Mute " + a.component, class: "small" },
-                [["", "Mute..."], [6, "Mute 6 hours"], [24, "Mute 24 hours"], [168, "Mute 7 days"], [0, "Mute until it ends"]].map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
-            pick.addEventListener("change", function () {
-                if (pick.value === "") return;
-                var hrs = +pick.value;
-                post({ action: "mute", key: a.key, hours: hrs }, hrs ? "Muted for " + (hrs >= 24 ? hrs / 24 + " day" + (hrs > 24 ? "s" : "") : hrs + " hours") + ": no emails for this problem" : "Muted until it ends: no emails for this problem");
+            var items = [];
+            if (!a.ack) items.push(["Acknowledge", "Reminders stop until it gets worse or ends", function () { post({ action: "ack", key: a.key }, "Acknowledged: reminders stop until it gets worse or ends"); }]);
+            [[6, "Mute 6 hours"], [24, "Mute 24 hours"], [168, "Mute 7 days"], [0, "Mute until it ends"]].forEach(function (o) {
+                items.push([o[1], "No emails for this problem", function () { post({ action: "mute", key: a.key, hours: o[0] }, o[1] + ": no emails for this problem"); }]);
             });
-            return h("div", { class: "row" },
-                a.ack ? h("span", { class: "muted", text: "acknowledged by " + a.ack.by + " " + ago(a.ack.at) })
-                    : h("button", { class: "small", type: "button", text: "Acknowledge", title: "Stop reminders until it gets worse or ends", onclick: function () { post({ action: "ack", key: a.key }, "Acknowledged: reminders stop until it gets worse or ends"); } }),
-                pick);
+            return h("div", { class: "row" }, a.ack ? h("span", { class: "muted small", text: "acknowledged by " + a.ack.by + " " + ago(a.ack.at) }) : null, menu("Actions", items));
         }
         function paint(d) {
             clear(box);
@@ -657,11 +747,7 @@
             if (ch.webhook) how.push("webhook");
             if (ch.slack) how.push("Slack");
             if (ch.teams) how.push("Teams");
-            box.appendChild(h("div", { class: "grid g4" },
-                tile("Open now", sm.open, sm.open ? "crit" : "ok", sm.open ? "needs action" : "all clear"),
-                tile("Resolved in 24 h", sm.resolved_24h, "ok", "closed, no longer a problem"),
-                tile("Mean time to resolve", sm.mttr === null ? "-" : dur(sm.mttr), "info", "over the last " + sm.days + " days"),
-                tile("Resolved, " + sm.days + " days", sm.resolved_total, "ok", "kept in the incident log")));
+            S.openIncidents = sm.open;
             var info = h("span", { class: "muted", text: how.length ? "Alerts by " + how.join(", ") + " - from " + ch.min_severity + " up, after " + ch.confirm + " bad checks in a row" + (ch.quiet_hours ? " - quiet hours " + ch.quiet_hours : "") + (ch.digest ? " - daily digest " + ch.digest : "") : "No alert channel is switched on (Settings > main > watch)" });
             var active = d.active.length ? table(["Priority", "Problem", "Since", "Checks", "Alert", ""], d.active.map(function (a) {
                 return [h("span", { class: "pri " + (a.severity === "CRITICAL" ? "p1" : "p2"), text: a.severity === "CRITICAL" ? "P1" : "P2", title: a.severity }),
@@ -684,7 +770,7 @@
                 return [h("span", { class: "mono", text: i.id }), pri(i), h("b", { text: i.component }), i.message, when(i.opened), i.resolved ? when(i.resolved) : "-", dur(i.duration), status(i.status)];
             }), [6], function (idx) { return shown[idx].status === "Resolved" ? "resolved" : ""; }))
                 : h("p", { class: "muted", text: tab === "open" ? "No open incidents." : "No " + (tab === "all" ? "" : "resolved ") + "incidents in the last " + (st.days === 1 ? "24 hours" : st.days + " days") + "." });
-            box.appendChild(card("Incident log", controls, body, h("p", { class: "muted small", text: "P1 = critical, P2 = warning. A resolved incident is closed history: it is not a problem now and does not count in the health score." })));
+            box.appendChild(card("Incident log", h("span", { class: "muted", text: sm.resolved_24h + " resolved in 24 h - " + sm.resolved_total + " in " + sm.days + " days" + (sm.mttr === null ? "" : " - mean time to resolve " + dur(sm.mttr)) }), controls, body, h("p", { class: "muted small", text: "P1 = critical, P2 = warning. A resolved incident is closed history: it is not a problem now and does not count in the health score." })));
         }
         function load() { api("GET", "/api/alerts?days=" + st.days).then(paint).catch(function () { /* signed out */ }); }
         load();
