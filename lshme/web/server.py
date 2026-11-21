@@ -586,6 +586,28 @@ class WebApp(object):
         findings.sort(key=lambda x: (0 if x["severity"] == "CRITICAL" else 1, x["module"], x["component"]))
         return jr({"findings": findings, "excluded": excluded, "rules": rules, "host": host, "checked": checked})
 
+    def api_update(self, req, sess):
+        """Automatic update: status, check for a newer version, start a safe update now (runs outside this web service)."""
+        from lshme.ops import autoupdate
+        up = autoupdate.Updater(self.app)
+        if req.method == "POST":
+            action = req.json().get("action")
+            if action == "check":
+                try:
+                    info = up.check()
+                except autoupdate.UpdateError as e:
+                    return err(str(e), 502)
+                self.audit("web-update-check", sess)
+                return jr({"ok": True, "available": info["available"], "latest": info["sha"], "message": info["message"]})
+            if action == "now":
+                autoupdate.start_background(self.app, self.app.launcher())
+                self.audit("web-update-now", sess)
+                return jr({"ok": True, "started": True}, 202)
+            raise ValueError("unknown action")
+        st = up.state()
+        st.pop("log", None) if st.get("result") == "current" else None
+        return jr({"settings": autoupdate.settings(self.app.cfg), "installed": up.installed(), "state": st})
+
     def api_san(self, req, sess):
         """SAN storage: list (never the password), add or change, test (saved or not yet saved), remove. Administrators only."""
         from lshme.ops import san

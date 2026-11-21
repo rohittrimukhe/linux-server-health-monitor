@@ -46,6 +46,8 @@ DEFAULTS = {
                   "syslog": "yes", "webhook_url": "", "max_rss_mb": "100", "netfs_timeout": "5",
                   "metrics_hours": "24"},
         "alert_routes": {},
+        "update": {"auto": "yes", "time": "21:00", "ref": "main", "repo": "rohittrimukhe/linux-server-health-monitor", "wait_minutes": "120",
+                   "keep_backups": "3", "notify": "yes"},
         "fleet": {"enabled": "no", "minutes": "10", "live": "yes", "live_seconds": "15", "san_live_seconds": "300", "san_perf_seconds": "30"},
         "performance": {"nice": "10", "idle_io": "yes"},
         "sla": {"target_percent": "99.9", "count_as_downtime": "svc,port,proc,ro,netfs"},

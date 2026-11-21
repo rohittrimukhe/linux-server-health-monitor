@@ -1173,8 +1173,38 @@
     }
 
     /* ---------------------------------------------------------------- operations */
+    function updateCard() {
+        var box = card("Automatic updates", null, h("p", { class: "muted", text: "Loading..." }));
+        function load() { api("GET", "/api/update").then(paint).catch(function () { /* signed out */ }); }
+        function paint(d) {
+            clear(box);
+            var s = d.settings, st = d.state || {}, res = st.result || "";
+            var tone = { updated: "OK", current: "OK", postponed: "WARNING", "rolled back": "WARNING", failed: "CRITICAL", off: "UNKNOWN" }[res] || "UNKNOWN";
+            box.appendChild(h("h2", null, h("span", { text: "Automatic updates" }), badge(s.auto ? (st.available ? "WARNING" : tone) : "UNKNOWN")));
+            box.appendChild(h("p", { class: "muted", text: s.auto ? "Every day at " + s.time + ": if a newer LRS Vitals is out, it waits until no health check or report is running, backs up the program, updates, tests itself and restarts; on any problem it puts the old version back. Settings and data are never touched." : "Switched off. Set auto = yes in Settings > main > update to update safely every evening." }));
+            box.appendChild(table(["", ""], [
+                ["Installed", d.installed ? h("span", { class: "mono", text: d.installed.slice(0, 12) }) : "unknown (installed before automatic updates)"],
+                ["Newest on GitHub", st.latest ? h("span", null, h("span", { class: "mono", text: st.latest.slice(0, 12) + " " }), st.latest_message || "") : "not checked yet"],
+                ["Last check", st.checked_at ? when(st.checked_at) : "-"],
+                ["Last result", res ? h("span", null, h("b", { text: res + ": " }), st.message || "") : "-"],
+                ["Keeps", s.keep_backups + " previous version(s) as backups; waits up to " + s.wait_minutes + " min for running jobs"]]));
+            if (st.log && st.log.length) box.appendChild(h("details", null, h("summary", { text: "Steps of the last update" }), h("pre", { class: "logs", text: st.log.join("\n") })));
+            if (S.me.role === "admin") box.appendChild(h("div", { class: "row" },
+                h("button", { type: "button", text: "Check now", onclick: function () {
+                    api("POST", "/api/update", { action: "check" }).then(function (r) { toast(r.available ? "A newer version is available: " + r.latest.slice(0, 7) + " " + r.message : "Up to date", r.available ? "" : "good"); load(); }).catch(fail);
+                } }),
+                h("button", { class: "primary", type: "button", text: "Update now", onclick: function () {
+                    ask("Update LRS Vitals now? It waits for running reports, backs up, updates, tests and restarts the web page (it comes back in about a minute). On any problem the old version is restored.", function () {
+                        api("POST", "/api/update", { action: "now" }).then(function () { toast("Update started. This page reconnects when the web service is back.", "good"); setTimeout(load, 60000); }).catch(fail);
+                    });
+                } })));
+        }
+        load();
+        return box;
+    }
     function drawOperations(box) {
         var wrap = h("div", { class: "stack" });
+        box.appendChild(updateCard());
         box.appendChild(wrap);
         function act(name, ok) { return function () { api("POST", "/api/action", { name: name }).then(ok || function (r) { toast("Done: " + JSON.stringify(r), "good"); load(); }).catch(fail); }; }
         function load() {

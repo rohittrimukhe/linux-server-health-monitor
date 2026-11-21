@@ -186,6 +186,35 @@ class ScanJob(object):
         return "server scan every %s at %s" % (WEEKDAYS[self.weekday][1], self.time)
 
 
+class UpdateJob(object):
+    """The safe automatic update of LRS Vitals itself (default every day at 21:00; [update] in main.conf)."""
+    name = "update"
+    label = "automatic update"
+    frequency = "daily"
+
+    def __init__(self, cfg):
+        g = lambda key, default: cfg.get("main", "update", key, default)
+        self.enabled = as_bool(g("auto", "yes"), True)
+        self.time = g("time", "21:00") or "21:00"
+
+    def validate(self):
+        return [] if re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", self.time) else ["update time must be HH:MM"]
+
+    def hm(self):
+        h, m = self.time.split(":")
+        return int(h), int(m)
+
+    def on_calendar(self):
+        return "*-*-* %02d:%02d:00" % self.hm()
+
+    def cron(self):
+        h, m = self.hm()
+        return "%d %d * * *" % (m, h)
+
+    def describe(self):
+        return "automatic update every day at %s" % self.time
+
+
 class FleetJob(object):
     """Central monitoring: ask every server in servers.conf for its health every few minutes, without writing report files,
     so the Servers page of the web dashboard stays fresh. Off until [main] [fleet] enabled = yes."""
@@ -238,6 +267,8 @@ def command_line(launcher, global_args, sched, retries):
         args = [launcher] + list(global_args) + ["scan", "--apply", "--quiet"]
     elif isinstance(sched, FleetJob):
         args = [launcher] + list(global_args) + ["fleet", "run", "--formats", "none"]
+    elif isinstance(sched, UpdateJob):
+        args = [launcher] + list(global_args) + ["update", "auto", "--quiet"]
     else:
         args = [launcher] + list(global_args) + ["run", "--schedule", sched.name, "--quiet", "--retries", str(retries)]
     return " ".join(shlex.quote(a) for a in args)
@@ -267,7 +298,7 @@ def install(cfg, runner, launcher, global_args, dry_run=False):
     be = backend(cfg, runner)
     retries = cfg.getint("schedule", "scheduler", "retries", 2)
     report = {"backend": be, "installed": [], "removed": [], "errors": [], "files": {}}
-    all_s = schedules(cfg) + [ScanJob(cfg), FleetJob(cfg)]  # the weekly server scan and central collection are scheduled alongside the reports
+    all_s = schedules(cfg) + [ScanJob(cfg), FleetJob(cfg), UpdateJob(cfg)]  # the weekly server scan and central collection are scheduled alongside the reports
     for s in all_s:
         for e in s.validate():
             report["errors"].append("%s: %s" % (s.name, e))

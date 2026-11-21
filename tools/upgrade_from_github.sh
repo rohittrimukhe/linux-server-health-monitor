@@ -65,6 +65,8 @@ for d in docs tools; do
 done
 for f in healthcheck CHANGELOG.md; do [ -f "$SRC/$f" ] && cp -a "$SRC/$f" "$APP/$f"; done
 chmod +x "$APP/healthcheck" 2>/dev/null || true
+SHA="$(curl -fsSL -H 'User-Agent: lrs-vitals-updater' "https://api.github.com/repos/$REPO/commits/$REF" 2>/dev/null | sed -n 's/^  "sha": "\([0-9a-f]*\)",*$/\1/p' | head -1)"
+[ -n "$SHA" ] && echo "$SHA" > "$APP/.lrs_commit"          # the automatic update knows which version is installed
 command -v restorecon >/dev/null 2>&1 && restorecon -R "$APP" >/dev/null 2>&1 || true
 
 echo "== checking"
@@ -73,5 +75,5 @@ vitals doctor >/dev/null 2>&1 && echo "doctor: ok" || echo "doctor: reported som
 for u in lshme-watch lshme-web lshme-web-test; do
   if systemctl is-active --quiet "$u" 2>/dev/null; then systemctl restart "$u" && echo "restarted $u"; fi
 done
-echo "== done. If anything is wrong, go back with:"
+echo "== done. Automatic updates: vitals update status (every day at 21:00 unless [update] auto = no). If anything is wrong, go back with:"
 echo "   rm -rf $APP && mv $APP.pre-upgrade.$STAMP $APP && systemctl restart lshme-watch"
