@@ -123,8 +123,15 @@ def build_message(ms, subject, text, html_body, attachments, status="HEALTHY", t
         msg["X-Priority"] = "1"
         msg["Importance"] = "High"
     msg.set_content(text)
+    images = []
+    if isinstance(html_body, tuple):                               # (html, [(cid, png bytes), ...]): pictures shown inside the body
+        html_body, images = html_body
     if html_body:
         msg.add_alternative(html_body, subtype="html")
+        if images:
+            part = msg.get_payload()[-1]
+            for cid, data in images:
+                part.add_related(data, maintype="image", subtype="png", cid="<%s>" % cid, filename="%s.png" % cid, disposition="inline")
     attached, skipped = [], []
     budget = ms.max_mb * 1024 * 1024
     used = 0

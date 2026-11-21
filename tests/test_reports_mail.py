@@ -235,6 +235,41 @@ class MailTest(unittest.TestCase):
         msg, _, _, _ = mailer.build_message(ms, "s", "b", None, [])
         self.assertEqual(msg["From"], "Ops <ops@example.com>")
 
+    def test_graphical_body_with_inline_pictures_and_attachments(self):
+        import time as _t
+        from lshme.reports import mailbody, periodic
+        from test_periodic import make_run, seed
+        home = TempHome()
+        try:
+            now = _t.time()
+            run = make_run(now)
+            seed(home.paths, run)
+            doc = periodic.build(run, home.cfg, home.paths, "weekly", "summary", now)
+            html, images = mailbody.build(doc, ["r.pdf"])
+            cids = [c for c, _ in images]
+            self.assertIn("checks-donut", cids)
+            for c, data in images:
+                self.assertTrue(data.startswith(b"\x89PNG"))
+                self.assertIn("cid:%s" % c, html)
+            self.assertLess(len(dict(images)["checks-donut"]), 8 * 1024)                 # the chart stays light
+            for bad in ("<svg", "<script", "class=", "display:flex"):                      # nothing Outlook cannot show
+                self.assertNotIn(bad, html)
+            self.assertIn("Checks this period", html)
+            self.assertIn("checks passed", html)
+            pdf = os.path.join(home.dir, "r.pdf")
+            with open(pdf, "wb") as f:
+                f.write(b"%PDF-1.4 x")
+            ms = self.settings()
+            msg, _, attached, _ = mailer.build_message(ms, "s", "text", (html, images), [pdf])
+            self.assertEqual(attached, ["r.pdf"])
+            kinds = [p.get_content_type() for p in msg.walk()]
+            self.assertEqual(kinds.count("image/png"), len(images))
+            self.assertIn("multipart/related", kinds)
+            self.assertIn("text/plain", kinds)
+            self.assertIn("application/pdf", kinds)
+        finally:
+            home.cleanup()
+
     def test_policy(self):
         self.assertFalse(mailer.should_send("issues", "HEALTHY")[0])
         self.assertTrue(mailer.should_send("issues", "WARNING")[0])

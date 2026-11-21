@@ -213,8 +213,12 @@ class App(object):
         text += "\n".join("[%s] %s: %s" % (f["severity"], f["component"], f["message"]) for f in document.findings
                           if f["severity"] in ("CRITICAL", "WARNING"))[:20000]
         if hasattr(document, "ptype"):  # daily / weekly / monthly checklist report
-            from lshme.reports import periodic_html
-            body = periodic_html.email_body(document, files)
+            from lshme.reports import mailbody, periodic_html
+            try:
+                body = mailbody.build(document, files)           # graphical summary with inline pictures
+            except Exception:
+                self.log.exception("graphical email body failed; sending the plain one")
+                body = periodic_html.email_body(document, files)
             text = "%s\n%s\n\nStatus: %s   Score: %s/100\n" % (document.title, document.subtitle, status, run.health["score"]) + \
                    "\n".join("[%s] %s: %s" % (f["severity"], f["component"], f["message"]) for f in document.findings
                              if f["severity"] in ("CRITICAL", "WARNING"))[:20000]
