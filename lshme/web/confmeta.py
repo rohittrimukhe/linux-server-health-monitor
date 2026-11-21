@@ -67,7 +67,7 @@ SECTION_KINDS = {
 }
 HELP = {
     "company": "Shown on the cover of every report.", "customer": "Who the reports are prepared for.", "environment": "For example Production, DR, UAT.",
-    "prepared_by": "Your name or team.", "location": "Data centre or site.", "logo": "Extra customer logo (PNG/JPG, full path). The LRS logo is always included.",
+    "prepared_by": "Your name or team.", "location": "Data centre or site.", "logo": "Customer logo shown next to the LRS logo on every report and in this dashboard. Upload any image here (it is converted and fitted), or type a full path to a PNG/JPG.",
     "command_timeout": "Longest any single system command may run (seconds).", "run_timeout": "Longest a complete health check may run (seconds).",
     "disabled": "Comma-separated modules never run.", "auto_excluded": "Managed by the server scan: modules with nothing to check on this server.",
     "force_enabled": "Modules to check even though the scan found nothing.", "hide_not_present": "Leave modules with nothing to check out of reports.",

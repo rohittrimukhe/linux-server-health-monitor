@@ -145,7 +145,8 @@ class PeriodicPDF(MiniPDF):
         self.put(MARGIN + (80 if lrs else 0), top - 9, fit_one(title, USABLE * 0.6, 9.5, True), 9.5, "F2", INK)
         self.put(MARGIN + (80 if lrs else 0), top - 20, fit_one(host, USABLE * 0.6, 8, False), 8, "F1", MUT)
         if cust:
-            self.fit_image(cust, PAGE_W - MARGIN - 90, top - 22, 90, 24)
+            cw = int(max(60, min(170, 22 * cust[1] / float(cust[2]))))
+            self.fit_image(cust, PAGE_W - MARGIN - cw, top - 22, cw, 24)
         elif cname:
             s = fit_one(cname, 180, 9, True)
             self.put(PAGE_W - MARGIN - tw(s, 9, True), top - 12, s, 9, "F2", MUT)
@@ -186,13 +187,15 @@ class PeriodicPDF(MiniPDF):
             self.fit_image(lrs, MARGIN + 8, by + 5, lw - 16, bh - 10)
         else:
             self.put(MARGIN + 12, by + 16, "LRS Vitals", 15, "F2", DARK)
-        cw_logo = 170
-        cx = PAGE_W - MARGIN - cw_logo
-        self.fill(cx, by, cw_logo, bh, (1, 1, 1))
         cimg = None
         cpath = getattr(doc, "customer_logo", "")
         if cpath and os.path.isfile(cpath):
             cimg = self.add_image(cpath)
+        cw_logo = 170
+        if cimg:                                              # a wide logo gets a wider box (up to 300 points), a tall one a narrower box
+            cw_logo = int(max(120, min(300, (bh - 10) * cimg[1] / float(cimg[2]) + 16)))
+        cx = PAGE_W - MARGIN - cw_logo
+        self.fill(cx, by, cw_logo, bh, (1, 1, 1))
         if cimg:
             self.fit_image(cimg, cx + 8, by + 5, cw_logo - 16, bh - 10)
         else:

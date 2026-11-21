@@ -218,9 +218,15 @@ class WebApp(object):
                 "tls": self.secure, "group": sess.get("group", ""), "branding": self.branding(sess.get("group", ""), public=True)}
 
     def branding(self, group, public=False):
-        """Customer name, colour and logo for a group ([branding:group] in servers.conf)."""
+        """Customer name, colour and logo for a group ([branding:group] in servers.conf); without a group, the customer of this installation."""
         if not group:
-            return {}
+            logo = self.app.cfg.get("main", "general", "logo", "")
+            cust = self.app.cfg.get("main", "general", "customer", "")
+            has = bool(logo and os.path.isfile(logo))
+            out = {"customer": cust, "color": "", "logo": has}
+            if not public:
+                out["logo_path"] = logo
+            return out if (cust or has) else {}
         s = self.app.cfg.section("servers", "branding:" + group)
         if not s:
             return {"customer": group}
@@ -297,7 +303,13 @@ class WebApp(object):
                     "min_severity": s("alert_min_severity"), "confirm": s("confirm"), "interval": s("interval"),
                     "slack": bool(s("slack_webhook_url")), "teams": bool(s("teams_webhook_url")), "quiet_hours": s("quiet_hours"),
                     "min_minutes": s("min_minutes"), "digest": as_bool(s("alert_digest"), True) and s("alert_digest_time")}
-        return jr({"active": active, "events": list(reversed(events))[:40], "channels": channels})
+        try:
+            days = max(1, min(90, int((req.query.get("days") or ["30"])[0])))
+        except ValueError:
+            days = 30
+        from lshme.ops import sla
+        incidents, summary = sla.incident_log(sla.load_events(os.path.join(d, "watch_events.jsonl")), time.time(), days, 200, acks)
+        return jr({"active": active, "events": list(reversed(events))[:40], "channels": channels, "incidents": incidents, "incident_summary": summary})
 
     def fleet_view(self, group=""):
         import socket as _socket
@@ -430,6 +442,32 @@ class WebApp(object):
         name = rawstore.file_name(host, day) + ".gz"
         return Resp(200, buf.getvalue(), "application/gzip", {"Content-Disposition": 'attachment; filename="%s"' % name,
                                                               "Content-Security-Policy": "default-src 'none'; sandbox"})
+
+    def livefleet(self):
+        from lshme.ops import livefleet
+        with self.lock:
+            if getattr(self, "_livefleet", None) is None:
+                self._livefleet = livefleet.LiveFleet(self.app)
+        return self._livefleet
+
+    def api_live_fleet(self, req, sess):
+        from lshme.ops import livefleet
+        if not livefleet.enabled(self.app.cfg):
+            return jr({"servers": [], "interval": 0, "updated": 0, "enabled": False})
+        lf = self.livefleet()
+        if not lf.updated:
+            lf.prime()                                           # this server at once; the others arrive from the collector moments later
+        lf.start()
+        servers = lf.snapshot()
+        if sess.get("group"):                                    # a customer account sees only its own servers
+            allowed = self.group_hosts(sess["group"])
+            servers = [s for s in servers if s.get("name") in allowed or s.get("host") in allowed]
+        slim = []
+        for s in servers:
+            s = dict(s)
+            s.pop("problems_detail", None)
+            slim.append(s)
+        return jr({"servers": slim, "interval": lf.interval, "updated": lf.updated, "enabled": True})
 
     # -- report templates ----------------------------------------------------------------------------------------------------------
     def api_templates(self, req, sess):

@@ -386,6 +386,41 @@ class ReportTests(WebCase):
         self.assertEqual(self.call("GET", "/api/raw/file", user="viewer", query={"host": [day["host"]], "day": [day["day"]]}).status, 403)
         self.assertEqual(self.call("GET", "/api/raw/file", user="admin", query={"host": ["../etc"], "day": [day["day"]]}).status, 400)
 
+    def test_incident_log_live_fleet_templates_and_logo_endpoints(self):
+        import base64
+        import struct
+        import zlib
+        now = time.time()
+        os.makedirs(self.app.paths.data_dir, exist_ok=True)
+        with open(os.path.join(self.app.paths.data_dir, "watch_events.jsonl"), "w", encoding="utf-8") as f:
+            for e in ({"event": "open", "ts": now - 3600, "key": "disk:/x", "component": "/x", "severity": "CRITICAL", "message": "full"},
+                      {"event": "close", "ts": now - 1800, "key": "disk:/x"}):
+                f.write(json.dumps(e) + chr(10))
+        d = self.call("GET", "/api/alerts", user="viewer", query={"days": ["7"]}).json
+        self.assertEqual([(i["status"], i["priority"]) for i in d["incidents"]], [("Resolved", "P1")])
+        self.assertEqual((d["incident_summary"]["open"], d["incident_summary"]["resolved_24h"]), (0, 1))
+        live = self.call("GET", "/api/live/fleet", user="viewer").json
+        self.assertTrue(live["enabled"] and live["servers"] and live["servers"][0]["ok"])      # this server is always there
+        self.assertEqual(self.call("GET", "/api/templates", user="viewer").json["templates"][0]["id"], "executive-daily")
+        self.assertEqual(self.call("GET", "/api/templates/preview", user="viewer", query={"id": ["executive-daily"]}).status, 400)   # no health check yet
+        row = bytes([0]) + bytes([20, 60, 160, 255]) * 40
+        raw = row * 20
+
+        def chunk(k, b):
+            return struct.pack(">I", len(b)) + k + b + struct.pack(">I", zlib.crc32(k + b) & 0xFFFFFFFF)
+        img = (bytes([0x89]) + b"PNG" + bytes([13, 10, 26, 10]) + chunk(b"IHDR", struct.pack(">IIBBBBB", 40, 20, 8, 6, 0, 0, 0)) +
+               chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+        body = {"scope": "all", "filename": "logo.png", "data": base64.b64encode(img).decode()}
+        self.assertEqual(self.call("POST", "/api/branding/upload", user="viewer", body=body).status, 403)
+        r = self.call("POST", "/api/branding/upload", user="admin", body=body)
+        self.assertEqual((r.status, r.json["default"]["width"]), (200, 40))
+        self.assertEqual(self.call("POST", "/api/branding/upload", user="admin", body={"scope": "all", "data": "!!not base64!!"}).status, 400)
+        logo = self.call("GET", "/api/branding/logo", user="admin")
+        self.assertEqual((logo.status, logo.ctype), (200, "image/png"))
+        me = self.call("GET", "/api/me", user="viewer").json
+        self.assertTrue(me["branding"]["logo"])                                                 # the customer logo also brands the dashboard
+        self.assertEqual(self.call("GET", "/brand/logo", user="viewer").status, 200)
+
     def test_nothing_outside_the_report_folder_is_served(self):
         self.write_report()
         outside = os.path.join(self.home.dir, "secret.txt")

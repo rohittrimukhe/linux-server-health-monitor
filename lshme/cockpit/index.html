@@ -53,6 +53,15 @@
                 <div><h3>Active real-time problems</h3><div id="g-problems"></div></div>
             </div>
         </section>
+        <section class="card" id="servers-card" hidden>
+            <div class="titlebar">
+                <h2>All servers, live</h2>
+                <label class="muted">Refresh <select id="refresh" aria-label="Refresh interval">
+                    <option value="0">Off</option><option value="5">5 s</option><option value="10">10 s</option><option value="30" selected>30 s</option><option value="60">1 min</option>
+                </select></label>
+            </div>
+            <div id="servers" class="muted">Loading…</div>
+        </section>
         <section class="row">
             <div class="card"><h2>Findings by severity</h2><div id="g-sev"></div></div>
             <div class="card"><h2>Module scores</h2><div id="g-mod"></div></div>
@@ -68,6 +77,11 @@
         <section class="card">
             <h2>Reports</h2>
             <div id="reports" class="muted">–</div>
+        </section>
+        <section class="card" id="stored-card" hidden>
+            <h2>Stored reports (all servers on this machine)</h2>
+            <p class="muted">Older reports are kept compressed; they open here exactly as they were sent, and removed files are rebuilt on request.</p>
+            <div id="stored" class="muted">Loading…</div>
         </section>
     </main>
     <footer id="footer">© 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.</footer>

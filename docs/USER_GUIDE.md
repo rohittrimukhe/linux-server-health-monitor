@@ -284,6 +284,13 @@ The **executive summary** (daily, weekly, monthly) is for the CEO and management
 decisions that are needed, with no technical tables. Put management's addresses in `to_summary` of a schedule and they receive only that
 report; everyone else keeps the technical report.
 
+**Dashboard, themes and live view.** The web dashboard fits any screen. Choose a colour theme and how often live data refreshes in the menu
+(or on the Account page, under Appearance); both are remembered by your browser. The default "Balanced" theme is soft blue-grey. With
+member servers in `servers.conf`, the dashboard shows **All servers, live**: each server reports every 30 seconds (`[fleet] live_seconds`;
+`[fleet] live = no` switches it off). The same view is in Cockpit (LRS Vitals page) together with the stored reports of every server.
+**Active problems** lists only what is wrong now; the **Incident log** keeps every incident with its ID, priority (P1 critical, P2 warning),
+times and status (Open, Acknowledged, Resolved). A resolved incident is history, shown muted, and does not count in the score.
+
 **Closed issues.** A problem that has been fixed is history: it is listed once, under **Closed issues** (what it was, when it was
 first and last seen, and the incidents the live watcher saw end), and it stops counting. It no longer lowers the health score, no longer
 raises a "has been critical in N runs" warning, and no longer appears in "What needs attention" or "Repeating problems". Only what the

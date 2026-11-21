@@ -131,6 +131,81 @@
     }
 
     /* ---------- data sources ---------- */
+    /* ---------- every server, live (the central server asks the others over SSH; this runs `vitals fleet live --json`) ---------- */
+    function dur(s) { s = Math.max(0, Math.round(s || 0)); return s < 90 ? s + " s" : s < 5400 ? Math.round(s / 60) + " min" : Math.round(s / 3600) + " h"; }
+    function bar(v, warn, crit) {
+        var n = v === null || v === undefined ? null : Math.max(0, Math.min(100, v)), c = n === null ? "unk" : n >= crit ? "CRITICAL" : n >= warn ? "WARNING" : "HEALTHY";
+        return '<span class="mbar"><i class="' + c + '" style="width:' + (n === null ? 0 : n) + '%"></i></span><b>' + (n === null ? "–" : Math.round(n) + "%") + "</b>";
+    }
+    function renderServers(d) {
+        var list = (d && d.servers) || [];
+        if (list.length < 2) { $("servers-card").hidden = true; return; }
+        $("servers-card").hidden = false;
+        var bad = list.filter(function (s) { return s.status !== "HEALTHY"; }).length;
+        $("servers").className = "";
+        $("servers").innerHTML = '<p class="muted">' + list.length + " servers · " + (bad ? bad + " need attention" : "all healthy") + " · updated " + esc(when(d.updated)) + '</p><div class="srvgrid">' +
+            list.map(function (s) {
+                var st = s.status === "UNREACHABLE" ? "CRITICAL" : s.status === "STALE" ? "WARNING" : (s.status || "UNKNOWN");
+                var body = !s.ok ? '<p class="muted">' + esc(s.status === "WAITING" ? "Waiting for the first answer." : (s.error || "No answer.")) + "</p>" :
+                    '<div class="mrow"><span>CPU</span>' + bar(s.cpu, 75, 90) + '</div><div class="mrow"><span>Memory</span>' + bar(s.mem, 80, 90) + "</div>" +
+                    (s.disks && s.disks[0] ? '<div class="mrow"><span>' + esc(s.disks[0].mount) + "</span>" + bar(s.disks[0].pct, 80, 90) + "</div>" : "") +
+                    '<div class="muted">' + ((s.critical || 0) + (s.warning || 0) ? esc((s.critical || 0) + " critical, " + (s.warning || 0) + " warning open") : "No open problems") +
+                    (s.score !== null && s.score !== undefined ? " · score " + esc(s.score) : "") + "</div>" +
+                    (s.problems && s.problems[0] ? '<div class="rec">' + esc(s.problems[0].component + ": " + s.problems[0].message) + "</div>" : "");
+                return '<div class="srv ' + esc(st) + '"><div class="srvhead"><b>' + esc(s.name) + "</b>" + sev(st) + '</div><div class="muted">' +
+                    esc([s.group, s.environment].filter(Boolean).join(" · ")) + "</div>" + body + "</div>";
+            }).join("") + "</div>";
+    }
+    var serverTimer = null;
+    function pollServers() {
+        if (standalone()) return;
+        cockpit.spawn(cfg.command.concat(["fleet", "live", "--json"]), { superuser: "try", err: "message" })
+            .then(function (out) { try { renderServers(JSON.parse(out)); } catch (e) { /* not available */ } })
+            .catch(function () { $("servers-card").hidden = true; });
+    }
+    function setupServers() {
+        if (standalone()) return;
+        var sel = $("refresh");
+        try { var saved = localStorage.getItem("lshme-refresh"); if (saved !== null && sel.querySelector('option[value="' + saved + '"]')) sel.value = saved; } catch (e) { /* ignore */ }
+        var arm = function () {
+            if (serverTimer) clearInterval(serverTimer);
+            var n = +sel.value;
+            serverTimer = n ? setInterval(pollServers, n * 1000) : null;
+        };
+        sel.addEventListener("change", function () { try { localStorage.setItem("lshme-refresh", sel.value); } catch (e) { /* ignore */ } arm(); });
+        pollServers();
+        arm();
+    }
+
+    /* ---------- stored reports: compressed files open as they were sent ---------- */
+    function openStored(rid, name) {
+        var ext = name.split(".").pop(), type = { html: "text/html", pdf: "application/pdf", json: "application/json", txt: "text/plain", csv: "text/csv",
+            xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }[ext] || "application/octet-stream";
+        cockpit.spawn(cfg.command.concat(["archive", "cat", rid, name]), { binary: true, superuser: "try", err: "message" }).then(function (data) {
+            var url = URL.createObjectURL(new Blob([data], { type: type })), a = document.createElement("a");
+            a.href = url; a.target = "_blank"; a.rel = "noopener";
+            if (!/html|pdf|plain|json/.test(type)) a.download = name;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+        }).catch(function (e) { $("runmsg").textContent = "Cannot open report: " + (e.message || e); });
+    }
+    function loadStored() {
+        if (standalone()) return;
+        cockpit.spawn(cfg.command.concat(["archive", "list", "--json", "--limit", "20"]), { superuser: "try", err: "message" }).then(function (out) {
+            var d = JSON.parse(out).reports || [];
+            if (!d.length) return;
+            $("stored-card").hidden = false;
+            $("stored").className = "";
+            $("stored").innerHTML = "<table><thead><tr><th>Taken</th><th>Server</th><th>Type</th><th>Files</th></tr></thead><tbody>" + d.map(function (r, i) {
+                return "<tr><td>" + esc(when(r.ts)) + "</td><td>" + esc(r.host) + "</td><td>" + esc(r.category) + "</td><td>" +
+                    r.files.map(function (f, j) { return '<button class="btn small" type="button" data-r="' + i + '" data-f="' + j + '" title="' + (f.rebuilt ? "rebuilt from the stored data" : "stored") + '">' + esc(f.name.split(".").pop().toUpperCase()) + "</button>"; }).join(" ") + "</td></tr>";
+            }).join("") + "</tbody></table>";
+            Array.prototype.forEach.call($("stored").querySelectorAll("button"), function (b) {
+                b.addEventListener("click", function () { var r = d[+b.dataset.r]; openStored(r.rid, r.files[+b.dataset.f].name); });
+            });
+        }).catch(function () { /* older install without archive: nothing to show */ });
+    }
+
     function startCockpit() {
         var watch = function (name, render) {
             cockpit.file(cfg.data_dir + "/" + name, { syntax: JSON, superuser: "try", max_read_size: 32 * 1024 * 1024 })
@@ -140,6 +215,8 @@
         watch("watch_state.json", renderWatch);
         watch("watch_metrics.json", renderMetrics);
         $("run").addEventListener("click", runNow);
+        setupServers();
+        loadStored();
     }
 
     function startHttp() {

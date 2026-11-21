@@ -200,8 +200,10 @@ def build_parser():
     m.add_argument("--minutes", type=int, default=120)
     m.add_argument("--reason", default="planned maintenance")
 
+    sub.add_parser("pulse", help="this server's live state as one JSON object (used by the central server)")
     f = sub.add_parser("fleet", help="central multi-server monitoring")
-    f.add_argument("action", choices=("run", "list", "import"))
+    f.add_argument("action", choices=("run", "list", "import", "live"))
+    f.add_argument("--json", action="store_true", help="live: print JSON")
     f.add_argument("--servers", help="limit to these server names")
     f.add_argument("--formats")
     f.add_argument("--report-type", default="technical", choices=("daily", "weekly", "monthly", "executive", "technical", "full"))
@@ -734,8 +736,24 @@ def dispatch(app, cmd, args):
         else:
             rec = maintenance.active(app.paths)
             C.out("Active until %s (%s, by %s)" % (time.strftime("%Y-%m-%d %H:%M", time.localtime(rec["until"])), rec["reason"], rec["by"]) if rec else "Not active")
+    elif cmd == "pulse":
+        from lshme.ops import pulse
+        C.out(json.dumps(pulse.collect(app), separators=(",", ":")))
+        return 0
     elif cmd == "fleet":
         from lshme.ops import fleet
+        if args.action == "live":
+            from lshme.ops import livefleet
+            snap = livefleet.LiveFleet(app).poll_once()
+            if args.json:
+                C.out(json.dumps({"servers": snap, "updated": time.time()}, separators=(",", ":")))
+                return 0
+            C.table(["Server", "Status", "CPU", "Memory", "Load/core", "Fullest disk", "Open", "Seen"],
+                    [[r["name"], r.get("status", ""), "%s%%" % r["cpu"] if r.get("cpu") is not None else "-", "%s%%" % r["mem"] if r.get("mem") is not None else "-",
+                      r.get("load") if r.get("load") is not None else "-", ("%s %s%%" % (r["disks"][0]["mount"], r["disks"][0]["pct"])) if r.get("disks") else "-",
+                      "%s crit / %s warn" % (r.get("critical", 0), r.get("warning", 0)) if r.get("ok") else (r.get("error") or "")[:50],
+                      time.strftime("%H:%M:%S", time.localtime(r["fetched"])) if r.get("fetched") else "-"] for r in snap])
+            return 0
         if args.action == "list":
             C.table(["Name", "Host", "User", "Port", "Group", "Environment"],
                     [[s.name, s.host, s.user, s.port, s.group, s.environment] for s in fleet.servers(app.cfg)])

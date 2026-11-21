@@ -68,7 +68,7 @@
     /* ---------------------------------------------------------------- widgets */
     var toastBox;
     function toast(msg, kind) {
-        if (!toastBox) { toastBox = h("div", { class: "toasts" }); document.body.appendChild(toastBox); }
+        if (!toastBox) { toastBox = h("div", { class: "toasts", role: "status", "aria-live": "polite" }); document.body.appendChild(toastBox); }
         var t = h("div", { class: "toast " + (kind || ""), text: msg });
         toastBox.appendChild(t);
         setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, kind === "bad" ? 8000 : 4000);
@@ -118,13 +118,13 @@
         s.appendChild(svg("polyline", { "class": "ln", points: pts.join(" "), "vector-effect": "non-scaling-stroke" }));
         return s;
     }
-    function table(heads, rows, nums) {
+    function table(heads, rows, nums, rowClass) {
         var t = h("table", { class: "tbl" }), tr = h("tr");
         heads.forEach(function (x, i) { tr.appendChild(h("th", { text: x, "class": nums && nums.indexOf(i) >= 0 ? "num" : "" })); });
         t.appendChild(h("thead", null, tr));
         var tb = h("tbody");
-        rows.forEach(function (r) {
-            var row = h("tr");
+        rows.forEach(function (r, ri) {
+            var row = h("tr", { class: rowClass ? rowClass(ri) : "" });
             r.forEach(function (c, i) { row.appendChild(h("td", { "class": nums && nums.indexOf(i) >= 0 ? "num" : "" }, c)); });
             tb.appendChild(row);
         });
@@ -184,24 +184,63 @@
         { id: "help", title: "Help", draw: drawHelp }
     ];
     var main;
-    function theme(t) { if (t) { document.documentElement.setAttribute("data-theme", t); try { localStorage.setItem("lshme-theme", t); } catch (e) { /* storage may be blocked */ } } }
+    /* How often live data is refreshed on screen; kept per browser. */
+    var REFRESH = [[0, "Off (manual)"], [2, "Every 2 s"], [5, "Every 5 s"], [10, "Every 10 s"], [30, "Every 30 s"], [60, "Every minute"]];
+    function refreshSeconds() { try { var v = +localStorage.getItem("lshme-refresh"); return REFRESH.some(function (x) { return x[0] === v; }) && localStorage.getItem("lshme-refresh") !== null ? v : 5; } catch (e) { return 5; } }
+    function setRefresh(n) { try { localStorage.setItem("lshme-refresh", String(n)); } catch (e) { /* storage may be blocked */ } }
+    /* Fixed line icons (static strings, no user data): one per page, so the menu can be scanned at a glance. */
+    var ICONS = {
+        dashboard: "<path d='M3 12l9-8 9 8'/><path d='M5 10v10h5v-6h4v6h5V10'/>",
+        fleet: "<rect x='3' y='4' width='18' height='6' rx='1.5'/><rect x='3' y='14' width='18' height='6' rx='1.5'/><path d='M7 7h.01M7 17h.01'/>",
+        reports: "<path d='M7 3h8l4 4v14H7z'/><path d='M15 3v4h4M10 12h6M10 16h6'/>",
+        scan: "<circle cx='11' cy='11' r='6'/><path d='M21 21l-5-5'/>",
+        settings: "<circle cx='12' cy='12' r='3'/><path d='M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14 3h-4l-.6 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2L10 21h4l.6-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z'/>",
+        operations: "<path d='M4 6h16M4 12h16M4 18h10'/><circle cx='18' cy='18' r='2'/>",
+        account: "<circle cx='12' cy='8' r='4'/><path d='M4 21c1.5-4 5-6 8-6s6.5 2 8 6'/>",
+        help: "<circle cx='12' cy='12' r='9'/><path d='M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01'/>"
+    };
+    function icon(id) {
+        var s = svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true", focusable: "false" });
+        s.innerHTML = ICONS[id] || ICONS.help;
+        return s;
+    }
+    var THEMES = [["balanced", "Balanced (default)"], ["light", "Light"], ["dusk", "Dusk (soft dark)"], ["forest", "Forest"], ["contrast", "High contrast"], ["system", "Match my computer"]];
+    function theme(t, keep) {
+        if (t === "dark") t = "dusk";
+        if (!THEMES.some(function (x) { return x[0] === t; })) t = "balanced";
+        if (t === "balanced") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t);
+        if (keep !== false) { try { localStorage.setItem("lshme-theme", t); } catch (e) { /* storage may be blocked */ } }
+        return t;
+    }
+    function savedTheme() { try { return localStorage.getItem("lshme-theme") || "balanced"; } catch (e) { return "balanced"; } }
     function shell() {
-        try { theme(localStorage.getItem("lshme-theme")); } catch (e) { /* ignore */ }
+        var current = theme(savedTheme(), false);
         clear(root);
-        var nav = h("nav");
+        var nav = h("nav", { "aria-label": "Main menu" });
         if (S.me.branding && S.me.branding.color) document.documentElement.style.setProperty("--accent", S.me.branding.color);
         PAGES.forEach(function (p) {
             if (!allowed(p)) return;
-            nav.appendChild(h("a", { href: "#/" + p.id, "data-page": p.id, text: p.title }));
+            nav.appendChild(h("a", { href: "#/" + p.id, "data-page": p.id }, icon(p.id), h("span", { text: p.title })));
         });
-        var dark = function () { return document.documentElement.getAttribute("data-theme") === "dark" || (!document.documentElement.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches); };
         var br = S.me.branding || {};
-        var top = h("header", { class: "top" }, h("div", { class: "in" }, h("img", { src: "/lrs_logo.png", alt: "LRS Services" }),
-            br.logo ? h("img", { src: "/brand/logo", alt: br.customer || "", class: "cust" }) : (br.customer ? h("span", { class: "cust", text: br.customer }) : null), nav,
+        var top = h("header", { class: "top" }, h("div", { class: "in" },
+            h("div", { class: "brand" }, h("img", { src: "/lrs_logo.png", alt: "LRS Services", class: "lrs" }),
+                br.logo ? h("img", { src: "/brand/logo?t=" + Date.now(), alt: br.customer || "customer logo", class: "cust" }) : (br.customer ? h("span", { class: "cust", text: br.customer }) : null)),
+            nav,
             h("div", { class: "who" }, h("span", { class: "host", text: S.me.host }), h("span", { text: S.me.user + " (" + S.me.role + ")" }),
-                h("button", { class: "small", text: "Light / dark", onclick: function () { theme(dark() ? "light" : "dark"); } }),
-                h("button", { class: "small", text: "Sign out", onclick: function () { api("POST", "/api/logout").then(showLogin, showLogin); } }))));
-        main = h("main");
+                h("label", { class: "pick" }, h("span", { text: "Theme" }), (function () {
+                    var sel = h("select", { "aria-label": "Colour theme" }, THEMES.map(function (x) { return h("option", { value: x[0], text: x[1], selected: x[0] === current }); }));
+                    sel.addEventListener("change", function () { theme(sel.value); });
+                    return sel;
+                })()),
+                h("label", { class: "pick" }, h("span", { text: "Refresh" }), (function () {
+                    var sel = h("select", { "aria-label": "Refresh interval" }, REFRESH.map(function (x) { return h("option", { value: x[0], text: x[1], selected: x[0] === refreshSeconds() }); }));
+                    sel.addEventListener("change", function () { setRefresh(+sel.value); route(); });
+                    return sel;
+                })()),
+                h("div", { class: "btns" }, h("button", { class: "small", text: "Sign out", onclick: function () { api("POST", "/api/logout").then(showLogin, showLogin); } })))));
+        main = h("main", { id: "content", tabindex: "-1", "aria-label": "Page content" });
+        root.appendChild(h("a", { class: "skip", href: "#content", onclick: function (e) { e.preventDefault(); main.focus(); }, text: "Skip to content" }));
         root.appendChild(top);
         root.appendChild(main);
         root.appendChild(h("footer", { text: S.me.app + " " + S.me.version + " - LRS Services Pvt Ltd, Mumbai" + (S.me.tls ? "" : " - not encrypted (local access only)") }));
@@ -212,7 +251,12 @@
         var parts = (location.hash || "#/dashboard").replace(/^#\//, "").split("/");
         var page = PAGES.filter(function (p) { return p.id === parts[0] && allowed(p); })[0] || PAGES.filter(allowed)[0];
         stopPage();
-        Array.prototype.forEach.call(document.querySelectorAll(".top nav a"), function (a) { a.className = a.getAttribute("data-page") === page.id ? "on" : ""; });
+        Array.prototype.forEach.call(document.querySelectorAll(".top nav a"), function (a) {
+            var on = a.getAttribute("data-page") === page.id;
+            a.className = on ? "on" : "";
+            if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+            a.setAttribute("title", a.textContent);
+        });
         clear(main);
         document.title = page.title + " - " + S.me.host + " - LRS Vitals";
         page.draw(main, parts.slice(1));
@@ -251,8 +295,8 @@
     }
     function drawDashboard(box) {
         var bannerBox = h("div"), live = h("div", { class: "stack" });
-        var alerts = alertsCard();
-        box.appendChild(h("div", { class: "stack" }, bannerBox, alerts.el, live));
+        var alerts = alertsCard(), fleetLive = liveFleetCard();
+        box.appendChild(h("div", { class: "stack" }, bannerBox, fleetLive.el, alerts.el, live));
         var run = runWidget(function () { tick(); });
         var stopped = false, timer = null;
         function paintBanner(hl) {
@@ -318,9 +362,53 @@
             api("GET", "/api/live").then(function (d) { if (!stopped) paint(d); }).catch(function (e) { if (!stopped && e.message !== "Signed out") { clear(live); live.appendChild(h("p", { class: "err", text: e.message })); } });
         }
         tick();
-        timer = setInterval(tick, 2000);
-        var atimer = setInterval(alerts.load, 10000);
-        S.cleanup = function () { stopped = true; clearInterval(timer); clearInterval(atimer); run.stop(); };
+        var every = refreshSeconds() * 1000;
+        timer = every ? setInterval(tick, every) : null;
+        var atimer = every ? setInterval(function () { alerts.load(); fleetLive.load(); }, Math.max(every, 5000)) : null;
+        S.cleanup = function () { stopped = true; if (timer) clearInterval(timer); if (atimer) clearInterval(atimer); run.stop(); };
+    }
+
+    /* ---------------------------------------------------------------- all servers, live */
+    function liveFleetCard() {
+        var box = h("div"), data = null;
+        function dur(s) { s = Math.max(0, Math.round(s || 0)); return s < 90 ? s + " s" : s < 5400 ? Math.round(s / 60) + " min" : s < 172800 ? Math.round(s / 3600) + " h" : Math.round(s / 86400) + " days"; }
+        function tone(s) { return s === "CRITICAL" || s === "UNREACHABLE" ? "crit" : s === "WARNING" || s === "STALE" ? "warn" : s === "HEALTHY" ? "ok" : "none"; }
+        function word(s) { return s === "HEALTHY" ? "Healthy" : s === "WARNING" ? "Warning" : s === "CRITICAL" ? "Critical" : s === "UNREACHABLE" ? "Unreachable" : s === "STALE" ? "Watcher not reporting" : s === "WAITING" ? "Waiting for the first answer" : "No live data (watcher not running)"; }
+        function tile(s) {
+            var t = tone(s.status), pts = (s.series || []).map(function (p) { return p[1] === null || p[1] === undefined ? 0 : p[1]; });
+            var head = h("div", { class: "row space" }, h("b", { class: "nm", text: s.name }), badge(s.status === "UNKNOWN" ? "NO DATA" : (s.status || "WAITING")));
+            var meta = h("div", { class: "muted small", text: [s.group, s.environment, word(s.status)].filter(Boolean).join(" - ") });
+            var el = h("div", { class: "srv st-" + (t === "ok" ? "HEALTHY" : t === "warn" ? "WARNING" : t === "crit" ? "CRITICAL" : "UNKNOWN") }, head, meta);
+            if (!s.ok) {
+                el.appendChild(h("p", { class: "muted small", text: s.status === "WAITING" ? "Waiting for the first answer." : (s.error || "No answer.") + (s.fetched ? " Last seen " + dur(Date.now() / 1000 - s.fetched) + " ago." : "") }));
+                return el;
+            }
+            el.appendChild(h("div", { class: "mini" }, h("span", { class: "muted", text: "CPU" }), barrow(s.cpu || 0, (s.cpu || 0) >= 90 ? "crit" : (s.cpu || 0) >= 75 ? "warn" : "ok", s.cpu === null || s.cpu === undefined ? "-" : Math.round(s.cpu) + "%")));
+            el.appendChild(h("div", { class: "mini" }, h("span", { class: "muted", text: "Memory" }), barrow(s.mem || 0, (s.mem || 0) >= 90 ? "crit" : (s.mem || 0) >= 80 ? "warn" : "ok", s.mem === null || s.mem === undefined ? "-" : Math.round(s.mem) + "%")));
+            var d0 = (s.disks || [])[0];
+            if (d0) el.appendChild(h("div", { class: "mini" }, h("span", { class: "muted", text: "Disk " + d0.mount }), barrow(d0.pct, d0.pct >= 90 ? "crit" : d0.pct >= 80 ? "warn" : "ok", Math.round(d0.pct) + "%")));
+            if (pts.length > 1) el.appendChild(spark(pts, 100));
+            var open = (s.critical || 0) + (s.warning || 0);
+            el.appendChild(h("div", { class: "row space small" }, h("span", { class: open ? "" : "muted", text: open ? (s.critical || 0) + " critical, " + (s.warning || 0) + " warning open" : "No open problems" }),
+                h("span", { class: "muted", text: s.score !== null && s.score !== undefined ? "score " + s.score : "" })));
+            if (s.problems && s.problems.length) el.appendChild(h("div", { class: "muted small", text: s.problems[0].component + ": " + s.problems[0].message }));
+            return el;
+        }
+        function paint() {
+            clear(box);
+            if (!data || !data.enabled || !data.servers.length || (data.servers.length < 2)) return;
+            var sv = data.servers, bad = sv.filter(function (s) { return s.status !== "HEALTHY"; }).length;
+            box.appendChild(card("All servers, live", h("span", { class: "muted", text: sv.length + " servers - " + (bad ? bad + " need attention" : "all healthy") + " - updated " + dur(Date.now() / 1000 - data.updated) + " ago, servers report every " + data.interval + " s" }),
+                h("div", { class: "fleet" }, sv.map(tile))));
+        }
+        function load() {
+            api("GET", "/api/live/fleet").then(function (d) {
+                data = d; paint();
+                if (d.servers.some(function (s) { return s.status === "WAITING"; })) setTimeout(load, 4000);   // the first answers come in shortly
+            }).catch(function () { /* signed out or not available */ });
+        }
+        load();
+        return { el: box, load: load };
     }
 
     /* ---------------------------------------------------------------- alerts */
@@ -330,33 +418,63 @@
         return s < 90 ? "just now" : s < 5400 ? Math.round(s / 60) + " min ago" : s < 172800 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " days ago";
     }
     function alertsCard() {
-        var box = h("div");
+        var box = h("div", { class: "stack" }), st = { tab: "", days: 30 }, MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        try { st.tab = localStorage.getItem("lshme-inc-tab") || ""; } catch (e) { /* storage may be blocked */ }
+        function p2(n) { return (n < 10 ? "0" : "") + n; }
+        function when(ts) { if (!ts) return "-"; var d = new Date(ts * 1000); return d.getDate() + " " + MON[d.getMonth()] + " " + p2(d.getHours()) + ":" + p2(d.getMinutes()); }
+        function dur(s) {
+            s = Math.round(s || 0);
+            if (s < 90) return s + " s";
+            var m = Math.round(s / 60);
+            if (m < 120) return m + " min";
+            var hr = Math.floor(m / 60);
+            if (hr < 48) return hr + " h" + (m % 60 ? " " + (m % 60) + " min" : "");
+            return Math.floor(hr / 24) + " d " + (hr % 24) + " h";
+        }
+        function pri(i) { return h("span", { class: "pri " + (i.priority === "P1" ? "p1" : "p2"), title: i.severity === "CRITICAL" ? "Critical" : "Warning", text: i.priority }); }
+        function status(s) { return h("span", { class: "st st-" + s.toLowerCase(), text: s }); }
+        function tile(label, value, tone, sub) { return h("div", { class: "card tile " + tone }, h("div", { class: "muted", text: label }), h("div", { class: "big", text: String(value) }), h("div", { class: "muted", text: sub || "" })); }
         function paint(d) {
             clear(box);
-            var ch = d.channels, how = [];
+            var sm = d.incident_summary, inc = d.incidents, ch = d.channels, how = [];
             if (ch.email) how.push("email" + (ch.to ? " to " + ch.to : ""));
             if (ch.syslog) how.push("syslog");
             if (ch.webhook) how.push("webhook");
             if (ch.slack) how.push("Slack");
             if (ch.teams) how.push("Teams");
-            var info = h("span", { class: "muted", text: how.length ? "Sent by " + how.join(", ") + " - from " + ch.min_severity + " up, after " + ch.confirm + " bad checks in a row" + (ch.quiet_hours ? " - quiet hours " + ch.quiet_hours : "") + (ch.digest ? " - daily digest at " + ch.digest : "") : "No alert channel is switched on (Settings > main > watch)" });
-            var body = h("div", { class: "stack" });
-            body.appendChild(d.active.length ? table(["Level", "Problem", "Since", "Checks", "Alert", ""], d.active.map(function (a) {
-                return [badge(a.severity), h("div", null, h("b", { text: a.component }), h("div", { class: "muted", text: a.message })), ago(a.since), a.count, a.alerted ? "sent" : "waiting",
+            box.appendChild(h("div", { class: "grid g4" },
+                tile("Open now", sm.open, sm.open ? "crit" : "ok", sm.open ? "needs action" : "all clear"),
+                tile("Resolved in 24 h", sm.resolved_24h, "ok", "closed, no longer a problem"),
+                tile("Mean time to resolve", sm.mttr === null ? "-" : dur(sm.mttr), "info", "over the last " + sm.days + " days"),
+                tile("Resolved, " + sm.days + " days", sm.resolved_total, "ok", "kept in the incident log")));
+            var info = h("span", { class: "muted", text: how.length ? "Alerts by " + how.join(", ") + " - from " + ch.min_severity + " up, after " + ch.confirm + " bad checks in a row" + (ch.quiet_hours ? " - quiet hours " + ch.quiet_hours : "") + (ch.digest ? " - daily digest " + ch.digest : "") : "No alert channel is switched on (Settings > main > watch)" });
+            var active = d.active.length ? table(["Priority", "Problem", "Since", "Checks", "Alert", ""], d.active.map(function (a) {
+                return [h("span", { class: "pri " + (a.severity === "CRITICAL" ? "p1" : "p2"), text: a.severity === "CRITICAL" ? "P1" : "P2", title: a.severity }),
+                    h("div", null, h("b", { text: a.component }), h("div", { class: "muted", text: a.message })), ago(a.since), a.count, a.alerted ? "sent" : "waiting",
                     a.ack ? h("span", { class: "muted", text: "acknowledged by " + a.ack.by + " " + ago(a.ack.at) })
                         : (S.me.role === "admin" ? h("button", { class: "small", text: "Acknowledge", onclick: function () {
                             api("POST", "/api/alerts", { action: "ack", key: a.key }).then(function () { toast("Acknowledged: reminders stop until it gets worse or ends", "good"); load(); }).catch(fail);
                         } }) : "")];
-            }), [3]) : h("p", { class: "muted", text: "No active problems. CPU, memory, disks, services and ports are within their limits." }));
-            if (d.events.length) {
-                body.appendChild(h("h3", { text: "Recent alerts and recoveries" }));
-                body.appendChild(table(["When", "Event", "Level", "Message"], d.events.slice(0, 10).map(function (e) {
-                    return [ago(e.ts), e.event, e.severity ? badge(e.severity) : "", e.message || e.component];
-                })));
+            }), [3]) : h("p", { class: "okline" }, h("span", { class: "dot ok" }), "No active problems. CPU, memory, disks, services and ports are within their limits.");
+            box.appendChild(card("Active problems", info, active));
+            var tab = st.tab || (sm.open ? "open" : "resolved");
+            var shown = inc.filter(function (i) { return tab === "all" || (tab === "open" ? i.status !== "Resolved" : i.status === "Resolved"); });
+            var nOpen = inc.filter(function (i) { return i.status !== "Resolved"; }).length;
+            function tabBtn(id, label, n) {
+                return h("button", { class: "seg" + (tab === id ? " on" : ""), type: "button", "aria-pressed": tab === id ? "true" : "false", text: label + " (" + n + ")", onclick: function () {
+                    st.tab = id; try { localStorage.setItem("lshme-inc-tab", id); } catch (e) { /* ignore */ } paint(d);
+                } });
             }
-            box.appendChild(card("Alerts", info, body));
+            var days = h("select", { "aria-label": "Period" }, [[1, "24 hours"], [7, "7 days"], [30, "30 days"], [90, "90 days"]].map(function (o) { return h("option", { value: o[0], text: o[1], selected: o[0] === st.days }); }));
+            days.addEventListener("change", function () { st.days = +days.value; load(); });
+            var controls = h("div", { class: "row" }, h("div", { class: "segs", role: "group", "aria-label": "Incident status" }, tabBtn("open", "Open", nOpen), tabBtn("resolved", "Resolved", inc.length - nOpen), tabBtn("all", "All", inc.length)), days);
+            var body = shown.length ? h("div", { class: "scroll" }, table(["Incident", "Priority", "Where", "Description", "Opened", "Resolved", "Time to resolve", "Status"], shown.map(function (i) {
+                return [h("span", { class: "mono", text: i.id }), pri(i), h("b", { text: i.component }), i.message, when(i.opened), i.resolved ? when(i.resolved) : "-", dur(i.duration), status(i.status)];
+            }), [6], function (idx) { return shown[idx].status === "Resolved" ? "resolved" : ""; }))
+                : h("p", { class: "muted", text: tab === "open" ? "No open incidents." : "No " + (tab === "all" ? "" : "resolved ") + "incidents in the last " + (st.days === 1 ? "24 hours" : st.days + " days") + "." });
+            box.appendChild(card("Incident log", controls, body, h("p", { class: "muted small", text: "P1 = critical, P2 = warning. A resolved incident is closed history: it is not a problem now and does not count in the health score." })));
         }
-        function load() { api("GET", "/api/alerts").then(paint).catch(function () { /* signed out */ }); }
+        function load() { api("GET", "/api/alerts?days=" + st.days).then(paint).catch(function () { /* signed out */ }); }
         load();
         return { el: box, load: load };
     }
@@ -392,7 +510,7 @@
                     [["CPU", s.cpu], ["Memory", s.mem], ["Fullest disk", s.disk]].forEach(function (m) {
                         if (m[1] !== null && m[1] !== undefined) cardEl.appendChild(h("div", { class: "mini" }, h("span", { class: "muted", text: m[0] }), barrow(m[1], m[1] >= 90 ? "crit" : m[1] >= 80 ? "warn" : "ok")));
                     });
-                    if (s.top) cardEl.appendChild(h("div", { class: "top", text: s.top }));
+                    if (s.top) cardEl.appendChild(h("div", { class: "topline", text: s.top }));
                     cardEl.appendChild(h("div", { class: "muted", text: (s.local ? "This server - " : "") + "checked " + ago(s.collected) }));
                 }
                 grid.appendChild(cardEl);
@@ -490,23 +608,52 @@
             box.appendChild(h("p", { class: "muted", text: "To send the executive summary to management, list their addresses as to_summary in the schedule (Setup > Schedules). They then receive only that report." }));
         }).catch(function () { clear(box); });
     }
+    /* Any image the browser can open (PNG, JPG, GIF, WebP, BMP, SVG) becomes a PNG that fits 900 x 300; the server stores it. */
+    function prepareLogo(file, maxW, maxH) {
+        return new Promise(function (resolve, reject) {
+            var url = URL.createObjectURL(file), img = new Image(), bad = "This file could not be read as an image. Use PNG, JPG, GIF, WebP, BMP or SVG.";
+            img.onload = function () {
+                try {
+                    var w = img.naturalWidth || 600, hh = img.naturalHeight || 200, sc = Math.min(maxW / w, maxH / hh, 1);
+                    var cw = Math.max(1, Math.round(w * sc)), ch = Math.max(1, Math.round(hh * sc)), c = document.createElement("canvas");
+                    c.width = cw; c.height = ch;
+                    c.getContext("2d").drawImage(img, 0, 0, cw, ch);
+                    URL.revokeObjectURL(url);
+                    c.toBlob(function (blob) {
+                        if (!blob) { reject(new Error(bad)); return; }
+                        var rd = new FileReader();
+                        rd.onload = function () { resolve({ b64: String(rd.result).split(",")[1] || "", width: cw, height: ch, bytes: blob.size, from: w + " x " + hh }); };
+                        rd.readAsDataURL(blob);
+                    }, "image/png");
+                } catch (e) { URL.revokeObjectURL(url); reject(new Error(bad)); }
+            };
+            img.onerror = function () { URL.revokeObjectURL(url); reject(new Error(bad)); };
+            img.src = url;
+        });
+    }
+    function sendLogo(file, scope, done) {
+        var sizes = [[900, 300], [600, 200], [400, 140]], i = 0;
+        (function attempt() {
+            prepareLogo(file, sizes[i][0], sizes[i][1]).then(function (p) {
+                if (p.bytes > 650 * 1024 && i < sizes.length - 1) { i++; attempt(); return; }
+                api("POST", "/api/branding/upload", { scope: scope, filename: file.name, data: p.b64 }).then(function (r) {
+                    toast("Logo stored (" + p.from + " px fitted to " + p.width + " x " + p.height + "). New reports use it.", "good");
+                    done(r);
+                }).catch(fail);
+            }).catch(fail);
+        })();
+    }
     function drawLogos(box) {
         function paint(d) {
             clear(box);
             var scope = h("select", null, h("option", { value: "all", text: "All servers (default logo)" }));
             d.servers.forEach(function (s) { scope.appendChild(h("option", { value: s.name, text: "Only " + s.name })); });
-            var file = h("input", { type: "file", accept: "image/png,image/jpeg" });
-            var note = h("p", { class: "muted", text: "PNG or JPEG, up to 700 KB (PNG up to 700,000 pixels, for example 1000 x 500). A wide logo on a plain or transparent background looks best." });
+            var file = h("input", { type: "file", accept: "image/*", "aria-label": "Logo image" });
+            var note = h("p", { class: "muted", text: "Any image works: PNG, JPG, GIF, WebP, BMP or SVG, of any size. It is converted to PNG and fitted automatically (at most 900 x 300 pixels, never enlarged). A wide logo on a plain or transparent background looks best." });
             function upload() {
                 var f = file.files[0];
-                if (!f) { toast("Choose a PNG or JPEG file first.", "bad"); return; }
-                if (f.size > 700 * 1024) { toast("The file is " + Math.round(f.size / 1024) + " KB; the limit is 700 KB.", "bad"); return; }
-                var rd = new FileReader();
-                rd.onload = function () {
-                    var b64 = String(rd.result).split(",")[1] || "";
-                    api("POST", "/api/branding/upload", { scope: scope.value, filename: f.name, data: b64 }).then(function (r) { toast("Logo stored. New reports use it.", "good"); paint(r); }).catch(fail);
-                };
-                rd.readAsDataURL(f);
+                if (!f) { toast("Choose an image file first.", "bad"); return; }
+                sendLogo(f, scope.value, paint);
             }
             var cur = d.default ? h("img", { src: "/api/branding/logo?scope=all&t=" + Date.now(), alt: "logo", style: "max-height:56px;max-width:220px;background:#fff;border:1px solid var(--line,#d6dde6);border-radius:6px;padding:6px" })
                 : h("span", { class: "muted", text: "No logo yet: reports show the customer name instead." });
@@ -655,6 +802,15 @@
             var inp = makeInput(e), ctl = h("div", { class: "ctl" }, inp.el);
             var row = h("div", { class: "field" }, h("div", { class: "name" }, e.key, e.help ? h("div", { class: "hint", text: e.help }) : null,
                 e.default !== "" && e.kind !== "secret" ? h("div", { class: "hint", text: "default: " + e.default }) : null), ctl);
+            if (file === "main" && sec.name === "general" && e.key === "logo") {      // upload the customer logo here instead of typing a path
+                var pick = h("input", { type: "file", accept: "image/*", "aria-label": "Customer logo image" });
+                if (e.value) ctl.insertBefore(h("img", { src: "/api/branding/logo?scope=all&t=" + Date.now(), alt: "current logo", class: "logoprev" }), ctl.firstChild);
+                ctl.appendChild(h("div", { class: "row" }, pick, h("button", { class: "small primary", type: "button", text: "Upload and use", onclick: function () {
+                    if (!pick.files[0]) { toast("Choose an image file first.", "bad"); return; }
+                    sendLogo(pick.files[0], "all", function () { if (reload) reload(); });
+                } })));
+                ctl.appendChild(h("div", { class: "hint", text: "Upload any image: it is converted to PNG and fitted for the reports, and this path is filled in for you." }));
+            }
             if (removable) ctl.appendChild(h("button", { class: "small danger", type: "button", text: "Remove", onclick: function () { removeKeys.push(e.key); delete inputs[e.key]; rows.removeChild(row); dirtyCheck(); } }));
             inp.row = row;
             inputs[e.key] = inp;
@@ -816,6 +972,13 @@
     function drawAccount(box) {
         var wrap = h("div", { class: "stack" });
         box.appendChild(wrap);
+        var th = h("select", { "aria-label": "Colour theme" }, THEMES.map(function (x) { return h("option", { value: x[0], text: x[1], selected: x[0] === savedTheme() }); }));
+        th.addEventListener("change", function () { theme(th.value); });
+        var rf = h("select", { "aria-label": "Refresh interval" }, REFRESH.map(function (x) { return h("option", { value: x[0], text: x[1], selected: x[0] === refreshSeconds() }); }));
+        rf.addEventListener("change", function () { setRefresh(+rf.value); toast("Refresh interval saved for this browser", "good"); });
+        wrap.appendChild(card("Appearance", h("span", { class: "muted", text: "saved in this browser" }), h("div", { class: "row" },
+            h("label", null, "Colour theme ", th), h("label", null, "Refresh live data ", rf),
+            h("span", { class: "muted", text: "The page fits any screen: phones, laptops, large and 4K monitors." }))));
         var oldp = h("input", { type: "password", placeholder: "Current password", autocomplete: "current-password" });
         var newp = h("input", { type: "password", placeholder: "New password (10+ characters, upper, lower, digit)", autocomplete: "new-password" });
         wrap.appendChild(card("Change my password", null, h("div", { class: "row" }, oldp, newp, h("button", { class: "primary", text: "Change password", onclick: function () {

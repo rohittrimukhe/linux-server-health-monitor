@@ -14,6 +14,7 @@ import os
 import re
 import shlex
 import struct
+import zlib
 
 from lshme.ops import fleet
 from lshme.reports import minipdf
@@ -62,6 +63,125 @@ def inspect(raw):
         if comps not in (1, 3):
             raise ValueError("The JPEG uses an unsupported colour mode (CMYK). Save it as an RGB JPEG or a PNG.")
     return {"kind": kind, "ext": ext, "width": img[0], "height": img[1], "bytes": n}
+
+
+FIT_W, FIT_H = 900, 300           # a logo is never shown larger than this
+
+
+def decode_png(raw):
+    """(width, height, RGBA bytes) of a PNG that is not interlaced (8 or 16 bits; grey, RGB, palette, with or without alpha)."""
+    pos, idat, plte, trns, hdr = 8, b"", b"", b"", None
+    while pos + 8 <= len(raw):
+        n, kind = struct.unpack(">I4s", raw[pos:pos + 8])
+        body = raw[pos + 8:pos + 8 + n]
+        pos += 12 + n
+        if kind == b"IHDR":
+            hdr = struct.unpack(">IIBBBBB", body)
+        elif kind == b"IDAT":
+            idat += body
+        elif kind == b"PLTE":
+            plte = body
+        elif kind == b"tRNS":
+            trns = body
+    if not hdr:
+        raise ValueError("The PNG file is damaged.")
+    w, h, depth, ctype, _, _, interlace = hdr
+    if interlace or ctype not in (0, 2, 3, 4, 6) or depth not in (8, 16) or (ctype == 3 and depth != 8):
+        raise ValueError("This kind of PNG cannot be converted here. Upload it from the dashboard (it converts any image), or save it as a normal PNG.")
+    if w * h > 6000000:
+        raise ValueError("The image is %d x %d pixels, too large to convert here. Resize it first." % (w, h))
+    ch = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[ctype]
+    bpp = ch * (depth // 8)
+    stride = w * bpp
+    data = zlib.decompress(idat)
+    out = bytearray(w * h * 4)
+    prev = bytearray(stride)
+    pal = [tuple(plte[i:i + 3]) + (trns[k] if k < len(trns) else 255,) for k, i in enumerate(range(0, len(plte), 3))]
+    p = 0
+    for y in range(h):
+        ft = data[p]
+        line = bytearray(data[p + 1:p + 1 + stride])
+        p += 1 + stride
+        if ft == 1:
+            for i in range(bpp, stride):
+                line[i] = (line[i] + line[i - bpp]) & 255
+        elif ft == 2:
+            for i in range(stride):
+                line[i] = (line[i] + prev[i]) & 255
+        elif ft == 3:
+            for i in range(stride):
+                left = line[i - bpp] if i >= bpp else 0
+                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 255
+        elif ft == 4:
+            for i in range(stride):
+                a = line[i - bpp] if i >= bpp else 0
+                b = prev[i]
+                c = prev[i - bpp] if i >= bpp else 0
+                pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
+                line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        prev = line
+        px = line[0::2] if depth == 16 else line            # keep the high byte of 16-bit samples
+        row = out[y * w * 4:(y + 1) * w * 4]
+        if ctype == 6:
+            row[:] = px
+        elif ctype == 2:
+            row[0::4], row[1::4], row[2::4], row[3::4] = px[0::3], px[1::3], px[2::3], b"\xff" * w
+        elif ctype == 0:
+            row[0::4], row[1::4], row[2::4], row[3::4] = px, px, px, b"\xff" * w
+        elif ctype == 4:
+            row[0::4], row[1::4], row[2::4], row[3::4] = px[0::2], px[0::2], px[0::2], px[1::2]
+        else:
+            row[:] = b"".join(bytes(pal[i]) if i < len(pal) else b"\x00\x00\x00\xff" for i in px)
+        out[y * w * 4:(y + 1) * w * 4] = row
+    return w, h, out
+
+
+def fit_rgba(w, h, rgba, max_w=FIT_W, max_h=FIT_H):
+    """Shrink an RGBA image to fit inside max_w x max_h (averaging, never enlarging). Returns (w, h, rgba)."""
+    scale = min(max_w / float(w), max_h / float(h), 1.0)
+    if scale >= 1.0:
+        return w, h, rgba
+    dw, dh = max(1, int(w * scale)), max(1, int(h * scale))
+    xs = [min(dw - 1, x * dw // w) for x in range(w)]
+    out = bytearray(dw * dh * 4)
+    for dy in range(dh):
+        y0, y1 = dy * h // dh, max(dy * h // dh + 1, (dy + 1) * h // dh)
+        sums = [0] * (dw * 4)
+        cnt = [0] * dw
+        for y in range(y0, min(y1, h)):
+            base = y * w * 4
+            for x in range(w):
+                i, j = base + x * 4, xs[x] * 4
+                sums[j] += rgba[i]
+                sums[j + 1] += rgba[i + 1]
+                sums[j + 2] += rgba[i + 2]
+                sums[j + 3] += rgba[i + 3]
+                cnt[xs[x]] += 1
+        for dx in range(dw):
+            c = cnt[dx] or 1
+            o = (dy * dw + dx) * 4
+            out[o], out[o + 1], out[o + 2], out[o + 3] = sums[dx * 4] // c, sums[dx * 4 + 1] // c, sums[dx * 4 + 2] // c, sums[dx * 4 + 3] // c
+    return dw, dh, out
+
+
+def encode_png(w, h, rgba):
+    rows = b"".join(b"\x00" + bytes(rgba[y * w * 4:(y + 1) * w * 4]) for y in range(h))
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    return PNG_SIG + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b"")
+
+
+def normalize(raw, why):
+    """A PNG that is too big (or 16-bit) becomes a PNG that fits. Anything else cannot be fixed here: the original message is raised."""
+    if raw[:8] != PNG_SIG:
+        raise ValueError(why)
+    try:
+        w, h, rgba = decode_png(raw)
+        w, h, rgba = fit_rgba(w, h, rgba)
+        return encode_png(w, h, rgba)
+    except (ValueError, zlib.error, struct.error, IndexError) as e:
+        raise ValueError("%s (%s)" % (why, e))
 
 
 def jpeg_components(raw):
@@ -117,7 +237,13 @@ def check_scope(app, scope):
 def save(app, raw, scope="all"):
     """Store a logo. The default logo is also written to [main] [general] logo. Returns its description."""
     scope = check_scope(app, scope)
-    info = inspect(raw)
+    try:
+        info = inspect(raw)
+    except ValueError as e:
+        if len(raw or b"") > 8 * 1024 * 1024 or str(e) == "The file is empty.":
+            raise
+        raw = normalize(raw, str(e))                          # too big or 16-bit: fitted automatically, then checked again
+        info = inspect(raw)
     if scope == "all":
         stem = os.path.join(base_dir(app.paths), "customer_logo")
     else:

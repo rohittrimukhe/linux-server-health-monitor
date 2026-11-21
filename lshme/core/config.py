@@ -46,7 +46,7 @@ DEFAULTS = {
                   "syslog": "yes", "webhook_url": "", "max_rss_mb": "100", "netfs_timeout": "5",
                   "metrics_hours": "24"},
         "alert_routes": {},
-        "fleet": {"enabled": "no", "minutes": "10"},
+        "fleet": {"enabled": "no", "minutes": "10", "live": "yes", "live_seconds": "30"},
         "performance": {"nice": "10", "idle_io": "yes"},
         "sla": {"target_percent": "99.9", "count_as_downtime": "svc,port,proc,ro,netfs"},
         "dashboard": {"title": "", "stale_hours": "26", "refresh_seconds": "300", "auto_build": "yes"},

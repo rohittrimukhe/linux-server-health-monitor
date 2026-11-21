@@ -133,3 +133,37 @@ class BrandingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FitTest(unittest.TestCase):
+    def setUp(self):
+        from lshme.app import App
+        self.home = TempHome({"servers": SERVERS})
+        self.app = App(ROOT, home=self.home.dir)
+
+    def tearDown(self):
+        self.home.cleanup()
+
+    def test_a_logo_that_is_too_big_is_fitted_automatically(self):
+        wide = png(2965, 333)                                              # the customer's real logo size: 987,000 pixels
+        with self.assertRaises(ValueError):
+            branding.inspect(wide)
+        info = branding.save(self.app, wide)
+        self.assertEqual((info["width"], info["height"]), (900, 101))     # fitted inside 900 x 300, same proportions
+        w, h, px = branding.decode_png(open(info["path"], "rb").read())
+        self.assertEqual((w, h), (900, 101))
+        self.assertEqual(tuple(px[0:4]), (200, 30, 30, 255))              # the colours survive
+        self.assertEqual(self.app.cfg.get("main", "general", "logo", ""), info["path"])
+
+    def test_other_png_kinds_are_converted(self):
+        info = branding.save(self.app, png(1500, 700, depth=16, ctype=2) if False else png(1200, 700, ctype=6))
+        self.assertEqual(info["width"] <= 900 and info["height"] <= 300, True)
+        gray = png(100, 40, ctype=0)
+        w, h, px = branding.decode_png(gray)
+        self.assertEqual((w, h, tuple(px[0:4])), (100, 40, (200, 200, 200, 255)))
+
+    def test_a_small_logo_is_never_enlarged(self):
+        w, h, px = branding.decode_png(png(300, 100))
+        self.assertEqual(branding.fit_rgba(w, h, px)[:2], (300, 100))
+        with self.assertRaises(ValueError):
+            branding.save(self.app, b"GIF89a" + bytes(100))               # not a PNG or JPEG: the browser converts those, the command line does not

@@ -21,6 +21,7 @@ def add_parser(sub):
     a.add_argument("--limit", type=int, default=50)
     a.add_argument("--to", default="", help="email: recipients, comma separated (default: configured)")
     a.add_argument("--days", type=float, default=None, help="compress: reports older than this many days (default: retention setting)")
+    a.add_argument("--json", action="store_true", help="list: print JSON (used by the Cockpit page)")
     return a
 
 
@@ -47,6 +48,14 @@ def run(app, args):
                 C.out("Original size %s, stored %s, saved %s (%.0f%%)" % (fmt_bytes(s["original"]), fmt_bytes(s["stored"]), fmt_bytes(saved),
                                                                          100.0 * saved / s["original"] if s["original"] else 0))
                 C.out("Full-text search: %s   index: %s" % ("yes" if s["fts"] else "basic", ix.path))
+            elif act == "list" and args.json:
+                import json
+                out = []
+                for r in ix.listing(args.host, args.category, args.limit):
+                    d = os.path.join(paths.report_dir, r["rid"])
+                    out.append({"rid": r["rid"], "host": r["host"], "category": r["category"], "ts": r["ts"],
+                                "files": [{"name": f["name"], "size": f["size"], "rebuilt": not f["on_disk"]} for f in archive.catalog(d)] if os.path.isdir(d) else []})
+                sys.stdout.write(json.dumps({"reports": out}, separators=(",", ":")) + "\n")
             elif act == "list":
                 rows = ix.listing(args.host, args.category, args.limit)
                 C.table(["Report", "Taken", "Files", "Size", "Stored", "Compressed"],

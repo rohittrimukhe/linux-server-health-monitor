@@ -100,6 +100,39 @@ def incidents_from(events, now):
     return sorted(done, key=lambda i: i["start"])
 
 
+PRIORITY = {"CRITICAL": "P1", "WARNING": "P2"}
+
+
+def incident_id(inc):
+    """A stable reference such as INC-20261121-3F2A (the day it opened and four hex digits of its key and start time)."""
+    import zlib
+    tag = zlib.crc32(("%s|%d" % (inc.get("key", ""), int(inc["start"]))).encode("utf-8")) & 0xFFFF
+    return "INC-%s-%04X" % (time.strftime("%Y%m%d", time.localtime(inc["start"])), tag)
+
+
+def incident_log(events, now, days=30, limit=200, acks=None):
+    """Incidents (open and resolved) of the last days, newest first, in the usual incident-management form:
+    id, priority (P1 critical, P2 warning), where, what, opened, resolved, time to resolve, status (Open, Acknowledged, Resolved).
+    Returns (list, summary) where summary has the open count, those resolved in 24 h and the mean time to resolve."""
+    acks = acks or {}
+    since = now - days * 86400
+    out = []
+    for inc in incidents_from(events, now):
+        if inc["end"] < since and not inc.get("ongoing"):
+            continue
+        peak = "CRITICAL" if inc.get("severity") == "CRITICAL" or inc.get("crit_periods") else inc.get("severity", "WARNING")
+        ack = acks.get(inc.get("key")) if inc.get("ongoing") else None
+        out.append({"id": incident_id(inc), "key": inc.get("key"), "priority": PRIORITY.get(peak, "P2"), "severity": peak, "component": inc.get("component", ""),
+                    "message": inc.get("message", ""), "opened": inc["start"], "resolved": None if inc.get("ongoing") else inc["end"],
+                    "duration": (now if inc.get("ongoing") else inc["end"]) - inc["start"],
+                    "status": ("Acknowledged" if ack else "Open") if inc.get("ongoing") else "Resolved", "ack": ack})
+    out.sort(key=lambda i: -i["opened"])
+    resolved = [i for i in out if i["status"] == "Resolved"]
+    summary = {"open": sum(1 for i in out if i["status"] != "Resolved"), "resolved_24h": sum(1 for i in resolved if i["resolved"] >= now - 86400),
+               "resolved_total": len(resolved), "mttr": (sum(i["duration"] for i in resolved) / len(resolved)) if resolved else None, "days": days}
+    return out[:limit], summary
+
+
 def _union(intervals):
     total, cur_s, cur_e = 0.0, None, None
     for s, e in sorted(intervals):
