@@ -47,8 +47,7 @@ def _is_run(days):
 def days_systemd(days):
     if len(days) == 7:
         return ""
-    if len(days) > 1 and _is_run(days):
-        return "%s..%s " % (DAY_NAMES[days[0]], DAY_NAMES[days[-1]])
+    # a comma list, never a range such as Mon..Sat: systemd 219 (Oracle Linux 7 / RHEL 7) rejects ranges and the timer is not loaded
     return ",".join(DAY_NAMES[d] for d in days) + " "
 
 

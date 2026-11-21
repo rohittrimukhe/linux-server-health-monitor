@@ -18,7 +18,7 @@ class SchedulerTest(unittest.TestCase):
                                      "[schedule:custom1]\nfrequency = custom\ncalendar = Mon..Fri *-*-* 06:30:00\nmodules = database\n"})
         s = dict((x.name, x) for x in scheduler.schedules(home.cfg))
         self.assertEqual(s["daily"].cron(), "0 9 * * 1-6")          # Monday to Saturday at 09:00
-        self.assertEqual(s["daily"].on_calendar(), "Mon..Sat *-*-* 09:00:00")
+        self.assertEqual(s["daily"].on_calendar(), "Mon,Tue,Wed,Thu,Fri,Sat *-*-* 09:00:00")
         self.assertEqual(s["daily"].describe(), "Mon-Sat at 09:00")
         self.assertEqual(s["weekly"].cron(), "30 22 * * 5")
         self.assertEqual(s["weekly"].on_calendar(), "Fri *-*-* 22:30:00")
@@ -98,7 +98,7 @@ class SchedulerTest(unittest.TestCase):
                                                   "lshme-weekly.service", "lshme-weekly.timer"])
         svc = slurp(os.path.join(sd, "lshme-daily.service"))
         self.assertIn("ExecStart=/opt/lshme/healthcheck --config-dir /etc/lshme run --schedule daily --quiet --retries 2", svc)
-        self.assertIn("OnCalendar=Mon..Sat *-*-* 09:00:00", slurp(os.path.join(sd, "lshme-daily.timer")))
+        self.assertIn("OnCalendar=Mon,Tue,Wed,Thu,Fri,Sat *-*-* 09:00:00", slurp(os.path.join(sd, "lshme-daily.timer")))
         self.assertIn("systemctl enable --now lshme-daily.timer", r.calls)
         # the weekly server rescan: Sunday 02:00, applies what it finds
         self.assertIn("ExecStart=/opt/lshme/healthcheck --config-dir /etc/lshme scan --apply --quiet", slurp(os.path.join(sd, "lshme-scan.service")))
