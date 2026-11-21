@@ -128,6 +128,7 @@ class PDoc(object):
         self.copyright = COPYRIGHT
         self.brand_logo = BRAND_LOGO if os.path.isfile(BRAND_LOGO) else ""
         self.report_type = ptype
+        self.attention = None             # number of items under 'What needs attention' (the header shows the same number)
 
     def add(self, title, blocks):
         self.sections.append((title, [b for b in blocks if b]))
@@ -700,7 +701,7 @@ def closed_blocks(data):
             if (code, comp) in skip:
                 continue
             fmt = "%d %b %H:%M" if data.days <= 7 else "%d %b"
-            rows.append([Cell("CRIT" if sev == "CRITICAL" else "WARN", "chip-cr" if sev == "CRITICAL" else "chip-wn"), (comp or code)[:40], redact(msg or "")[:110], n,
+            rows.append([Cell("Critical" if sev == "CRITICAL" else "Warning", "fl"), (comp or code)[:40], redact(msg or "")[:110], n,
                          stamp(first, fmt), stamp(last, fmt), Cell("closed", "ok")])
     if rows:
         blocks.append(table("Problems that were found and are now closed", ["Was", "Where", "What", "Checks", "First seen", "Last seen", "Now"], rows,
@@ -714,7 +715,7 @@ def closed_blocks(data):
                 if i.get("ongoing") or i["end"] < data.since:
                     continue
                 inc.append([stamp(i["start"], "%d %b %H:%M"), stamp(i["end"], "%d %b %H:%M"), fmt_duration(i["end"] - i["start"]),
-                            Cell("CRIT" if i["severity"] == "CRITICAL" else "WARN", "chip-cr" if i["severity"] == "CRITICAL" else "chip-wn"),
+                            Cell("Critical" if i["severity"] == "CRITICAL" else "Warning", "fl"),
                             i["component"], redact(i["message"])[:100]])
         except Exception:
             inc = []
@@ -993,6 +994,7 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
         d.add("What needs attention", [actions(acts[:10])])
     else:
         d.add("What needs attention", [note("Nothing needs attention. Every check is within its limits.")])
+    d.attention = len(acts[:10])
     if variant != "database":
         closed = closed_blocks(data)
         if closed:

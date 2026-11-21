@@ -220,8 +220,8 @@ class PeriodicPDF(MiniPDF):
         sx = PAGE_W - MARGIN - 136
         self.fill(sx, top - 122, 136, 44, col)
         self.put(sx + 68 - tw(doc.status, 16, True) / 2, top - 100, doc.status, 16, "F2", (1, 1, 1))
-        att = doc.counts.get("CRITICAL", 0) + doc.counts.get("WARNING", 0)
-        msg = "%d item%s need attention" % (att, "" if att == 1 else "s") if att else "all clear"
+        att = doc.attention if getattr(doc, "attention", None) is not None else doc.counts.get("CRITICAL", 0) + doc.counts.get("WARNING", 0)
+        msg = ("1 item needs attention" if att == 1 else "%d items need attention" % att) if att else "all clear"
         self.put(sx + 68 - tw(msg, 8.5) / 2, top - 114, msg, 8.5, "F1", (1, 1, 1))
         self.y = top - band - 14
         det = getattr(doc, "details", [])
@@ -257,6 +257,7 @@ class PeriodicPDF(MiniPDF):
     def kpis(self, items):
         """Tiles sized to their content, in rows of at most four (three when there are five or six); a long label wraps to a second line."""
         per = len(items) if len(items) <= 4 else (3 if len(items) in (5, 6) else 4)
+        self.need(68 * ((len(items) + per - 1) // per) + 8)
         for i in range(0, len(items), per):
             self.kpi_row(items[i:i + per])
 
@@ -553,7 +554,8 @@ def first_height(b):
     """About how much room the first block of a section needs, so the heading never sits alone at the bottom of a page."""
     t = b.get("type")
     if t == "kpis":
-        return 70
+        n = len(b.get("items", []))
+        return 70 * (1 if n <= 4 else 2)
     if t == "points":
         return 44
     if t == "table":
