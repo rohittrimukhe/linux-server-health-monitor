@@ -48,7 +48,7 @@ def usage(data):
         except Exception:
             rows = {}
         for iface, hrs in rows.items():
-            mid = lambda t: t + 1800
+            mid = lambda t: min(t + 1800, data.now)
             out[iface] = {"rx": [(mid(t), a) for t, a, _, _, _ in hrs], "tx": [(mid(t), c) for t, _, _, c, _ in hrs],
                           "rxmax": [(mid(t), m) for t, _, m, _, _ in hrs], "txmax": [(mid(t), m) for t, _, _, _, m in hrs], "step": 3600.0}
             out[iface]["rxs"], out[iface]["txs"] = out[iface]["rx"], out[iface]["tx"]
@@ -63,6 +63,24 @@ def transferred(pts, step):
         total += v * dt
         prev = t
     return total
+
+
+def kind_of(name, base):
+    """physical | bond | bridge | vm | vlan | virtual, from /sys. Only physical adapters carry the real traffic once."""
+    if os.path.isdir(base + "/bonding"):
+        return "bond"
+    if os.path.isdir(base + "/bridge"):
+        return "bridge"
+    if os.path.exists(base + "/tun_flags") or name.startswith(("vnet", "tap")):
+        return "vm"
+    if os.path.exists(base + "/device"):
+        return "physical"
+    if "." in name or os.path.exists(base + "/../" + name + "/vlan_id"):
+        return "vlan"
+    return "virtual"
+
+
+KIND_TEXT = {"physical": "Physical", "bond": "Bond", "bridge": "Bridge", "vm": "Virtual machine", "vlan": "VLAN", "virtual": "Virtual"}
 
 
 def adapters(runner):
@@ -88,15 +106,26 @@ def adapters(runner):
     except OSError:
         names = []
     for n in names:
-        if n == "lo":
-            continue
         b = "/sys/class/net/" + n
+        if n == "lo" or not os.path.isdir(b):          # bonding_masters is a control file, not an adapter
+            continue
         speed = read(b + "/speed")
+        master = os.path.basename(os.path.realpath(b + "/master")) if os.path.islink(b + "/master") else ""
         out.append({"name": n, "state": read(b + "/operstate"), "mac": read(b + "/address"), "mtu": read(b + "/mtu"),
                     "speed": int(speed) if speed.lstrip("-").isdigit() and int(speed) > 0 else None,
                     "ips": addrs.get(n, []), "rx_total": counters.get(n, (0, 0))[0], "tx_total": counters.get(n, (0, 0))[1],
-                    "physical": os.path.exists(b + "/device")})
+                    "physical": os.path.exists(b + "/device"), "kind": kind_of(n, b), "master": master})
     return out
+
+
+def counted(ad, traffic):
+    """Names whose traffic is added up. The physical adapters carry the real traffic exactly once; bonds, bridges, VLANs and VM taps
+    carry the same bytes again, so adding them would count everything two or three times."""
+    phys = set(a["name"] for a in ad if a["kind"] == "physical" and a["name"] in traffic)
+    if phys:
+        return phys
+    rest = set(a["name"] for a in ad if a["kind"] not in ("vm", "bridge", "bond") and a["name"] in traffic)
+    return rest or set(traffic)
 
 
 def merge_total(rx_pts, tx_pts):
@@ -135,15 +164,18 @@ def blocks(data, runner):
     rows = []
     for a in sorted(ad, key=lambda x: -(x["rx_total"] + x["tx_total"])):
         st = a["state"]
-        rows.append([Cell(a["name"], "b"), chip("ok") if st == "up" else Cell(st or "unknown", "fl"), ", ".join(a["ips"]) or "-", a["mac"] or "-",
+        kind = KIND_TEXT.get(a["kind"], "Virtual") + ((" in " + a["master"]) if a["master"] else "")
+        rows.append([Cell(a["name"], "b"), kind, chip("ok") if st == "up" else Cell(st or "unknown", "fl"), ", ".join(a["ips"]) or "-", a["mac"] or "-",
                      ("%d Mb/s" % a["speed"]) if a["speed"] else "-", a["mtu"] or "-", fmt_bytes(a["rx_total"]), fmt_bytes(a["tx_total"])])
-    out.append(table("Network adapters", ["Adapter", "State", "IP address", "MAC address", "Link speed", "MTU", "Received since boot", "Sent since boot"], rows,
-                     align=["", "", "", "", "r", "r", "r", "r"],
-                     legend="The 'since boot' figures are the adapter's own counters; they restart at zero when the server restarts."))
+    out.append(table("Network adapters", ["Adapter", "Type", "State", "IP address", "MAC address", "Link speed", "MTU", "Received since boot", "Sent since boot"], rows,
+                     align=["", "", "", "", "", "r", "r", "r", "r"],
+                     legend="The 'since boot' figures are the adapter's own counters; they restart at zero when the server restarts. A bond, bridge or "
+                            "VM adapter shows the same traffic as the physical adapters under it, so totals count the physical adapters only."))
     if not traffic:
         out.append(P.note("Bandwidth graphs appear after the real-time watcher has been running for a while (it records traffic every minute)."))
         return out, ""
     speeds = dict((a["name"], a["speed"]) for a in ad)
+    real = counted(ad, traffic)
     rows = []
     order = sorted(traffic, key=lambda k: -(traffic[k]["rx"] + traffic[k]["tx"]))
     for k in order:
@@ -164,23 +196,23 @@ def blocks(data, runner):
     out.append({"type": "wide_charts", "items": [chart("Network traffic on %s" % k, use[k]["rx"], use[k]["tx"]) for k in order[:4]]})
     # all adapters together
     tot_rx, tot_tx = {}, {}
-    for k in order:
+    for k in [x for x in order if x in real]:
         for t, v in use[k]["rx"]:
             tot_rx[t] = tot_rx.get(t, 0.0) + v
         for t, v in use[k]["tx"]:
             tot_tx[t] = tot_tx.get(t, 0.0) + v
     rx_all, tx_all = sorted(tot_rx.items()), sorted(tot_tx.items())
-    out.append({"type": "wide_charts", "items": [chart("Network traffic, all adapters together", rx_all, tx_all)]})
+    out.append({"type": "wide_charts", "items": [chart("Network traffic, all physical adapters together", rx_all, tx_all)]})
     # by day
     if data.days > 1:
         per_day = {}
         step = 3600.0
-        for k in order:
+        for k in [x for x in order if x in real]:
             for (t, v), (_, w) in zip(use[k]["rxs"], use[k]["txs"]):
                 d = per_day.setdefault(day_key(t), {"rx": 0.0, "tx": 0.0, "peak": 0.0})
                 d["rx"] += v * step
                 d["tx"] += w * step
-        for k in order:
+        for k in [x for x in order if x in real]:
             for t, v in use[k]["rxmax"]:
                 per_day.setdefault(day_key(t), {"rx": 0.0, "tx": 0.0, "peak": 0.0})["peak"] = max(per_day[day_key(t)]["peak"], v)
             for t, v in use[k]["txmax"]:
@@ -190,9 +222,9 @@ def blocks(data, runner):
             x = per_day.get(d)
             rows.append([Cell(d, "b"), fmt_bytes(x["rx"]), fmt_bytes(x["tx"]), Cell(fmt_bytes(x["rx"] + x["tx"]), "b"), "%.2f" % (x["peak"] * MBIT)] if x
                         else [Cell(d, "b")] + [Cell("-", "fl")] * 4)
-        out.append(table("Network traffic by day (all adapters)", ["Date", "Received", "Sent", "Total", "Peak Mb/s"], rows, align=["", "r", "r", "r", "r"]))
-    grand_rx, grand_tx = sum(t["rx"] for t in traffic.values()), sum(t["tx"] for t in traffic.values())
-    top = order[0]
+        out.append(table("Network traffic by day (physical adapters)", ["Date", "Received", "Sent", "Total", "Peak Mb/s"], rows, align=["", "r", "r", "r", "r"]))
+    grand_rx, grand_tx = sum(traffic[k]["rx"] for k in real), sum(traffic[k]["tx"] for k in real)
+    top = [k for k in order if k in real][0]
     sentence = "The network moved %s in the last %s: %s received and %s sent. The busiest adapter was %s." % (
         fmt_bytes(grand_rx + grand_tx), per, fmt_bytes(grand_rx), fmt_bytes(grand_tx), top)
     return out, sentence

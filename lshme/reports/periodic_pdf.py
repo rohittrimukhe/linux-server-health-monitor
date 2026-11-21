@@ -1,7 +1,11 @@
 # Linux Server Health Monitor Enterprise
 # Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """PDF renderer for the daily, weekly and monthly reports (no dependencies): large readable type, coloured tables,
-usage bars, KPI tiles, line charts and logo slots, drawn directly with PDF operators."""
+usage bars, KPI tiles, line charts and logo slots, drawn directly with PDF operators.
+
+Layout rules: text is measured with the real Helvetica widths, so nothing runs past the right margin or is cut off; every page after the
+first has a slim running header; a heading always stays with the first rows of what it introduces; tables choose the largest font size
+at which every column fits; the logo watermark is faint and only a quarter of the page wide."""
 import os
 import time
 
@@ -19,12 +23,41 @@ FG = {"ok": (0.12, 0.56, 0.24), "wn": (0.70, 0.42, 0.0), "cr": (0.77, 0.13, 0.12
 BG = {"ok": (0.90, 0.96, 0.92), "wn": (1.0, 0.953, 0.84), "cr": (0.99, 0.91, 0.90), "na": (0.93, 0.93, 0.93)}
 SOLID = {"HEALTHY": (0.12, 0.56, 0.24), "WARNING": (0.94, 0.56, 0.0), "CRITICAL": (0.77, 0.13, 0.12)}
 USABLE = PAGE_W - 2 * MARGIN
-NARROW = set("il.,:;|'!()[]/ jt")
-WIDE = set("mwMW@")
-TXT = 9.2          # table text size
-LH = 11.6          # table line height
+TXT = 9.2          # table text size (largest tried)
+TEXT_SIZES = (9.2, 8.6, 8.0, 7.4)
+TOP_OTHER = 62     # first line of content on pages after the first (below the running header)
+BOTTOM = 52        # last line of content (above the footer)
 PALETTE = ["#0b5ed7", "#d9730d", "#1e8e3e", "#7b3fe4", "#c5221f", "#0d8a72", "#b8860b", "#c2185b", "#5d4037", "#00838f", "#6a1b9a", "#455a64"]
 SERIES = {"#0b5ed7": BLUE, "#7b3fe4": (0.48, 0.25, 0.89), "#d9730d": (0.85, 0.45, 0.05), "#0d8a72": (0.05, 0.54, 0.45)}
+
+# Helvetica and Helvetica-Bold advance widths (1/1000 em) for the characters 32 to 126: the standard PDF fonts used by the writer
+_ASCII = "".join(chr(c) for c in range(32, 127))
+_HELV = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+         556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+         1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+         667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+         333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+         556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584]
+_HELVB = [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278,
+          556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611,
+          975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
+          667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556,
+          333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
+          611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584]
+assert len(_ASCII) == len(_HELV) == len(_HELVB) == 95
+W_REG = dict(zip(_ASCII, _HELV))
+W_BOLD = dict(zip(_ASCII, _HELVB))
+W_REG[" "] = W_BOLD[" "] = 278           # a non-breaking space keeps '(30 d)' together on one line
+
+
+def keep_units(text):
+    """Spaces inside brackets become non-breaking, so a header such as 'Growth (30 d)' never splits inside the brackets."""
+    out, depth = [], 0
+    for ch in str(text):
+        depth += ch == "("
+        out.append(" " if ch == " " and depth > 0 else ch)
+        depth -= ch == ")"
+    return "".join(out)
 
 
 def hexrgb(h):
@@ -33,10 +66,9 @@ def hexrgb(h):
 
 
 def tw(s, size, bold=False):
-    w = 0.0
-    for ch in str(s):
-        w += 0.28 if ch in NARROW else 0.82 if ch in WIDE else 0.556 if ch.isdigit() else 0.64 if ch.isupper() else 0.5
-    return w * size * (1.07 if bold else 1.0)
+    """Width in points of a string in Helvetica (or Helvetica-Bold) at the given size."""
+    t = W_BOLD if bold else W_REG
+    return sum(t.get(ch, 556) for ch in str(s)) * size / 1000.0
 
 
 def wrap(s, width, size, bold=False, max_lines=8):
@@ -47,8 +79,10 @@ def wrap(s, width, size, bold=False, max_lines=8):
             cand = (line + " " + word) if line else word
             if tw(cand, size, bold) <= width or not line:
                 line = cand
-                while tw(line, size, bold) > width and len(line) > 1:
+                while tw(line, size, bold) > width and len(line) > 1:       # a single word longer than the line
                     cut = max(1, int(len(line) * width / tw(line, size, bold)))
+                    while cut > 1 and tw(line[:cut], size, bold) > width:
+                        cut -= 1
                     lines.append(line[:cut])
                     line = line[cut:]
             else:
@@ -61,7 +95,22 @@ def wrap(s, width, size, bold=False, max_lines=8):
     return lines
 
 
+def fit_one(text, width, size, bold=False):
+    """The text on one line: shortened with '...' only when it really cannot fit."""
+    if tw(text, size, bold) <= width:
+        return text
+    while text and tw(text + "...", size, bold) > width:
+        text = text[:-1]
+    return text.rstrip() + "..."
+
+
 class PeriodicPDF(MiniPDF):
+    def __init__(self, title, footer):
+        self.watermark = None
+        self.running = None          # (title text, host text, LRS logo image, customer logo image or None, customer name)
+        MiniPDF.__init__(self, title, footer)
+        self.wm_alpha = 0.045
+
     def put(self, x, y, s, size=9, font="F1", color=INK):
         self.ops.append("%.3f %.3f %.3f rg BT /%s %.1f Tf %.1f %.1f Td (%s) Tj ET" % (color + (font, size, x, y, _esc(s))))
 
@@ -80,17 +129,38 @@ class PeriodicPDF(MiniPDF):
         if not wm:
             return
         name, iw, ih = wm
-        w = USABLE * 0.78
+        w = USABLE * 0.62
         h = w * ih / float(iw)
-        x, y = (PAGE_W - w) / 2.0, (PAGE_H - h) / 2.0 - 20
+        x, y = (PAGE_W - w) / 2.0, (PAGE_H - h) / 2.0 - 10
         ops.insert(0, "q /GS1 gs q %.1f 0 0 %.1f %.1f %.1f cm /%s Do Q Q" % (w, h, x, y, name))
+
+    def running_header(self):
+        """A slim header on every page after the first: small logo and report title on the left, customer on the right."""
+        if not self.running:
+            return
+        title, host, lrs, cust, cname = self.running
+        top = PAGE_H - 24
+        if lrs:
+            self.fit_image(lrs, MARGIN, top - 20, 70, 22)
+        self.put(MARGIN + (80 if lrs else 0), top - 9, fit_one(title, USABLE * 0.6, 9.5, True), 9.5, "F2", INK)
+        self.put(MARGIN + (80 if lrs else 0), top - 20, fit_one(host, USABLE * 0.6, 8, False), 8, "F1", MUT)
+        if cust:
+            self.fit_image(cust, PAGE_W - MARGIN - 90, top - 22, 90, 24)
+        elif cname:
+            s = fit_one(cname, 180, 9, True)
+            self.put(PAGE_W - MARGIN - tw(s, 9, True), top - 12, s, 9, "F2", MUT)
+        self.ops.append("%.3f %.3f %.3f RG 1.4 w %.1f %.1f m %.1f %.1f l S" % (BLUE + (MARGIN, top - 29, PAGE_W - MARGIN, top - 29)))
+        self.ops.append("%.3f %.3f %.3f RG 0.5 w %.1f %.1f m %.1f %.1f l S" % (LINE + (MARGIN, top - 32, PAGE_W - MARGIN, top - 32)))
 
     def new_page(self):
         MiniPDF.new_page(self)
         self.stamp_watermark(self.ops)
+        if len(self.pages) > 1:
+            self.running_header()
+            self.y = PAGE_H - TOP_OTHER
 
     def need(self, h):
-        if self.y - h < MARGIN + 18:
+        if self.y - h < BOTTOM:
             self.new_page()
             return True
         return False
@@ -105,160 +175,207 @@ class PeriodicPDF(MiniPDF):
     # -- header -----------------------------------------------------------------------
     def header(self, doc, logo):
         top = PAGE_H
-        self.fill(0, top - 124, PAGE_W, 124, DARK)
-        self.fill(0, top - 124, PAGE_W, 4, BLUE)
-        bw, bh, by = 130, 40, top - 56
-        self.fill(MARGIN, by, bw, bh, (1, 1, 1))
+        band = 140
+        self.fill(0, top - band, PAGE_W, band, DARK)
+        self.fill(0, top - band, PAGE_W, 4, BLUE)
+        bh, by = 46, top - 62
+        lw = 150
+        self.fill(MARGIN, by, lw, bh, (1, 1, 1))
         lrs = getattr(self, "watermark", None) or (self.add_image(logo) if logo else None)
         if lrs:
-            self.fit_image(lrs, MARGIN + 6, by + 4, bw - 12, bh - 8)
+            self.fit_image(lrs, MARGIN + 8, by + 5, lw - 16, bh - 10)
         else:
-            self.put(MARGIN + 10, by + 14, "LRS Vitals", 14, "F2", DARK)
-        cx = PAGE_W - MARGIN - 160
-        self.fill(cx, by, 160, bh, (1, 1, 1))
+            self.put(MARGIN + 12, by + 16, "LRS Vitals", 15, "F2", DARK)
+        cw_logo = 170
+        cx = PAGE_W - MARGIN - cw_logo
+        self.fill(cx, by, cw_logo, bh, (1, 1, 1))
         cimg = None
         cpath = getattr(doc, "customer_logo", "")
         if cpath and os.path.isfile(cpath):
             cimg = self.add_image(cpath)
         if cimg:
-            self.fit_image(cimg, cx + 6, by + 4, 148, bh - 8)
+            self.fit_image(cimg, cx + 8, by + 5, cw_logo - 16, bh - 10)
         else:
             label = getattr(doc, "customer", "") or "Customer logo"
-            lines = wrap(label, 148, 11, True, 2)
+            lines = wrap(label, cw_logo - 20, 11.5, True, 2)
             for i, line in enumerate(lines):
-                self.put(cx + 80 - tw(line, 11, True) / 2, by + bh / 2 + (len(lines) - 1) * 6 - 4 - i * 13, line, 11, "F2", INK if getattr(doc, "customer", "") else (0.6, 0.64, 0.7))
+                self.put(cx + cw_logo / 2.0 - tw(line, 11.5, True) / 2, by + bh / 2 + (len(lines) - 1) * 6.5 - 4 - i * 13.5, line, 11.5, "F2",
+                         INK if getattr(doc, "customer", "") else (0.6, 0.64, 0.7))
+        self.running = (getattr(doc, "title_plain", "") or doc.title, doc.subtitle.split(" - period")[0], lrs, cimg, getattr(doc, "customer", ""))
         base = getattr(doc, "title_plain", "") or doc.title
         suffix = doc.title[len(base):].strip() if doc.title.startswith(base) else ""
-        self.put(MARGIN, top - 82, base, 22, "F2", (1, 1, 1))
+        left_w = USABLE - 150
+        tsize = 24
+        while tsize > 16 and tw(base, tsize, True) > left_w:        # a long title gets a smaller type size instead of being cut off
+            tsize -= 1
+        self.put(MARGIN, top - 88, fit_one(base, left_w, tsize, True), tsize, "F2", (1, 1, 1))
         if suffix:
-            self.put(MARGIN, top - 96, wrap(suffix, USABLE - 150, 10.5, True, 1)[0], 10.5, "F2", (0.75, 0.86, 1.0))
-        for i, line in enumerate(wrap(doc.subtitle, USABLE - 150, 8.8, False, 1)):
-            self.put(MARGIN, top - 110 - i * 11, line, 8.8, "F1", (0.84, 0.9, 1.0))
+            self.put(MARGIN, top - 103, fit_one(suffix, left_w, 11, True), 11, "F2", (0.75, 0.86, 1.0))
+        for i, line in enumerate(wrap(doc.subtitle, left_w, 9, False, 2)):
+            self.put(MARGIN, top - 118 - i * 11, line, 9, "F1", (0.84, 0.9, 1.0))
         col = SOLID.get(doc.status, (0.4, 0.4, 0.4))
-        sx = PAGE_W - MARGIN - 130
-        self.fill(sx, top - 112, 130, 40, col)
-        self.put(sx + 65 - tw(doc.status, 15, True) / 2, top - 91, doc.status, 15, "F2", (1, 1, 1))
+        sx = PAGE_W - MARGIN - 136
+        self.fill(sx, top - 122, 136, 44, col)
+        self.put(sx + 68 - tw(doc.status, 16, True) / 2, top - 100, doc.status, 16, "F2", (1, 1, 1))
         att = doc.counts.get("CRITICAL", 0) + doc.counts.get("WARNING", 0)
         msg = "%d item%s need attention" % (att, "" if att == 1 else "s") if att else "all clear"
-        self.put(sx + 65 - tw(msg, 8.5) / 2, top - 105, msg, 8.5, "F1", (1, 1, 1))
-        self.y = top - 136
+        self.put(sx + 68 - tw(msg, 8.5) / 2, top - 114, msg, 8.5, "F1", (1, 1, 1))
+        self.y = top - band - 14
         det = getattr(doc, "details", [])
         if det:
             cols = 3
-            cw = (USABLE - 8 * (cols - 1)) / float(cols)
+            gap = 8
+            cw = (USABLE - gap * (cols - 1)) / float(cols)
             for i in range(0, len(det), cols):
-                self.need(34)
-                for j, (k, v) in enumerate(det[i:i + cols]):
-                    x = MARGIN + j * (cw + 8)
-                    self.fill(x, self.y - 30, cw, 30, (0.953, 0.965, 0.984))
-                    self.put(x + 8, self.y - 11, str(k).upper(), 7, "F1", MUT)
-                    self.put(x + 8, self.y - 24, wrap(str(v), cw - 14, 10.5, True, 1)[0], 10.5, "F2", INK)
-                self.y -= 36
+                row = det[i:i + cols]
+                vals = [wrap(str(v), cw - 16, 10.5, True, 3) for _, v in row]
+                h = 22 + max(len(v) for v in vals) * 12.5
+                self.need(h + 6)
+                for j, (k, v) in enumerate(row):
+                    x = MARGIN + j * (cw + gap)
+                    self.fill(x, self.y - h, cw, h, (0.953, 0.965, 0.984))
+                    self.put(x + 8, self.y - 12, str(k).upper(), 7, "F1", MUT)
+                    for li, line in enumerate(vals[j]):
+                        self.put(x + 8, self.y - 25 - li * 12.5, line, 10.5, "F2", INK)
+                self.y -= h + 6
         if doc.banner:
             self.put(MARGIN, self.y - 10, doc.banner, 10, "F2", FG["wn"])
             self.y -= 16
 
-    def section(self, n, title):
-        self.need(80)
-        self.y -= 14
+    def section(self, n, title, first_h=60):
+        """A section heading; it moves to the next page together with the first block under it."""
+        self.need(36 + first_h)
+        self.y -= 12
         self.fill(MARGIN, self.y - 22, 5, 22, BLUE)
         self.put(MARGIN + 13, self.y - 16, "%d. %s" % (n, title), 14.5, "F2", INK)
         self.ops.append("%.3f %.3f %.3f RG 0.8 w %.1f %.1f m %.1f %.1f l S" % (LINE + (MARGIN, self.y - 27, MARGIN + USABLE, self.y - 27)))
         self.y -= 34
 
     def kpis(self, items):
-        self.need(70)
+        """Tiles sized to their content, in rows of at most four (three when there are five or six); a long label wraps to a second line."""
+        per = len(items) if len(items) <= 4 else (3 if len(items) in (5, 6) else 4)
+        for i in range(0, len(items), per):
+            self.kpi_row(items[i:i + per])
+
+    def kpi_row(self, items):
+        self.need(76)
         n = len(items)
         gap = 8
-        w = (USABLE - gap * (n - 1)) / float(n)
-        for i, (v, label, lv) in enumerate(items):
-            x = MARGIN + i * (w + gap)
-            self.fill(x, self.y - 52, w, 52, BG[lv])
-            self.fill(x, self.y - 52, 4.5, 52, FG[lv])
-            self.put(x + 13, self.y - 27, v, 20, "F2", INK)
-            self.put(x + 13, self.y - 43, label.upper(), 8, "F1", MUT)
-        self.y -= 62
+        vals = [(str(v), str(label).upper(), lv) for v, label, lv in items]
+        mins = [max(tw(v, 19, True), min(max(tw(w, 7.6) for w in lab.split()) if lab.split() else 0, 90)) + 34 for v, lab, lv in vals]
+        nat = [max(tw(v, 19, True), min(tw(lab, 7.6), 120)) + 26 for v, lab, lv in vals]
+        avail = USABLE - gap * (n - 1)
+        if sum(nat) <= avail:
+            widths = [w + (avail - sum(nat)) / n for w in nat]
+        else:
+            spare = max(0.0, avail - sum(mins))
+            room = sum(a - b for a, b in zip(nat, mins)) or 1
+            widths = [m + (a - m) * min(1.0, spare / room) for m, a in zip(mins, nat)]
+            if sum(widths) > avail:
+                widths = [w * avail / sum(widths) for w in widths]
+        x = MARGIN
+        h = 58
+        for (v, label, lv), w in zip(vals, widths):
+            self.fill(x, self.y - h, w, h, BG[lv])
+            self.fill(x, self.y - h, 4.5, h, FG[lv])
+            size = 20
+            while size > 12 and tw(v, size, True) > w - 20:
+                size -= 1
+            self.put(x + 13, self.y - 26, v, size, "F2", INK)
+            for i, line in enumerate(wrap(label, w - 20, 7.6, False, 2)):
+                self.put(x + 13, self.y - 40 - i * 9.2, line, 7.6, "F1", MUT)
+            x += w + gap
+        self.y -= h + 10
 
     def points(self, items):
         icon = {"ok": "OK", "wn": "!", "cr": "X"}
         for lv, text in items:
-            lines = wrap(text, USABLE - 52, 12)
-            h = len(lines) * 15.5 + 12
+            lines = wrap(text, USABLE - 56, 11.5)
+            h = len(lines) * 15 + 13
             self.need(h + 6)
             self.fill(MARGIN, self.y - h, USABLE, h, BG[lv])
             self.fill(MARGIN, self.y - h, 5, h, FG[lv])
             self.fill(MARGIN + 13, self.y - h / 2 - 9, 22, 18, FG[lv])
             self.put(MARGIN + 24 - tw(icon[lv], 9, True) / 2, self.y - h / 2 - 3, icon[lv], 9, "F2", (1, 1, 1))
             for i, line in enumerate(lines):
-                self.put(MARGIN + 44, self.y - 17 - i * 15.5, line, 12, "F1", INK)
+                self.put(MARGIN + 46, self.y - 18 - i * 15, line, 11.5, "F1", INK)
             self.y -= h + 6
         self.y -= 4
 
+    # -- tables -----------------------------------------------------------------------
+    @staticmethod
+    def _kind(c):
+        if isinstance(c, Bar):
+            return "bar"
+        if isinstance(c, Cell) and c.style.startswith("chip-"):
+            return "chip"
+        return "text"
+
+    def _metrics(self, headers, rows, size, hs):
+        """(natural widths, minimum widths) of every column at a text size."""
+        nat, mn = [], []
+        for i in range(len(headers)):
+            hw = keep_units(str(headers[i]).upper())
+            a = tw(hw, hs, True) + 10
+            m = max([tw(w, hs, True) for w in hw.split()] or [0]) + 10
+            for r in rows[:300]:
+                c = r[i] if i < len(r) else ""
+                k = self._kind(c)
+                if k == "bar":
+                    a, m = max(a, 70), max(m, 62)
+                elif k == "chip":
+                    w = tw(c.text, size, True) + 16
+                    a, m = max(a, w), max(m, w)
+                else:
+                    bold = isinstance(c, Cell) and c.style in ("b", "ok", "wn", "cr")
+                    parts = str(c).split("\n")
+                    a = max(a, min(max(tw(x, size, bold) for x in parts), 250) + 10)
+                    words = [w for x in parts for w in x.split()]
+                    if len(parts) == 1 and len(str(c).strip()) <= 18:       # a short value such as '14.5 GB' or '97.0 %' never wraps
+                        words = [str(c).strip()]
+                    m = max(m, max([tw(w, size, bold) for w in words] or [0]) + 10)
+            nat.append(a)
+            mn.append(min(m, USABLE * 0.45))
+        return nat, mn
+
     def table(self, b):
         headers, rows, align = b["headers"], b["rows"], b.get("align") or []
-        size, hs = TXT, 7.8
         n = len(headers)
-        if b["title"]:
-            self.need(50)
-            self.put(MARGIN, self.y - 12, b["title"], 11.5, "F2", INK)
-            self.y -= 19
-        nat = []
-        for i in range(n):
-            wmax = tw(str(headers[i]).upper(), hs, True) + 10
-            for r in rows[:300]:
-                c = r[i] if i < len(r) else ""
-                if isinstance(c, Bar):
-                    w = 70
-                elif isinstance(c, Cell) and c.style.startswith("chip-"):
-                    w = tw(c.text, size, True) + 16
-                else:
-                    longest = max([tw(x, size, isinstance(c, Cell) and c.style in ("b",)) for x in str(c).split("\n")] or [0])
-                    w = min(longest, 250) + 10
-                wmax = max(wmax, w)
-            nat.append(wmax)
-        total = sum(nat)
-        if total > USABLE:
-            fixed = [i for i in range(n) if max([isinstance(r[i], Bar) or (isinstance(r[i], Cell) and r[i].style.startswith("chip-")) for r in rows[:50] if i < len(r)] or [False])]
-            flex = [i for i in range(n) if i not in fixed]
-            avail = USABLE - sum(nat[i] for i in fixed)
-            ftot = sum(nat[i] for i in flex) or 1
-            hmin = [tw(str(h).upper(), hs, True) + 10 for h in headers]
-            widths = [nat[i] if i in fixed else max(28, hmin[i], nat[i] * avail / ftot) for i in range(n)]
-            if sum(widths) > USABLE * 1.01:
-                widths = [w * USABLE / sum(widths) for w in widths]
+        hs = 7.8
+        for size in TEXT_SIZES:                      # the largest size at which every column's longest word fits
+            nat, mn = self._metrics(headers, rows, size, hs)
+            if sum(mn) <= USABLE:
+                break
+        lh = size * 1.27
+        if sum(nat) <= USABLE:
+            widths = [w * USABLE / sum(nat) for w in nat]
         else:
-            widths = [w * USABLE / total for w in nat] if n else nat
-        # no column may be narrower than its longest unbreakable word (so a date never wraps onto a second line)
-        def widest_word(text, bold, sz):
-            return max([tw(w, sz, bold) for w in str(text).split()] or [0])
-        wm = []
-        for i in range(n):
-            m = widest_word(str(headers[i]).upper(), True, hs) + 10
-            for r in rows[:300]:
-                c = r[i] if i < len(r) else ""
-                if isinstance(c, Bar):
-                    m = max(m, 62)
-                elif isinstance(c, Cell) and c.style.startswith("chip-"):
-                    m = max(m, tw(c.text, size, True) + 16)
-                else:
-                    m = max(m, max([widest_word(x, isinstance(c, Cell) and c.style in ("b", "ok", "wn", "cr"), size) for x in str(c).splitlines()] or [0]) + 10)
-            wm.append(min(m, USABLE * 0.45))
-        widths = [max(w, m) for w, m in zip(widths, wm)]
-        for _ in range(6):
-            over = sum(widths) - USABLE
-            if over <= 0.5:
-                break
-            slack = [max(0.0, w - m) for w, m in zip(widths, wm)]
-            if sum(slack) <= 0:
-                break
-            widths = [w - over * s / sum(slack) for w, s in zip(widths, slack)]
+            spare, room = USABLE - sum(mn), (sum(nat) - sum(mn)) or 1
+            widths = [m + (a - m) * max(0.0, min(1.0, spare / room)) for m, a in zip(mn, nat)]
         if sum(widths) > USABLE + 0.5:
             widths = [w * USABLE / sum(widths) for w in widths]
         xs = [MARGIN]
         for w in widths:
             xs.append(xs[-1] + w)
-        hlines = [wrap(str(h).upper(), widths[i] - 8, hs, True, 2) for i, h in enumerate(headers)]
+        hlines = [[l.replace(" ", " ") for l in wrap(keep_units(str(h).upper()), widths[i] - 8, hs, True, 3)] for i, h in enumerate(headers)]
         hh = max(len(l) for l in hlines) * 9.5 + 9
+
+        def layout(r):
+            cells = []
+            for i in range(n):
+                c = r[i] if i < len(r) else ""
+                if self._kind(c) != "text":
+                    cells.append((c, [""]))
+                else:
+                    bold = isinstance(c, Cell) and c.style in ("b", "ok", "wn", "cr")
+                    cells.append((c, wrap(str(c), widths[i] - 9, size, bold)))
+            return cells, max(len(l) for _, l in cells) * lh + 8
+        laid = [layout(r) for r in rows[:2]]
+        title_h = 19 if b["title"] else 0
+        self.need(title_h + hh + sum(h for _, h in laid) + 14)      # the title, the header and the first rows stay together
+        if b["title"]:
+            self.put(MARGIN, self.y - 12, b["title"], 11.5, "F2", INK)
+            self.y -= title_h
 
         def draw_header():
             self.fill(MARGIN, self.y - hh, USABLE, hh, HEADBG)
@@ -267,19 +384,10 @@ class PeriodicPDF(MiniPDF):
                     x = xs[i + 1] - 4 - tw(s, hs, True) if (i < len(align) and align[i] == "r") else xs[i] + 4
                     self.put(x, self.y - 12 - k * 9.5, s, hs, "F2", (0.2, 0.25, 0.35))
             self.y -= hh
-        self.need(52)
         draw_header()
         for ri, r in enumerate(rows):
-            cells = []
-            for i in range(n):
-                c = r[i] if i < len(r) else ""
-                if isinstance(c, Bar) or (isinstance(c, Cell) and c.style.startswith("chip-")):
-                    cells.append((c, [""]))
-                else:
-                    bold = isinstance(c, Cell) and c.style in ("b", "ok", "wn", "cr")
-                    cells.append((c, wrap(str(c), widths[i] - 9, size, bold)))
-            h = max(len(l) for _, l in cells) * LH + 8
-            if self.need(h + 16):
+            cells, h = laid[ri] if ri < len(laid) else layout(r)
+            if self.need(h + 4):
                 draw_header()
             top = self.y
             if ri % 2:
@@ -310,7 +418,7 @@ class PeriodicPDF(MiniPDF):
                         font = "F2" if st in ("up", "dn", "b") else "F1"
                 for li, line in enumerate(lines):
                     x = (x0 + w - 4.5 - tw(line, size, font == "F2")) if (i < len(align) and align[i] == "r") else x0 + 4.5
-                    self.put(x, top - 11.5 - li * LH, line, size, font, color)
+                    self.put(x, top - 11.5 - li * lh, line, size, font, color)
             self.ops.append("%.3f %.3f %.3f RG 0.4 w %.1f %.1f m %.1f %.1f l S" % (LINE + (MARGIN, top - h, MARGIN + USABLE, top - h)))
             self.y -= h
         if b.get("legend"):
@@ -318,7 +426,7 @@ class PeriodicPDF(MiniPDF):
                 self.need(12)
                 self.put(MARGIN, self.y - 10, line, 8.4, "F1", MUT)
                 self.y -= 11
-        self.y -= 9
+        self.y -= 10
 
     def charts(self, items, wide=False):
         gap, ch = 12, 168 if not wide else 215
@@ -344,25 +452,33 @@ class PeriodicPDF(MiniPDF):
         if mx <= mn:
             mx = mn + 1
         avg = sum(p[1] for p in P) / len(P)
-        self.put(x + 8, top - 14, c["title"], 10.5, "F2", INK)
+        title = c["title"]
         if c.get("info"):
-            inf = c["info"]
-            self.put(x + w - 8 - tw(inf, 8.5), top - 14, inf, 8.5, "F1", MUT)
+            info = c["info"]
         elif not c.get("multi"):
             info = ("avg %.1f%s, peak %.1f%s" % (avg, c["unit"], max(vals), c["unit"])) if c.get("max") else ("now %.2f%s" % (P[-1][1], c["unit"]))
+        else:
+            info = ""
+        stacked = bool(info) and tw(title, 10.5, True) + tw(info, 8.5) + 26 > w          # no room side by side: the figures go under the title
+        self.put(x + 8, top - 14, fit_one(title, w - 16, 10.5, True), 10.5, "F2", INK)
+        extra = 0
+        if info and stacked:
+            self.put(x + 8, top - 25, fit_one(info, w - 16, 8.5), 8.5, "F1", MUT)
+            extra = 11
+        elif info:
             self.put(x + w - 8 - tw(info, 8.5), top - 14, info, 8.5, "F1", MUT)
         key_h = 0
         if c.get("multi"):
-            kx = x + 8
+            kx, ky = x + 8, top - 27 - extra
             for k, se in enumerate(S):
                 label = se["name"]
                 if kx + tw(label, 7.5) + 18 > x + w - 6:
                     break
-                self.fill(kx, top - 27, 7, 7, hexrgb((c.get("colors") or PALETTE)[k % len(c.get("colors") or PALETTE)]))
-                self.put(kx + 10, top - 26, label, 7.5, "F1", MUT)
+                self.fill(kx, ky, 7, 7, hexrgb((c.get("colors") or PALETTE)[k % len(c.get("colors") or PALETTE)]))
+                self.put(kx + 10, ky + 1, label, 7.5, "F1", MUT)
                 kx += tw(label, 7.5) + 22
             key_h = 10
-        px0, px1, py1, py0 = x + 36, x + w - 10, top - 24 - key_h, top - h + 20
+        px0, px1, py1, py0 = x + 36, x + w - 10, top - 24 - key_h - extra, top - h + 20
         t0, t1 = P[0][0], max(max(se["pts"][-1][0] for se in S if se["pts"]), P[0][0] + 1)
         X = lambda t: px0 + (t - t0) * (px1 - px0) / float(t1 - t0)
         Y = lambda v: py0 + (v - mn) * (py1 - py0) / float(mx - mn)
@@ -389,45 +505,61 @@ class PeriodicPDF(MiniPDF):
                 self.stroke(pts, (0.65, 0.7, 0.76), 0.7, "2 2")
 
     def note(self, text, color=BLUE):
-        lines = wrap(text, USABLE - 20, 10.5)
-        h = len(lines) * 13.5 + 10
+        lines = wrap(text, USABLE - 24, 10.5)
+        h = len(lines) * 13.5 + 12
         self.need(h + 6)
         self.fill(MARGIN, self.y - h, USABLE, h, (0.96, 0.97, 0.98))
         self.fill(MARGIN, self.y - h, 4, h, color)
         for i, line in enumerate(lines):
-            self.put(MARGIN + 12, self.y - 14 - i * 13.5, line, 10.5, "F1", INK)
-        self.y -= h + 7
+            self.put(MARGIN + 13, self.y - 15 - i * 13.5, line, 10.5, "F1", INK)
+        self.y -= h + 8
 
     def actions(self, items):
         for i, (lv, msg, why) in enumerate(items, 1):
-            ml, rl = wrap(msg, USABLE - 44, 11.5, True), wrap("Why it matters: " + why, USABLE - 44, 9.8)
-            h = len(ml) * 14.5 + len(rl) * 12.5 + 12
+            ml, rl = wrap(msg, USABLE - 50, 11.5, True), wrap("Why it matters: " + why, USABLE - 50, 9.8)
+            h = len(ml) * 14.5 + len(rl) * 12.5 + 14
             self.need(h + 6)
             self.fill(MARGIN, self.y - h, USABLE, h, BG[lv])
             self.fill(MARGIN, self.y - h, 4.5, h, FG[lv])
-            self.put(MARGIN + 14, self.y - 20, str(i), 16, "F2", FG[lv])
+            self.put(MARGIN + 14, self.y - 21, str(i), 16, "F2", FG[lv])
             for k, line in enumerate(ml):
-                self.put(MARGIN + 36, self.y - 16 - k * 14.5, line, 11.5, "F2", INK)
+                self.put(MARGIN + 38, self.y - 17 - k * 14.5, line, 11.5, "F2", INK)
             for k, line in enumerate(rl):
-                self.put(MARGIN + 36, self.y - 16 - len(ml) * 14.5 - k * 12.5, line, 9.8, "F1", MUT)
+                self.put(MARGIN + 38, self.y - 17 - len(ml) * 14.5 - k * 12.5, line, 9.8, "F1", MUT)
             self.y -= h + 6
 
     def kv(self, rows):
-        lw = 92
+        lw = 96
         cw = (USABLE - 2 * lw) / 2.0
         for r in rows:
-            vals = [wrap(str(r[j * 2 + 1]), cw - 10, 9.6, False, 3) for j in range(2)]
-            h = max(len(v) for v in vals) * 12 + 8
+            vals = [wrap(str(r[j * 2 + 1]), cw - 12, 9.6, False, 3) for j in range(2)]
+            h = max(len(v) for v in vals) * 12 + 10
             self.need(h + 2)
             for j in range(2):
                 x = MARGIN + j * (lw + cw)
                 self.fill(x, self.y - h, lw, h, HEADBG)
-                self.put(x + 5, self.y - 13, str(r[j * 2]).upper(), 7.6, "F2", (0.2, 0.25, 0.35))
+                self.put(x + 6, self.y - 14, fit_one(str(r[j * 2]).upper(), lw - 10, 7.6, True), 7.6, "F2", (0.2, 0.25, 0.35))
                 for k, line in enumerate(vals[j]):
-                    self.put(x + lw + 5, self.y - 13 - k * 12, line, 9.6, "F1", INK)
+                    self.put(x + lw + 6, self.y - 14 - k * 12, line, 9.6, "F1", INK)
             self.ops.append("%.3f %.3f %.3f RG 0.4 w %.1f %.1f m %.1f %.1f l S" % (LINE + (MARGIN, self.y - h, MARGIN + USABLE, self.y - h)))
             self.y -= h
         self.y -= 8
+
+
+def first_height(b):
+    """About how much room the first block of a section needs, so the heading never sits alone at the bottom of a page."""
+    t = b.get("type")
+    if t == "kpis":
+        return 70
+    if t == "points":
+        return 44
+    if t == "table":
+        return 96
+    if t in ("charts", "wide_charts"):
+        return 190
+    if t == "actions":
+        return 70
+    return 50
 
 
 def render(doc, path, logo=""):
@@ -438,10 +570,9 @@ def render(doc, path, logo=""):
     p.stamp_watermark(p.ops)                    # the first page was made before the logo was loaded
     p.header(doc, mark)
     for n, (title, blocks) in enumerate(doc.sections, 1):
-        p.section(n, title)
-        for b in blocks:
-            if b.get("excel_only"):
-                continue
+        shown = [b for b in blocks if not b.get("excel_only")]
+        p.section(n, title, first_height(shown[0]) if shown else 40)
+        for b in shown:
             t = b["type"]
             if t == "kpis":
                 p.kpis(b["items"])

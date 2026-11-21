@@ -122,18 +122,45 @@ def mem_total():
     return 0
 
 
+def own_pids(me):
+    """This process and everything it started (the commands the checks run), so they do not show up as the busiest programs."""
+    kids, out = {}, {me}
+    try:
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
+                continue
+            try:
+                with open("/proc/%s/stat" % pid, encoding="utf-8", errors="replace") as f:
+                    s = f.read()
+                kids.setdefault(s[s.rfind(")") + 2:].split()[1], []).append(pid)
+            except (OSError, IndexError):
+                continue
+    except OSError:
+        return out
+    todo = [me]
+    while todo:
+        for k in kids.get(todo.pop(), []):
+            if k not in out:
+                out.add(k)
+                todo.append(k)
+    return out
+
+
 def collect(runner, interval=1.0):
     """Take the two samples and run ss. Returns {'cpu': [...], 'net': [...], 'ncpu': n, 'seen': bool}."""
     pagesize = os.sysconf("SC_PAGE_SIZE")
     clk = os.sysconf("SC_CLK_TCK")
     ncpu = os.cpu_count() or 1
     me = str(os.getpid())          # leave out this report itself
+    mine = own_pids(me)
     first = scan_proc(pagesize=pagesize)
-    first.pop(me, None)
+    for p in mine:
+        first.pop(p, None)
     t0 = time.time()
     time.sleep(interval)
     second = scan_proc(pagesize=pagesize)
-    second.pop(me, None)
+    for p in mine | own_pids(me):
+        second.pop(p, None)
     progs = group(first, second, max(time.time() - t0, 0.1), clk, ncpu, mem_total())
     r = runner.run(["ss", "-tanpi"], timeout=20) if runner.has("ss") else None
     net = parse_ss(r.out) if r and r.out else []

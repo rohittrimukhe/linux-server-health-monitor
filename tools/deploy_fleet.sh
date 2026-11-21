@@ -67,6 +67,11 @@ for target in "$@"; do
   else
     tar -C "$SRC" -cf - $FILES | $SSH "root@$host" "tar -C /etc/lshme -xf - && chmod 600 /etc/lshme/credentials.conf 2>/dev/null; true"
   fi
+  LOGOS=$(cd /var/lib/lshme 2>/dev/null && ls branding/customer_logo.* 2>/dev/null || true)
+  if [ -n "$LOGOS" ]; then                      # the report logo (main.conf already points at it)
+    if [ "$DRY" = 1 ]; then echo "  + tar -C /var/lib/lshme -cf - $LOGOS | $SSH root@$host 'mkdir -p /var/lib/lshme && tar -C /var/lib/lshme -xf -'"
+    else tar -C /var/lib/lshme -cf - $LOGOS | $SSH "root@$host" "mkdir -p /var/lib/lshme && tar -C /var/lib/lshme -xf -"; fi
+  fi
   [ -n "$envname" ] && run $SSH "root@$host" "vitals config set main general environment '$envname'"
   run $SSH "root@$host" "vitals config set main fleet enabled no && vitals scan --apply --quiet && vitals schedule install && vitals watch install"
   if [ "$MAILTEST" = 1 ]; then

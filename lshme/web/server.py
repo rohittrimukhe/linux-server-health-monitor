@@ -7,6 +7,8 @@ response, so every route and every security rule can be tested without sockets. 
 hashed passwords, rate limiting, expiring random session tokens in HttpOnly SameSite=Strict cookies, a CSRF token
 and an Origin check on every change, roles (admin may change things, viewer may only look), strict
 Content-Security-Policy, no directory listing and no path outside the report folder is ever served."""
+import base64
+import binascii
 import hmac
 import json
 import mimetypes
@@ -22,7 +24,8 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from lshme import APP_NAME, BRAND_LOGO, VERSION
 from lshme.core.config import backup_config, restore_config
 from lshme.core.lock import LockBusy
-from lshme.ops import archive, discover, reportlist, sysstats
+from lshme.ops import archive, branding, discover, reportlist, sysstats
+from lshme.reports import templates as report_templates
 from lshme.web import auth, confmeta
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -175,7 +178,7 @@ class WebApp(object):
         if req.method not in ("GET", "HEAD") and sess["role"] != "admin" and name != "password":
             self.audit("web-denied", sess, route=name)
             raise PermissionError("your account is read-only")
-        if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file") and sess["role"] != "admin":
+        if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file", "branding", "branding/logo") and sess["role"] != "admin":
             raise PermissionError("administrators only")
         return handler(req, sess)
 
@@ -427,6 +430,59 @@ class WebApp(object):
         name = rawstore.file_name(host, day) + ".gz"
         return Resp(200, buf.getvalue(), "application/gzip", {"Content-Disposition": 'attachment; filename="%s"' % name,
                                                               "Content-Security-Policy": "default-src 'none'; sandbox"})
+
+    # -- report templates ----------------------------------------------------------------------------------------------------------
+    def api_templates(self, req, sess):
+        if sess.get("group"):
+            return jr({"templates": []})
+        return jr({"templates": report_templates.catalog()})
+
+    def api_templates_preview(self, req, sess):
+        if sess.get("group"):
+            return err("not found", 404)
+        tid = (req.query.get("id") or [""])[0]
+        fmt = (req.query.get("fmt") or ["html"])[0]
+        body, ctype = report_templates.preview(self.app, tid, fmt)
+        extra = {"Content-Security-Policy": REPORT_CSP, "X-Content-Type-Options": "nosniff"}
+        if fmt == "pdf":
+            extra["Content-Disposition"] = 'inline; filename="%s.pdf"' % re.sub(r"[^A-Za-z0-9_-]", "_", tid)
+        return Resp(200, body, ctype, extra)
+
+    # -- report logos ------------------------------------------------------------------------------------------------------------
+    def api_branding(self, req, sess):
+        return jr(branding.listing(self.app))
+
+    def api_branding_logo(self, req, sess):
+        scope = branding.check_scope(self.app, (req.query.get("scope") or ["all"])[0])
+        path = branding.find(self.app.paths, scope) or (branding.find(self.app.paths, "all") if scope != "all" else "")
+        if not path:
+            return err("no logo", 404)
+        with open(path, "rb") as f:
+            body = f.read()
+        return Resp(200, body, "image/png" if path.endswith(".png") else "image/jpeg",
+                    {"Content-Security-Policy": "default-src 'none'; sandbox", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache"})
+
+    def api_branding_upload(self, req, sess):
+        data = req.json()
+        try:
+            raw = base64.b64decode(str(data.get("data", "")), validate=True)
+        except (binascii.Error, ValueError):
+            raise ValueError("The file could not be read. Choose a PNG or JPEG image.")
+        info = branding.save(self.app, raw, str(data.get("scope", "all")))
+        self.audit("logo-upload", sess, scope=str(data.get("scope", "all")), bytes=info["bytes"])
+        return jr(branding.listing(self.app))
+
+    def api_branding_remove(self, req, sess):
+        data = req.json()
+        branding.remove(self.app, str(data.get("scope", "all")))
+        return jr(branding.listing(self.app))
+
+    def api_branding_push(self, req, sess):
+        data = req.json()
+        names = [str(x) for x in (data.get("servers") or [])] or None
+        res = branding.push(self.app, names)
+        self.audit("logo-push", sess, servers=",".join(x["server"] for x in res))
+        return jr({"results": res})
 
     def api_reports_search(self, req, sess):
         text = (req.query.get("q") or [""])[0]

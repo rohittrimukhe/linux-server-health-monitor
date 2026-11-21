@@ -97,7 +97,7 @@ def _cell_value(v):
 def render(doc, path, run=None):
     sheets = sheets_for(doc, run)
     if available():
-        _render_openpyxl(sheets, path, doc.brand_logo, chart_data(doc))
+        _render_openpyxl(sheets, path, doc.brand_logo, chart_data(doc), getattr(doc, "customer_logo", ""))
         return path, "openpyxl"
     _render_builtin(sheets, path)
     return path, "builtin"
@@ -163,7 +163,7 @@ def _add_charts(wb, data):
         ws.add_chart(c, "%s%d" % ("D", 1 + idx * 20))
 
 
-def _render_openpyxl(sheets, path, logo="", charts=None):
+def _render_openpyxl(sheets, path, logo="", charts=None, customer_logo=""):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
@@ -206,6 +206,15 @@ def _render_openpyxl(sheets, path, logo="", charts=None):
             img = XLImage(logo)
             img.width, img.height = 240, 72
             wb[sheets[0][0]].add_image(img, "E1")
+        except Exception:
+            pass
+    if customer_logo and os.path.isfile(customer_logo):
+        try:
+            from openpyxl.drawing.image import Image as XLImage
+            img = XLImage(customer_logo)
+            scale = min(240.0 / img.width, 72.0 / img.height, 1.0)
+            img.width, img.height = int(img.width * scale), int(img.height * scale)
+            wb[sheets[0][0]].add_image(img, "J1")
         except Exception:
             pass
     wb.save(path)

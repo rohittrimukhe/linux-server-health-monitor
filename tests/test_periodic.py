@@ -190,8 +190,9 @@ class PeriodicTest(unittest.TestCase):
         self.home.cfg.set("schedule", "schedule:weekly", "to_summary", "boss@example.com")
         _, outdir, files, notes = reports.generate(self.run, self.home.cfg, self.home.paths, ["html"], "weekly", "weekly")
         names = [os.path.basename(f) for f in files]
-        self.assertEqual(len(names), 2, names)
+        self.assertEqual(len(names), 3, names)                                        # the technical report, the database report, the executive summary
         self.assertTrue(any(n.endswith("_database.html") for n in names))
+        self.assertTrue(any(n.endswith("_executive.html") for n in names))
         d = self.doc("weekly", "database")
         titles = self.titles(d)
         self.assertIn("Database size and growth", titles)

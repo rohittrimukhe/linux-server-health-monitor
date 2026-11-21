@@ -199,7 +199,7 @@ def replay(app, start=None, end=None, host=None):
                     except Exception:
                         continue
                 elif r["type"] == "sample":
-                    hr = int(r["ts"] // 3600 * 3600)
+                    hr = History.hour_start(r["ts"])
                     if hr not in have_hours:
                         hours.setdefault(hr, []).append(d)
                 elif r["type"] == "hourly" and d.get("hour") not in have_hours:
@@ -218,7 +218,7 @@ def replay(app, start=None, end=None, host=None):
             for hr, samples in sorted(hours.items()):
                 for s in samples:
                     net = dict((k, (v.get("rx_bps", 0), v.get("tx_bps", 0))) for k, v in (s.get("net") or {}).items())
-                    h.add_hourly(me, hr + 1, s.get("cpu"), s.get("mem_pct"), s.get("swap_pct"), s.get("load_per_cpu"), s.get("cores"), net)
+                    h.add_hourly(me, hr + 60, s.get("cpu"), s.get("mem_pct"), s.get("swap_pct"), s.get("load_per_cpu"), s.get("cores"), net)
                 have_hours.add(hr)
                 out["hours"] += 1
         h.con.commit()

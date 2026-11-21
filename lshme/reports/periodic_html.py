@@ -97,7 +97,7 @@ var DATA=JSON.parse(document.getElementById('chartdata').textContent),OFF=DATA.o
 var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 function p2(n){return (n<10?"0":"")+n}
 function fmt(t){var d=new Date(t*1000+OFF);return d.getUTCDate()+" "+MON[d.getUTCMonth()]+" "+d.getUTCFullYear()+", "+p2(d.getUTCHours())+":"+p2(d.getUTCMinutes())}
-function lab(t,days){var d=new Date(t*1000+OFF);return days>2?d.getUTCDate()+" "+MON[d.getUTCMonth()]:p2(d.getUTCHours())+":00"}
+function lab(t,days){var d=new Date(t*1000+OFF);return days>2?d.getUTCDate()+" "+MON[d.getUTCMonth()]:p2(d.getUTCHours())+":"+p2(d.getUTCMinutes())}
 function ns(tag,a){var e=document.createElementNS("http://www.w3.org/2000/svg",tag);for(var k in a)e.setAttribute(k,a[k]);return e}
 var L=46,R=12,T=12,B=28;
 document.querySelectorAll(".chart").forEach(function(box){

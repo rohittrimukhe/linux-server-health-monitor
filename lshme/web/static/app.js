@@ -467,6 +467,69 @@
             }
         }).catch(function (e) { clear(body); body.appendChild(h("p", { class: "err", text: e.message })); });
     }
+    function drawTemplates(box) {
+        api("GET", "/api/templates").then(function (d) {
+            clear(box);
+            if (!d.templates.length) { return; }
+            var grid = h("div", { class: "tplgrid", style: "display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px" });
+            d.templates.forEach(function (t) {
+                var exec = t.variant === "executive";
+                var c = h("div", { style: "border:1px solid var(--line,#d6dde6);border-radius:12px;padding:14px;" + (exec ? "border-left:5px solid #0b5ed7;background:rgba(11,94,215,.05)" : "") },
+                    h("div", { class: "row" }, h("b", { text: t.name }), exec ? h("span", { class: "badge b-checked", text: "for management" }) : null),
+                    h("p", { class: "muted", style: "margin:4px 0", text: "For: " + t.audience + "  -  " + t.pages + " pages" }),
+                    h("p", { style: "margin:6px 0", text: t.about }),
+                    h("details", null, h("summary", { class: "muted", text: "What is in it (" + t.sections.length + " sections)" }),
+                        h("ol", { style: "margin:6px 0 0 18px" }, t.sections.map(function (s) { return h("li", { text: s }); }))),
+                    h("p", { class: "muted", style: "margin:8px 0 4px", text: "Formats: " + t.formats + ". Sent to: " + t.sent_to + "." }),
+                    h("div", { class: "row" },
+                        h("a", { class: "btn small primary", href: "/api/templates/preview?id=" + encodeURIComponent(t.id) + "&fmt=html", target: "_blank", rel: "noopener", text: "Preview" }),
+                        h("a", { class: "btn small", href: "/api/templates/preview?id=" + encodeURIComponent(t.id) + "&fmt=pdf", target: "_blank", rel: "noopener", text: "Preview as PDF" })));
+                grid.appendChild(c);
+            });
+            box.appendChild(grid);
+            box.appendChild(h("p", { class: "muted", text: "To send the executive summary to management, list their addresses as to_summary in the schedule (Setup > Schedules). They then receive only that report." }));
+        }).catch(function () { clear(box); });
+    }
+    function drawLogos(box) {
+        function paint(d) {
+            clear(box);
+            var scope = h("select", null, h("option", { value: "all", text: "All servers (default logo)" }));
+            d.servers.forEach(function (s) { scope.appendChild(h("option", { value: s.name, text: "Only " + s.name })); });
+            var file = h("input", { type: "file", accept: "image/png,image/jpeg" });
+            var note = h("p", { class: "muted", text: "PNG or JPEG, up to 700 KB (PNG up to 700,000 pixels, for example 1000 x 500). A wide logo on a plain or transparent background looks best." });
+            function upload() {
+                var f = file.files[0];
+                if (!f) { toast("Choose a PNG or JPEG file first.", "bad"); return; }
+                if (f.size > 700 * 1024) { toast("The file is " + Math.round(f.size / 1024) + " KB; the limit is 700 KB.", "bad"); return; }
+                var rd = new FileReader();
+                rd.onload = function () {
+                    var b64 = String(rd.result).split(",")[1] || "";
+                    api("POST", "/api/branding/upload", { scope: scope.value, filename: f.name, data: b64 }).then(function (r) { toast("Logo stored. New reports use it.", "good"); paint(r); }).catch(fail);
+                };
+                rd.readAsDataURL(f);
+            }
+            var cur = d.default ? h("img", { src: "/api/branding/logo?scope=all&t=" + Date.now(), alt: "logo", style: "max-height:56px;max-width:220px;background:#fff;border:1px solid var(--line,#d6dde6);border-radius:6px;padding:6px" })
+                : h("span", { class: "muted", text: "No logo yet: reports show the customer name instead." });
+            box.appendChild(h("div", { class: "row" }, cur, d.default ? h("span", { class: "muted", text: d.default.width + " x " + d.default.height + " px, " + size(d.default.bytes) }) : null,
+                d.default ? h("button", { class: "small", text: "Remove", onclick: function () { api("POST", "/api/branding/remove", { scope: "all" }).then(paint).catch(fail); } }) : null));
+            box.appendChild(h("div", { class: "row" }, file, scope, h("button", { class: "primary", text: "Upload logo", onclick: upload })));
+            box.appendChild(note);
+            if (d.servers.length) {
+                box.appendChild(table(["Server", "Logo it uses", "", ""], d.servers.map(function (s) {
+                    return [h("b", { text: s.name }), s.logo ? (s.own ? "its own logo" : "the default logo") + " (" + s.logo.width + " x " + s.logo.height + ")" : "none",
+                        s.own ? h("button", { class: "small", text: "Use the default", onclick: function () { api("POST", "/api/branding/remove", { scope: s.name }).then(paint).catch(fail); } }) : "",
+                        s.logo ? h("a", { class: "btn small", href: "/api/branding/logo?scope=" + encodeURIComponent(s.name), target: "_blank", rel: "noopener", text: "View" }) : ""];
+                })));
+                box.appendChild(h("div", { class: "row" }, h("button", { text: "Send logos to the servers", onclick: function () {
+                    api("POST", "/api/branding/push", {}).then(function (r) {
+                        var bad = r.results.filter(function (x) { return !x.ok; });
+                        toast(bad.length ? bad.length + " of " + r.results.length + " failed: " + bad.map(function (x) { return x.server + " (" + x.detail + ")"; }).join("; ") : "Sent to " + r.results.length + " server(s).", bad.length ? "bad" : "good");
+                    }).catch(fail);
+                } }), h("span", { class: "muted", text: "Each server writes its own reports, so it needs its own copy of the logo." })));
+            }
+        }
+        api("GET", "/api/branding").then(paint).catch(function () { clear(box); });
+    }
     function drawReports(box) {
         var found = h("div");
         var q = h("input", { type: "search", placeholder: "words to find in every stored report, e.g. tablespace USERS", style: "min-width:320px;flex:1" });
@@ -488,6 +551,12 @@
         var wrap = h("div", { class: "stack" });
         box.appendChild(wrap);
         if (S.me.role === "admin") {
+            var tplBox = h("div", null, h("p", { class: "muted", text: "Loading..." }));
+            box.appendChild(card("Report templates", h("span", { class: "muted", text: "explore what each report looks like, built from the latest health check" }), tplBox));
+            drawTemplates(tplBox);
+            var logoBox = h("div", null, h("p", { class: "muted", text: "Loading..." }));
+            box.appendChild(card("Report logos", h("span", { class: "muted", text: "shown at the top of every report: PDF, HTML, Excel" }), logoBox));
+            drawLogos(logoBox);
             var rawBox = h("div", null, h("p", { class: "muted", text: "Loading..." }));
             box.appendChild(card("Raw data by day", h("span", { class: "muted", text: "every measurement as taken, 00:00:00 to 23:59:59, sealed at 02:00" }), rawBox));
             api("GET", "/api/raw").then(function (d) {

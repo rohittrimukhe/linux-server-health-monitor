@@ -276,12 +276,31 @@ Administrators see **Raw data by day** on the web Reports page, with a download 
 Settings in retention.conf: `raw_enabled` (yes), `raw_days` (730). A sealed day takes about
 0.3 MB per server.
 
+**Report templates and the executive summary.** Reports for different readers come from the same data.
+`vitals templates list` (and **Reports > Report templates** in the dashboard) shows each template with its audience, page count,
+sections and where it is sent, and builds a live preview from the newest health check: `vitals templates preview executive-weekly --format pdf`.
+The **executive summary** (daily, weekly, monthly) is for the CEO and management: one to three pages of plain words, six large figures
+(overall status, availability against the target, issues needing action, days until a disk is full, security patches waiting) and the
+decisions that are needed, with no technical tables. Put management's addresses in `to_summary` of a schedule and they receive only that
+report; everyone else keeps the technical report.
+
+**Report logos.** The customer logo is shown at the top right of every report (PDF, HTML, Excel) and in the running header of every PDF page.
+Upload it in the dashboard (**Reports > Report logos**: PNG or JPEG up to 700 KB, PNG up to 700,000 pixels) or run
+`vitals logo set /path/logo.png`. With several servers every server writes its own reports, so the central server keeps one logo for all
+servers and, if you want, one per server (choose the server before uploading), and sends them with **Send logos to the servers** or
+`vitals logo push`. `tools/deploy_fleet.sh` also copies the logo when it installs a server. A report that is rebuilt later keeps the logo it
+was made with.
+
 **SLA achieved.** Daily, weekly and monthly reports have an "SLA achieved" section and
 a tile in "Overall status": availability for the report period against the target
 (`[sla] target_percent` in main.conf, default 99.9), downtime, the downtime allowed by the
 target and how much of it was used, degraded time, incidents, mean time to recover,
 monitoring coverage and availability per component. The figures come from the live
 watcher's incident log, so keep `lshme-watch` running (`vitals watch install`).
+Only a critical service, port or process that is down, or a read-only or unresponsive filesystem, counts as **downtime**
+(`[sla] count_as_downtime = svc,port,proc,ro,netfs`; `all` counts every critical problem). A full disk, high CPU, memory or load is shown as
+**degraded** time. Availability is measured over the time the watcher was monitoring, and the SLA is "not rated yet" until it has covered at
+least half of the period (and an hour), so a new installation never shows a misleading percentage.
 
 **Space rules.** These delete reports early when space matters:
 

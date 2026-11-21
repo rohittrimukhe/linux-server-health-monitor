@@ -33,9 +33,10 @@ def core_usage(data):
             rows = data.hist.hourly_cores(data.host, data.since)
         except Exception:
             rows = {}
+        mid = lambda t: min(t + 1800, data.now)
         for i, hrs in rows.items():
-            out[i] = {"avg": bucket([(t + 1800, a) for t, a, _ in hrs], 400, "avg"), "max": bucket([(t + 1800, m) for t, _, m in hrs], 400, "max"),
-                      "all": [(t + 1800, a) for t, a, _ in hrs]}
+            out[i] = {"avg": bucket([(mid(t), a) for t, a, _ in hrs], 400, "avg"), "max": bucket([(mid(t), m) for t, _, m in hrs], 400, "max"),
+                      "all": [(mid(t), a) for t, a, _ in hrs]}
     return out or None
 
 

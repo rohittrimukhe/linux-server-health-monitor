@@ -135,8 +135,9 @@ class MiniPDF(object):
         kids = []
         total = len(self.pages)
         for i, ops in enumerate(self.pages, 1):
-            foot = "0.4 0.4 0.4 rg BT /F1 8 Tf %.1f 22 Td (%s) Tj ET BT /F1 8 Tf %.1f 22 Td (Page %d of %d) Tj ET" % (
-                MARGIN, _esc(self.footer), PAGE_W - MARGIN - 60, i, total)
+            pg = "Page %d of %d" % (i, total)
+            foot = ("0.87 0.9 0.93 RG 0.5 w %.1f 36 m %.1f 36 l S 0.4 0.4 0.4 rg BT /F1 8 Tf %.1f 24 Td (%s) Tj ET BT /F1 8 Tf %.1f 24 Td (%s) Tj ET" % (
+                MARGIN, PAGE_W - MARGIN, MARGIN, _esc(self.footer), PAGE_W - MARGIN - len(pg) * 4.45, pg))
             stream = "\n".join(ops + [foot]).encode("cp1252", "replace")
             content = add("<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream.decode("latin-1")))
             kids.append(add("<< /Type /Page /Parent %d 0 R /MediaBox [0 0 %.2f %.2f] /Resources %s /Contents %d 0 R >>" % (
@@ -162,7 +163,11 @@ class MiniPDF(object):
 def load_image(path):
     """(width, height, colourspace, filter, data, alpha) for a JPEG or an 8-bit PNG, else None."""
     with open(path, "rb") as f:
-        raw = f.read()
+        return load_image_bytes(f.read())
+
+
+def load_image_bytes(raw):
+    """Same as load_image, for the bytes of an image."""
     if raw[:2] == bytes([0xFF, 0xD8]):          # JPEG: embedded as is
         i = 2
         while i < len(raw) - 9:

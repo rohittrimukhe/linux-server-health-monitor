@@ -58,7 +58,7 @@ def render_xlsx(doc, path):
     sh = sheets(doc)
     empty = {"severity": [], "scores": [], "filesystems": [], "score_title": ""}
     if xlsx.available():
-        xlsx._render_openpyxl(sh, path, doc.brand_logo, empty)
+        xlsx._render_openpyxl(sh, path, doc.brand_logo, empty, getattr(doc, "customer_logo", ""))
         return path, "openpyxl"
     xlsx._render_builtin(sh, path)
     return path, "builtin"

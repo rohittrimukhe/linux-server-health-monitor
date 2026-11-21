@@ -129,6 +129,17 @@ certificate). **Servers** shows all four servers with status, roles and CPU/memo
 | Reports and email | `vitals run --report-type daily --email` on any server |
 | Health of the tool itself | Dashboard > Operations > Health of LRS Vitals |
 
+## Upgrading without an RPM
+
+On every server (also works from the central server over SSH):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rohittrimukhe/linux-server-health-monitor/main/tools/upgrade_from_github.sh | sudo bash
+```
+
+It replaces only the program files, keeps the old ones in `/opt/lshme.pre-upgrade.<time>`, leaves `/etc/lshme`, history, reports and raw data alone and restarts the watcher and
+the web service. `--dry-run` shows what it would do. Check afterwards with `vitals version` and `vitals doctor`.
+
 ## Things to know
 
 - Upgrading a server that already ran an older version: run `sudo vitals raw backfill` once, so what was recorded before is also in the daily raw files.

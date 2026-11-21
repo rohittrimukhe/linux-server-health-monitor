@@ -147,6 +147,8 @@ def generate(run, cfg, paths, formats, report_type=None, category=None):
         sched = scheduler.get(cfg, category)
         if sched is not None and sched.to_database:                      # the DBA team gets a database-only report
             docs.append(periodic.build(run, cfg, paths, report_type, "database"))
+        if sched is not None and sched.to_summary:                       # management gets the executive summary
+            docs.append(periodic.build(run, cfg, paths, report_type, "executive"))
         outdir = output_dir(paths.report_dir, run.host, category)
         base = "%s_%s_%s" % (safe(run.host), safe(category), time.strftime("%Y%m%d_%H%M", time.localtime(run.collected_at)))
         files, notes = write_periodic(docs, formats, outdir, base, cfg.get("main", "general", "logo", ""))

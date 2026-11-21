@@ -94,12 +94,17 @@ def log_digest(data):
         q = ("SELECT module, code, component, COUNT(DISTINCT run_id) n, COUNT(DISTINCT date(ts, 'unixepoch', 'localtime')) d, MAX(severity), MAX(message), MIN(ts), MAX(ts) "
              "FROM findings WHERE host=? AND ts>=? GROUP BY module, code, component ORDER BY (module='logs') DESC, n DESC LIMIT 12")
         rows = []
+        now_keys = set((f.code, f.component) for f in (data.run.findings("WARNING") if data.run else []))     # what the latest check still finds
         for module, code, comp, n, d, sev, msg, first, last in hist.con.execute(q, (data.host, data.since)).fetchall():
+            still = (code, comp) in now_keys
             rows.append([Cell("CRIT" if sev == "CRITICAL" else "WARN", "chip-cr" if sev == "CRITICAL" else "chip-wn"), (comp or code)[:40], (msg or "")[:110], n, d,
-                         P.stamp(first, "%d %b"), P.stamp(last, "%d %b")])
+                         P.stamp(first, "%d %b %H:%M" if data.days <= 1 else "%d %b"), P.stamp(last, "%d %b %H:%M" if data.days <= 1 else "%d %b"),
+                         Cell("still present", "wn") if still else Cell("not found now", "ok")])
         if rows:
-            out.append(table("Problems that repeated most often", ["Level", "Where", "What", "Checks", "Days", "First seen", "Last seen"], rows, align=["", "", "", "r", "r", "", ""],
-                             legend="'Checks' is the number of health checks that found it; 'Days' is on how many different days."))
+            out.append(table("Problems that repeated most often", ["Level", "Where", "What", "Checks", "Days", "First seen", "Last seen", "Now"], rows,
+                             align=["", "", "", "r", "r", "", "", ""],
+                             legend="'Checks' is the number of health checks that found it; 'Days' is on how many different days. 'Now' says whether "
+                                    "the latest health check still finds it (a problem that was fixed stays in the history for the period)."))
     cats = {}
     for k in data.keys("logs.count:"):
         pts = data.points(k, 31)

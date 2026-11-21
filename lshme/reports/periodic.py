@@ -22,6 +22,7 @@ from lshme.engine.history import History
 TYPES = ("daily", "weekly", "monthly")
 WINDOW_DAYS = {"daily": 1, "weekly": 7, "monthly": 30}
 TITLES = {"daily": "Daily Server Checklist", "weekly": "Weekly Server Report", "monthly": "Monthly Server Report"}
+EXEC_TITLES = {"daily": "Executive Summary - Last 24 Hours", "weekly": "Executive Summary - Last 7 Days", "monthly": "Executive Summary - Last 30 Days"}
 DAY = 86400.0
 
 IMPACT = {
@@ -40,12 +41,35 @@ IMPACT = {
     "monitoring": "If the monitoring itself is not working, problems on this server can go unnoticed and no alert or report reaches you.",
     "generic": "This is outside the normal range and should be looked at.",
 }
+IMPACT_CODE = {
+    "LOG_SELINUX": "SELinux is blocking something it considers unsafe. If it blocks a legitimate program, that program fails; if it is not reviewed, real attacks are missed.",
+    "LOG_IO_ERROR": "Disk or storage errors can mean unreadable data and, if they continue, corrupted files or a stopped server.",
+    "SSH_ROOT_LOGIN": "Anyone who guesses or steals the root password gets full control of the server. Named accounts with sudo and keys are safer.",
+    "MULTIPATH_ALL_FAILED": "Every path to this storage LUN is down, so the server cannot read or write it.",
+}
 MODULE_KIND = {"storage": "fs", "cpu_memory": "cpu", "services": "services", "security": "updates", "logs": "logs", "backup": "backup",
                "database": "db", "system": "time", "folders": "fs", "selfcheck": "monitoring"}
 
 
 def impact_for_module(module):
     return IMPACT[MODULE_KIND.get(module, "generic")]
+
+
+def impact_for_finding(f):
+    return IMPACT_CODE.get(getattr(f, "code", ""), impact_for_module(getattr(f, "module", "")))
+
+
+def trim_dates(dates, have):
+    """Drop the leading dates that have no data at all (a server monitored since yesterday has no week of rows). -> (dates, dropped)."""
+    first = next((i for i, d in enumerate(dates) if d in have), 0)
+    return dates[first:], first
+
+
+def trimmed_legend(text, dropped, dates):
+    if not dropped:
+        return text
+    return "%s The %d earlier day%s without data %s not shown: nothing was recorded before %s." % (
+        text, dropped, "" if dropped == 1 else "s", "is" if dropped == 1 else "are", dates[0])
 
 MB = 1024.0 * 1024.0
 
@@ -83,7 +107,7 @@ class PDoc(object):
     def __init__(self, ptype, variant="summary"):
         self.ptype = ptype
         self.variant = variant            # summary | comprehensive
-        self.title = TITLES[ptype] + {"comprehensive": " (comprehensive)", "database": " (database)"}.get(variant, "")
+        self.title = EXEC_TITLES[ptype] if variant == "executive" else TITLES[ptype] + {"comprehensive": " (comprehensive)", "database": " (database)"}.get(variant, "")
         self.subtitle = ""
         self.host = ""
         self.status = "UNKNOWN"
@@ -109,7 +133,7 @@ class PDoc(object):
         self.sections.append((title, [b for b in blocks if b]))
 
     def basename_suffix(self):
-        return {"comprehensive": "_comprehensive", "database": "_database"}.get(self.variant, "")
+        return {"comprehensive": "_comprehensive", "database": "_database", "executive": "_executive"}.get(self.variant, "")
 
 
 # -- block constructors ----------------------------------------------------------
@@ -172,6 +196,40 @@ class Data(object):
             self._cache[k] = pts
         return self._cache[k]
 
+    def first_data(self):
+        """Time of the oldest measurement inside the period (watcher samples, hourly figures, health checks), or None."""
+        firsts = []
+        if self.hist:
+            for q in ("SELECT MIN(ts) FROM hourly WHERE host=? AND ts>=?", "SELECT MIN(ts) FROM runs WHERE host=? AND ts>=?"):
+                try:
+                    v = self.hist.con.execute(q, (self.host, self.since - 3600)).fetchone()[0]
+                except Exception:
+                    v = None
+                if v:
+                    firsts.append(v)
+        if self.paths:
+            try:
+                with open(os.path.join(self.paths.data_dir, "watch_metrics.json"), encoding="utf-8") as f:
+                    t = [p["t"] for p in json.load(f) if p.get("t", 0) >= self.since]
+                if t:
+                    firsts.append(min(t))
+            except (IOError, OSError, ValueError, KeyError, TypeError):
+                pass
+        return min(firsts) if firsts else None
+
+    def coverage_text(self):
+        """A sentence when the period is not fully covered by data (a new installation), else ''."""
+        first = self.first_data()
+        if first is None:
+            return ""
+        have = self.now - max(first, self.since)
+        want = self.days * DAY
+        if have >= 0.9 * want:
+            return ""
+        return ("Only %s of the %s covered by this report has been recorded (monitoring started %s). Averages, peaks, growth, forecasts and "
+                "comparisons cover that time only and become complete as data builds up." % (
+                    fmt_duration(max(have, 60)), "24 hours" if self.days <= 1 else "%d days" % self.days, stamp(max(first, self.since), "%d %b %H:%M")))
+
     def keys(self, prefix):
         names = set(k for k in self.cur if k.startswith(prefix))
         if self.hist:
@@ -222,8 +280,9 @@ class Data(object):
         if len(rows) >= 3:
             out = {}
             for key in ("cpu", "mem", "swap", "load"):
-                out[key] = {"avg": [(r["ts"] + 1800, r[key]) for r in rows], "max": [(r["ts"] + 1800, r[key + "_max"]) for r in rows],
-                            "all": [(r["ts"] + 1800, r[key]) for r in rows]}
+                mid = lambda t: min(t + 1800, self.now)          # the middle of the hour, but never later than now
+                out[key] = {"avg": [(mid(r["ts"]), r[key]) for r in rows], "max": [(mid(r["ts"]), r[key + "_max"]) for r in rows],
+                            "all": [(mid(r["ts"]), r[key]) for r in rows]}
                 out[key]["avg"] = bucket(out[key]["avg"], 400, "avg")
                 out[key]["max"] = bucket(out[key]["max"], 400, "max")
             return out, "real-time watcher, hourly averages and peaks"
@@ -232,7 +291,11 @@ class Data(object):
             pts = self.points(metric)
             out[key] = {"avg": pts, "max": pts, "all": pts}
         have = any(out[k]["all"] for k in out)
-        return out, ("health-check runs only (install the real-time watcher for continuous graphs)" if have else "no data yet")
+        watcher = self.paths and os.path.exists(os.path.join(self.paths.data_dir, "watch_state.json"))
+        if not have:
+            return out, "no data yet"
+        return out, ("health-check runs only (the real-time watcher has recorded less than 3 hours so far; its graphs fill in as it runs)" if watcher
+                     else "health-check runs only (install the real-time watcher for continuous graphs)")
 
 
 def bucket(pts, limit, how):
@@ -464,22 +527,22 @@ def checklist(data, usage, fs):
             acts.append((lv, "The newest backup is %.0f hours old" % v, IMPACT["backup"]))
     if "services.failed" in data.cur:
         n = int(data.cur["services.failed"])
-        add("cr" if n else "ok", "Failed services", str(n), "1", "1", "All services running" if not n else "%d unit(s) failed" % n)
+        add("cr" if n else "ok", "Failed services", str(n), "-", "1", "All services running" if not n else "%d unit(s) failed" % n)
         if n:
             acts.append(("cr", "%d service%s failed" % (n, "" if n == 1 else "s"), IMPACT["services"]))
     if "security.pending_updates" in data.cur:
         n, sec = int(data.cur["security.pending_updates"]), int(data.cur.get("security.pending_security_updates", 0))
         lv = "cr" if sec >= 20 else "wn" if sec >= 1 else "ok"
-        add(lv, "Pending updates", "%d (%d security)" % (n, sec), "1 security", "20 security", "Patch regularly" if sec else "Up to date")
+        add(lv, "Pending security updates", "%d" % sec, "1", "20", ("%d updates in total. Patch regularly." % n) if sec else "Up to date")
         if lv != "ok":
             acts.append((lv, "%d security update%s not installed" % (sec, "" if sec == 1 else "s"), IMPACT["updates"]))
     mod = run.module("logs") if run else None
     if mod is not None and mod.status != "SKIPPED":
         bad = [f for f in mod.findings if f.severity in ("CRITICAL", "WARNING")]
         lv = worst(["cr" if f.severity == "CRITICAL" else "wn" for f in bad]) if bad else "ok"
-        add(lv, "Log errors", str(len(bad)), "1", "1", bad[0].message[:80] if bad else "No serious log errors")
-        if bad:
-            acts.append((lv, bad[0].message[:110].rstrip('.'), IMPACT["logs"]))
+        add(lv, "Log errors", str(len(bad)), "1", "a critical one", bad[0].message[:80] if bad else "No serious log errors")
+        for f in bad[:3]:
+            acts.append(("cr" if f.severity == "CRITICAL" else "wn", f.message[:110].rstrip('.'), impact_for_finding(f)))
     sysm = run.module("system") if run else None
     if sysm is not None and sysm.data:
         ts = sysm.data.get("time_sync")
@@ -500,9 +563,10 @@ def other_findings(data, have):
     acts = []
     skip = ("logs", "security", "services", "storage", "cpu_memory", "database", "backup", "system")
     for f in (data.run.findings("WARNING") if data.run else []):
-        if f.module in skip or len(acts) >= 5:
+        covered = f.module in skip and not (f.module == "security" and f.code != "SECURITY_UPDATES")
+        if covered or len(acts) >= 6:
             continue
-        acts.append(("cr" if f.severity == "CRITICAL" else "wn", redact(f.message)[:140], impact_for_module(f.module)))
+        acts.append(("cr" if f.severity == "CRITICAL" else "wn", redact(f.message)[:140], impact_for_finding(f)))
     return acts
 
 
@@ -512,7 +576,7 @@ def overview_rows(run):
     return [["Hostname", s.get("fqdn", run.host if run else ""), "IP address", s.get("ip", "")],
             ["OS / kernel", "%s, %s" % (s.get("distribution", ""), s.get("kernel", "")), "Architecture", s.get("architecture", "")],
             ["Uptime", "%s (boot %s)" % (s.get("uptime", ""), s.get("boot_time", "")), "Platform", s.get("virtualization", "")],
-            ["Time zone", s.get("timezone", ""), "Reboot needed", {True: "yes", False: "no"}.get(s.get("reboot_required"), "unknown")]]
+            ["Time zone", s.get("timezone", ""), "Reboot needed", {True: "yes", False: "no"}.get(s.get("reboot_required"), "not checked (needs-restarting is not installed)")]]
 
 
 def chart_defs(data, usage, win):
@@ -576,7 +640,8 @@ def day_usage_table(data, usage, title="CPU and memory by day"):
     lim = {"cpu": (th("cpu", "warning", 85), th("cpu", "critical", 95)), "mem": (th("memory", "warning", 85), th("memory", "critical", 95)),
            "swap": (th("swap", "warning", 50), th("swap", "critical", 80)), "load": (th("load", "per_core_warning", 1.5), th("load", "per_core_critical", 3.0))}
     rows = []
-    for d in data.dates():
+    dates, dropped = trim_dates(data.dates(), per)
+    for d in dates:
         if d not in per:
             rows.append([Cell(d, "b")] + [Cell("-", "fl")] * 8)
             continue
@@ -591,7 +656,7 @@ def day_usage_table(data, usage, title="CPU and memory by day"):
             row += [f % avg, Cell(f % mx, level_for(mx, *lim[key]))]
         rows.append(row)
     return table(title, ["Date", "CPU avg %", "CPU peak %", "Memory avg %", "Memory peak %", "Swap avg %", "Swap peak %", "Load avg", "Load peak"],
-                 rows, legend="Peak cells turn amber at the warning limit and red at the critical limit.")
+                 rows, legend=trimmed_legend("Peak cells turn amber at the warning limit and red at the critical limit.", dropped, dates))
 
 
 def health_by_day(data):
@@ -600,14 +665,16 @@ def health_by_day(data):
     for r in reversed(runs):
         per[day_key(r["ts"])] = r
     rows = []
-    for d in data.dates():
+    dates, dropped = trim_dates(data.dates(), per)
+    for d in dates:
         r = per.get(d)
         if not r:
             rows.append([Cell(d, "b"), Cell("no run", "fl"), "-", "-", "-", Cell("-", "fl")])
             continue
         lv = "cr" if r["critical"] else "wn" if r["warning"] else "ok"
         rows.append([Cell(d, "b"), chip(lv), "%s / 100" % r["score"], r["critical"], r["warning"], r["schedule"] or ""])
-    return table("Health by day (last run of each day)", ["Date", "Status", "Score", "Critical", "Warning", "Run"], rows)
+    return table("Health by day (last run of each day)", ["Date", "Status", "Score", "Critical", "Warning", "Run"], rows,
+                 legend=trimmed_legend("", dropped, dates).strip())
 
 
 def recurring_table(data):
@@ -624,6 +691,8 @@ def growth_matrix(data, kind, items, label, dates, doc, chunk=4):
     """Day-by-day size and change tables, a few items per table so every cell stays readable."""
     blocks = []
     per = [(name, data.per_day(it["pts"])) for name, it in items]
+    have = set(d for _, pd in per for d in pd)
+    dates, dropped = trim_dates(list(dates), have)
     for name, pd in per:
         prev = None
         for d in dates:
@@ -648,7 +717,7 @@ def growth_matrix(data, kind, items, label, dates, doc, chunk=4):
                 row.append(Cell("%s (%s)" % (fmt_bytes(v), c.text if delta is not None else "first"), c.style if delta is not None else "fl"))
             rows.append(row)
         blocks.append(table("%s by date (size at end of day, change vs previous day)%s" % (label, "" if len(per) <= chunk else " - part %d" % (i // chunk + 1)),
-                            heads, rows, legend="Red = grew, green = shrank, grey = no change. '-' = no sample that day."))
+                            heads, rows, legend=trimmed_legend("Red = grew, green = shrank, grey = no change. '-' = no sample that day.", dropped, dates)))
     return blocks
 
 
@@ -740,7 +809,11 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
     fs_pre = fs
     dbs_pre = databases(data)
     fo_pre = folders(data, mounts)
-    d.add("In short", [X.narrative(data, usage, fs_pre, dbs_pre, fo_pre, levels, run.fqdn or run.host)])
+    story = X.narrative(data, usage, fs_pre, dbs_pre, fo_pre, levels, run.fqdn or run.host)
+    cov_text = data.coverage_text()
+    if cov_text:
+        story["items"].append(("wn", cov_text))
+    d.add("In short", [story])
     sla_blocks = None
     try:
         from lshme.reports import periodic_sla
@@ -846,6 +919,12 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
                 d.add(title, blocks)
         except Exception as e:
             d.add("More checks", [note("These sections could not be built: %s" % e)])
+    if getattr(run, "excluded", None) and variant != "database":
+        ex_rows = [[Cell("CRIT" if x["severity"] == "CRITICAL" else "WARN", "chip-cr" if x["severity"] == "CRITICAL" else "chip-wn"), x["component"],
+                    redact(x["message"])[:110], x["rule"], (x.get("reason") or "")[:140], x.get("owner", ""), x.get("until") or "never"] for x in run.excluded[:40]]
+        d.add("Accepted exceptions", [table("Findings kept out of the score and alerts by a rule", ["Level", "Where", "Finding", "Rule", "Reason", "Approved by", "Until"],
+                                            ex_rows, legend="These problems exist but have been accepted by rules in exclusions.conf (vitals exclude list). "
+                                                            "They are listed so nothing is hidden; each rule stops applying on its date.")])
     d.add("Server overview", [{"type": "kv", "rows": overview_rows(run)}])
     if variant == "database":
         keep = ("In short", "Overall status", "SLA achieved", "Database size and growth", "Database health", "Capacity forecast", "Backup verification", "Top folders and growth",
@@ -865,6 +944,9 @@ def _build(run, cfg, paths, ptype, variant, now, days, hist):
         d.add("What needs attention", [note("Nothing needs attention. Every check is within its limits.")])
     if variant == "comprehensive":
         X.inventory_sections(d, cfg)
+    if variant == "executive":
+        from lshme.reports import periodic_exec
+        return periodic_exec.compose(d, data, run, ptype)
     return d
 
 

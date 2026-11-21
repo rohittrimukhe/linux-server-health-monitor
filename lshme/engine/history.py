@@ -86,9 +86,15 @@ class History(object):
         cols = ("id", "host", "ts", "schedule", "score", "status", "critical", "warning", "unknown", "duration", "report_dir")
         return [dict(zip(cols, r)) for r in self.con.execute(q, args).fetchall()]
 
+    @staticmethod
+    def hour_start(ts):
+        """Start of the local clock hour of a time stamp (so buckets begin at :00 also in zones such as India, UTC+5:30)."""
+        off = getattr(time.localtime(ts), "tm_gmtoff", 0) or 0
+        return int((ts + off) // 3600 * 3600 - off)
+
     def add_hourly(self, host, now, cpu, mem, swap, load, cores=None, net=None):
         """Fold one real-time sample into the running totals for its hour (used for week and month graphs)."""
-        hour = int(now // 3600 * 3600)
+        hour = self.hour_start(now)
         v = [x if x is not None else 0.0 for x in (cpu, mem, swap, load)]
         row = self.con.execute("SELECT n FROM hourly WHERE host=? AND ts=?", (host, hour)).fetchone()
         if row:

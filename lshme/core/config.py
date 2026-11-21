@@ -48,7 +48,7 @@ DEFAULTS = {
         "alert_routes": {},
         "fleet": {"enabled": "no", "minutes": "10"},
         "performance": {"nice": "10", "idle_io": "yes"},
-        "sla": {"target_percent": "99.9"},
+        "sla": {"target_percent": "99.9", "count_as_downtime": "svc,port,proc,ro,netfs"},
         "dashboard": {"title": "", "stale_hours": "26", "refresh_seconds": "300", "auto_build": "yes"},
     },
     "thresholds": {

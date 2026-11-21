@@ -143,7 +143,7 @@ class RegenTest(unittest.TestCase):
         self.assertEqual(rows["SLA target"], "99.9 % availability")
         self.assertEqual(rows["Result"], "Missed")                    # 30 min down in 24 h is below 99.9 %
         self.assertEqual(rows["Availability achieved"], "97.917 %")
-        self.assertIn("30", rows["Downtime (critical)"])
+        self.assertIn("30", rows["Downtime (service or server unavailable)"])
         kpi = [i for i in dict(d.sections)["Overall status"][0]["items"] if i[1].startswith("SLA achieved")]
         self.assertEqual(kpi[0][0], "97.92 %")
         self.home.cfg.set("main", "sla", "target_percent", "95")

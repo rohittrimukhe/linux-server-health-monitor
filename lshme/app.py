@@ -130,9 +130,10 @@ class App(object):
             if sched and write_reports:
                 result["files"] += self.schedule_extras(sched, result["notes"])
             if email or force_email:
-                result["email"] = self.email_report(run, document, result["files"], force_email, to, cc, policy)
+                main_files = [f for f in result["files"] if "_executive" not in os.path.basename(f)]
+                result["email"] = self.email_report(run, document, main_files, force_email, to, cc, policy)
                 if sched:                                                    # other people, other reports
-                    pick = (("summary", sched.to_summary, lambda n: "_comprehensive" not in n and "_database" not in n),
+                    pick = (("summary", sched.to_summary, lambda n: "_executive" in n),
                             ("database", sched.to_database, lambda n: "_database" in n))
                     for name, people, keep in pick:
                         if people:

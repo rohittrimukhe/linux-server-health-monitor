@@ -19,6 +19,17 @@ from lshme.core.util import fmt_duration
 from lshme.reports.doc import ReportDoc, Section
 
 
+DEFAULT_DOWN = "svc,port,proc,ro,netfs"       # critical service, port or process down, read-only or unresponsive filesystem
+
+
+def down_kinds(cfg):
+    """Kinds of watcher problem whose CRITICAL time counts as downtime ([sla] count_as_downtime); None = every critical problem."""
+    v = str(cfg.get("main", "sla", "count_as_downtime", DEFAULT_DOWN) or "").strip().lower()
+    if v in ("all", "*"):
+        return None
+    return set(x.strip() for x in v.split(",") if x.strip())
+
+
 def month_range(month=None, now=None):
     """(start, end, label) for 'YYYY-MM'; default is the previous full month."""
     now = now or time.time()
@@ -123,7 +134,9 @@ def component_group(key, component):
     return label or "Other", component
 
 
-def compute(events, start, end, now=None, coverage=None, interval=60):
+def compute(events, start, end, now=None, coverage=None, interval=60, down_kinds=None):
+    """down_kinds: set of problem kinds (svc, port, proc, ro, netfs, disk, ...) whose critical time is downtime; None = all of them.
+    Other critical problems still count as degraded time."""
     now = min(now or time.time(), end)
     incidents = []
     for inc in incidents_from(events, now):
@@ -131,7 +144,8 @@ def compute(events, start, end, now=None, coverage=None, interval=60):
         if span is None:
             continue
         crit = [c for c in (_clip(s, e, start, end) for s, e in inc["crit_periods"]) if c]
-        incidents.append(dict(inc, span=span, crit=crit))
+        counts = down_kinds is None or (inc["key"] or "").split(":", 1)[0] in down_kinds
+        incidents.append(dict(inc, span=span, crit=crit if counts else [], counts_down=counts, was_critical=bool(crit)))
     period = max(1.0, now - start)
     down = _union([c for i in incidents for c in i["crit"]])
     any_problem = _union([i["span"] for i in incidents])
@@ -253,7 +267,7 @@ def generate(app, month=None, formats=("html", "pdf", "xlsx"), now=None):
     except (IOError, OSError, ValueError):
         pass
     events = load_events(os.path.join(app.paths.data_dir, "watch_events.jsonl"))
-    result = compute(events, start, end, now, state.get("coverage"), state.get("interval", 60))
+    result = compute(events, start, end, now, state.get("coverage"), state.get("interval", 60), down_kinds(app.cfg))
     host = socket.gethostname()
     doc = build_doc(result, label, app.cfg, host, daily_scores(app.paths.history_db, host, start, end))
     outdir = reports.output_dir(app.paths.report_dir, host, "sla", time.strftime("%Y%m", time.localtime(start)))
