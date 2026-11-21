@@ -3,17 +3,21 @@
    Default theme "Balanced": soft blue-grey, neither dark nor bright. Text on its background is at least 4.5:1, focus is always visible,
    targets are 44 px on touch screens, status is never shown by colour alone, motion respects the reduced-motion setting. */
 :root {
-  --bg: #e7edf4; --surface: #f6f8fb; --surface2: #edf2f8; --text: #1f2d3d; --muted: #52627a; --line: #d3dce8; --track: #dbe3ee;
-  --card: var(--surface); --hover: #e3eaf3; --input: #fbfcfe; --head: #f6f8fb;
-  --side: #22406a; --side2: #1b3557; --side-text: #d3deee; --side-muted: #a3b5cd; --side-on: rgba(255, 255, 255, .12);
-  --brand: #284b7a; --accent: #3a6db5; --accent-ink: #ffffff; --accent-soft: #dde8f7;
-  --ok: #2d7a4d; --ok-soft: #d9eee1; --ok-ink: #1d5233;
-  --warn: #a8691a; --warn-soft: #f6e8cd; --warn-ink: #6b430b;
-  --crit: #b0413e; --crit-soft: #f5dcdb; --crit-ink: #772522;
-  --info: #3a6db5; --info-soft: #dce7f7; --info-ink: #234a85;
-  --shadow: 0 1px 2px rgba(31, 45, 61, .06), 0 4px 14px rgba(31, 45, 61, .07); --radius: 12px; --radius-sm: 8px;
-  --gutter: clamp(14px, 2.2vw, 44px); --font: Inter, "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; --side-w: 248px;
-  --login-a: #22406a; --login-b: #172c4a;
+  /* "Clinical infrastructure telemetry" design system (default theme): calm cool canvas, crisp white modules, navy anchor */
+  --bg: #eef2f7; --surface: #ffffff; --surface2: #f8fafc; --text: #0f172a; --muted: #5b6b7f; --line: #e2e8f0; --track: #e6ebf2;
+  --card: var(--surface); --hover: #f8fafc; --input: #ffffff; --head: #f8fafc;
+  --side: #123a6b; --side2: #0e2d57; --side-text: #d6e2f3; --side-muted: #9fb3cf; --side-on: rgba(255, 255, 255, .12);
+  --brand: #123a6b; --accent: #2563eb; --accent-ink: #ffffff; --accent-soft: #e7efff; --accent-hover: #1d4ed8;
+  --ok: #15803d; --ok-soft: #dcfce7; --ok-ink: #14532d;
+  --warn: #b45309; --warn-soft: #fef3c7; --warn-ink: #78350f;
+  --crit: #b91c1c; --crit-soft: #fee2e2; --crit-ink: #7f1d1d;
+  --info: #2563eb; --info-soft: #e7efff; --info-ink: #1e3a8a;
+  --shadow: 0 1px 3px rgba(15, 23, 42, .04), 0 1px 2px rgba(15, 23, 42, .02);
+  --shadow-2: 0 4px 12px -2px rgba(15, 23, 42, .08), 0 2px 6px -1px rgba(15, 23, 42, .04);
+  --shadow-3: 0 12px 28px -4px rgba(15, 23, 42, .14);
+  --radius: 14px; --radius-sm: 10px;
+  --gutter: clamp(16px, 2vw, 32px); --font: Inter, "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; --side-w: 260px;
+  --login-a: #123a6b; --login-b: #0e2d57;
 }
 /* Light: clean and bright */
 :root[data-theme="light"] {
@@ -369,8 +373,8 @@ main.enter > .stack > *:nth-child(n+6) { animation-delay: 200ms; }
 
 /* the folding menu: fixed width revealed with clip-path (no layout work while it opens); labels fade */
 @media (min-width: 981px) {
-  html.nav-auto .top { width: 248px !important; clip-path: inset(0 176px 0 0); transition: clip-path 220ms var(--ease-out); overflow-x: hidden; box-shadow: none; }
-  html.nav-auto .top:hover, html.nav-auto .top:has(:focus-visible) { width: 248px; clip-path: inset(0 0 0 0); box-shadow: none; }
+  html.nav-auto .top { width: 260px !important; clip-path: inset(0 188px 0 0); transition: clip-path 220ms var(--ease-out); overflow-x: hidden; box-shadow: none; }
+  html.nav-auto .top:hover, html.nav-auto .top:has(:focus-visible) { width: 260px; clip-path: inset(0 0 0 0); box-shadow: none; }
   html.nav-auto .top .in, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .in { padding: 18px 14px 14px; }
   html.nav-auto .top .pin, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .pin { align-self: flex-start; margin-left: 7px; }
   html.nav-auto .top .brand, html.nav-auto .top:not(:hover):not(:has(:focus-visible)) .brand { align-items: flex-start; padding: 4px 4px 14px; }
@@ -514,3 +518,29 @@ h4.sub2 { margin: 16px 0 8px; font-size: 12px; text-transform: uppercase; letter
 .alertbar .fb-name { color: var(--tone); }
 .alertbar.tone-ok .fb-name { color: var(--ok-ink); }
 @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+
+/* ---- design system components (all pages): cards, tables, inputs, buttons, badges, dialogs ---- */
+.card { border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.card > h2 { font-size: 15px; font-weight: 650; letter-spacing: -.005em; }
+.tbl th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; background: var(--head); border-bottom: 1px solid var(--line); }
+.tbl td { border-bottom: 1px solid var(--line); height: 44px; vertical-align: middle; }
+.tbl tbody tr:hover td { background: var(--hover); }
+.tbl td.num, .tbl th.num, .gl-value, .tm-val, .score-pill b { font-variant-numeric: tabular-nums; }
+input[type="text"], input[type="password"], input[type="number"], input[type="search"], input[type="date"], select, textarea {
+  min-height: 36px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--input); color: var(--text); padding: 6px 10px; font: inherit; font-size: 14px; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); }
+button, .btn { min-height: 36px; border-radius: var(--radius-sm); }
+button.small, .btn.small { min-height: 30px; }
+button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+@media (hover: hover) and (pointer: fine) { button.primary:hover, .btn.primary:hover { background: var(--accent-hover, var(--accent)); border-color: var(--accent-hover, var(--accent)); } button:not(.primary):not(.danger):hover { background: var(--hover); } }
+button.danger { background: var(--crit); border-color: var(--crit); color: #fff; }
+.badge { min-height: 22px; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 8px; font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.modal { border-radius: var(--radius); box-shadow: var(--shadow-3); border: 1px solid var(--line); }
+.modalbg { background: rgba(15, 23, 42, .4); }
+.menu-list { box-shadow: var(--shadow-2); }
+.top { background: linear-gradient(180deg, var(--side) 0%, var(--side2) 100%); }
+.top nav a.on { background: rgba(255, 255, 255, .12); }
+.srv { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.gl { border-radius: var(--radius); }
+@media (min-width: 1920px) { main { padding-left: 32px; padding-right: 32px; } }

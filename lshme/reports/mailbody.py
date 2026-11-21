@@ -14,12 +14,12 @@ from html import escape as E
 from lshme.reports.periodic import Bar, Cell
 
 GREEN, AMBER, RED, GREY = (30, 142, 62), (245, 158, 11), (197, 34, 31), (226, 232, 240)
-HEX = {"ok": "#1e8e3e", "wn": "#b45309", "cr": "#c5221f", "na": "#64748b"}
-SOFT = {"ok": "#ecfdf3", "wn": "#fffbeb", "cr": "#fef2f2", "na": "#f1f5f9"}
-EDGE = {"ok": "#1e8e3e", "wn": "#f59e0b", "cr": "#c5221f", "na": "#94a3b8"}
-BARC = {"ok": "#22a447", "wn": "#f59e0b", "cr": "#d93025"}
-STATUS = {"HEALTHY": "#1e8e3e", "WARNING": "#e8830c", "CRITICAL": "#c5221f"}
-FONT = "font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif"      # no quotes: the styles sit inside single-quoted attributes
+HEX = {"ok": "#15803d", "wn": "#b45309", "cr": "#b91c1c", "na": "#64748b"}
+SOFT = {"ok": "#dcfce7", "wn": "#fef3c7", "cr": "#fee2e2", "na": "#f1f5f9"}
+EDGE = {"ok": "#15803d", "wn": "#d97706", "cr": "#b91c1c", "na": "#94a3b8"}
+BARC = {"ok": "#16a34a", "wn": "#d97706", "cr": "#dc2626"}
+STATUS = {"HEALTHY": "#15803d", "WARNING": "#b45309", "CRITICAL": "#b91c1c"}
+FONT = "font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif"      # no quotes: the styles sit inside single-quoted attributes
 MAX_LOGO = 150 * 1024
 
 
@@ -203,7 +203,7 @@ def _compare(headers, rows):
 
 def _button(url):
     return ("<tr><td class='pad' align='left' style='padding:20px 28px 0'><table role='presentation' cellpadding='0' cellspacing='0'><tr>"
-            "<td bgcolor='#0b5ed7' style='background:#0b5ed7;border-radius:8px'><a href='%s' style='display:inline-block;padding:11px 22px;color:#ffffff;"
+            "<td bgcolor='#2563eb' style='background:#2563eb;border-radius:10px'><a href='%s' style='display:inline-block;padding:11px 22px;color:#ffffff;"
             "font-size:14px;font-weight:700;text-decoration:none;%s'>Open the full report &rarr;</a></td></tr></table></td></tr>") % (E(url), FONT)
 
 
@@ -220,7 +220,7 @@ def build(doc, report_files=(), link=""):
     head = ("<tr><td class='pad' style='padding:16px 28px;background:#ffffff;border-bottom:1px solid #e2e8f0'><table role='presentation' width='100%%' cellpadding='0' cellspacing='0'><tr>"
             "<td class='logo' align='left'>%s</td><td class='logo' align='right'>%s</td></tr></table></td></tr>") % (lrs or "<b style='%s;color:#0b3d91;font-size:16px'>LRS Vitals</b>" % FONT,
                                                                                          cust or "<span style='%s;color:#334155;font-size:14px;font-weight:700'>%s</span>" % (FONT, E(getattr(doc, "customer", "") or "")))
-    band = ("<tr><td class='pad' bgcolor='#0b3d91' style='background:#0b3d91;padding:22px 28px;%s'>"
+    band = ("<tr><td class='pad' bgcolor='#123a6b' style='background:#123a6b;background-image:linear-gradient(135deg,#123a6b,#0e2d57);padding:22px 28px;%s'>"
             "<table role='presentation' width='100%%' cellpadding='0' cellspacing='0'><tr><td style='vertical-align:middle'>"
             "<div class='big' style='color:#ffffff;font-size:22px;font-weight:700;line-height:1.2'>%s</div>"
             "<div style='color:#c7d7f5;font-size:13px;margin-top:6px'>%s</div></td>"
