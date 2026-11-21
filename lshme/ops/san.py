@@ -202,6 +202,7 @@ def santricity(a, host, http):
         loc = (c.get("physicalLocation") or {}).get("label") or c.get("id", "")
         out["controllers"].append({"name": "Controller %s" % loc, "status": str(c.get("status", "unknown")).lower(),
                                    "detail": "cache %s MB" % int(_num(c.get("cacheMemorySize"))) if c.get("cacheMemorySize") else ""})
+    out["controllers"].sort(key=lambda c: c["name"])          # A before B, as on the storage itself
     for d in g(p + "/drives") or []:
         loc = d.get("physicalLocation") or {}
         wear = (d.get("ssdWearLife") or {}).get("percentEnduranceUsed")
