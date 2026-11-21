@@ -39,7 +39,7 @@ def run(app, args):
         if not rows:
             C.out("No SAN storage added yet. Add one with: vitals san add")
             return 0
-        C.out(C.table(["Name", "Type", "Make", "Controllers", "Port", "User", "Password", "Enabled"], rows))
+        C.table(["Name", "Type", "Make", "Controllers", "Port", "User", "Password", "Enabled"], rows)
         return 0
     if args.action in ("test", "show", "remove") and not args.name:
         raise ValueError("give the storage name: vitals san %s NAME (see: vitals san list)" % args.action)
@@ -54,8 +54,8 @@ def run(app, args):
         C.out(C.c(("OK  " if res["ok"] else "FAILED  ") + res["message"], "green" if res["ok"] else "red"))
         if res["ok"] and args.action == "show":
             d = san.collect(a)
-            C.out(C.table(["Controller", "Status", "Detail"], [[c["name"], c["status"], c.get("detail", "")] for c in d["controllers"]]))
-            C.out(C.table(["Pool", "RAID", "Used %", "Status"], [[p["name"], p["raid"], p["used_percent"] if p["used_percent"] is not None else "-", p["status"]] for p in d["pools"]]))
+            C.table(["Controller", "Status", "Detail"], [[c["name"], c["status"], c.get("detail", "")] for c in d["controllers"]])
+            C.table(["Pool", "RAID", "Used %", "Status"], [[p["name"], p["raid"], p["used_percent"] if p["used_percent"] is not None else "-", p["status"]] for p in d["pools"]])
             bad = [x for x in d["drives"] if x["status"] not in ("optimal", "spare", "present")]
             C.out("Drives: %d, not optimal: %d%s" % (len(d["drives"]), len(bad), (" (" + ", ".join("%s %s" % (x["slot"], x["status"]) for x in bad[:8]) + ")") if bad else ""))
             C.out("Volumes: %d    Hardware parts not optimal: %d" % (len(d["volumes"]), sum(1 for h in d["hardware"] if h["status"] not in ("optimal", "ok"))))
