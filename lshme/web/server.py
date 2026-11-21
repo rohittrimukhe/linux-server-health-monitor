@@ -462,6 +462,72 @@ class WebApp(object):
                 self._livefleet = livefleet.LiveFleet(self.app)
         return self._livefleet
 
+    def api_server(self, req, sess):
+        """Everything about one server for its own page: live figures, the latest health check (modules, findings, disks, VMs) and its reports."""
+        import socket as _socket
+        from lshme.core.model import RunResult
+        from lshme.ops import dashboard, fleet, livefleet
+        name = (req.query.get("name") or [""])[0][:120]
+        local = name in ("", "_local", _socket.gethostname(), self.app.cfg.get("main", "general", "hostname", ""))
+        members = dict((s.name, s) for s in fleet.servers(self.app.cfg))
+        if not local and name not in members:
+            return err("not found", 404)
+        if sess.get("group"):
+            allowed = self.group_hosts(sess["group"])
+            if local or (name not in allowed and members[name].host not in allowed):
+                return err("not found", 404)
+        live, series = {}, []
+        if livefleet.enabled(self.app.cfg):
+            lf = self.livefleet()
+            if not lf.updated:
+                lf.prime()
+            lf.start()
+            with lf.lock:
+                live = dict(lf.latest.get("" if local else name) or {})
+                series = [list(x) for x in lf.history.get("" if local else name, [])]
+        run = None
+        if local:
+            try:
+                with open(os.path.join(self.app.paths.data_dir, "latest.json"), encoding="utf-8") as f:
+                    run = RunResult.from_dict(json.load(f))
+            except (OSError, ValueError, KeyError):
+                run = None
+        else:
+            runs, errors = dashboard.load_results(self.app.paths)
+            sv = members[name]
+            for r in runs:
+                if r.meta.get("fleet_name") == name or r.host in (name, sv.host) or r.ip == sv.host:
+                    run = r
+                    break
+        out = {"name": _socket.gethostname() if local else name, "local": local, "host": "" if local else members[name].host,
+               "group": "" if local else members[name].group, "environment": "" if local else members[name].environment,
+               "live": live, "series": series[-120:], "check": None}
+        if run:
+            sysm = run.module("system")
+            sd = (sysm.data if sysm else {}) or {}
+            st = run.module("storage")
+            fs = [{"mount": f.get("mountpoint"), "pct": f.get("used_percent"), "size": f.get("size"), "free": f.get("free"), "fstype": f.get("fstype")}
+                  for f in ((st.data if st else {}) or {}).get("filesystems", []) if f.get("fstype") not in ("tmpfs", "devtmpfs", "squashfs", "overlay")]
+            kvm = run.module("kvm")
+            kd = (kvm.data if kvm and kvm.status not in ("SKIPPED", "ERROR") else {}) or {}
+            mods = []
+            for ms in run.health.get("modules", []):
+                m = run.module(ms["module"])
+                mods.append({"title": ms["title"], "score": ms["score"], "critical": ms["critical"], "warning": ms["warning"], "summary": (m.summary if m else "")[:160],
+                             "status": (m.status if m else "")})
+            out["check"] = {
+                "when": run.collected_at, "status": run.health.get("status"), "score": run.health.get("score"), "counts": run.health.get("counts", {}),
+                "host": run.host, "ip": run.ip, "os": sd.get("distribution", ""), "kernel": sd.get("kernel", ""), "uptime": sd.get("uptime", ""),
+                "hardware": sd.get("virtualization", "") or sd.get("product", ""), "roles": run.meta.get("roles") or [],
+                "modules": mods, "filesystems": sorted(fs, key=lambda f: -(f["pct"] or 0))[:20],
+                "findings": [{"severity": f.severity, "module": f.module, "component": f.component, "message": f.message, "recommendation": f.recommendation}
+                             for f in run.findings("WARNING")][:60],
+                "excluded": run.excluded[:30],
+                "vms": [{"name": v.get("name"), "state": v.get("state"), "vcpus": v.get("vcpus"), "memory": v.get("memory"), "cpu": v.get("cpu_percent"),
+                         "disk": sum(d.get("allocation") or 0 for d in v.get("disks") or [])} for v in kd.get("vms", [])],
+                "pools": [{"name": p.get("name"), "pct": p.get("used_percent"), "free": p.get("available"), "state": p.get("state")} for p in kd.get("pools", [])]}
+        return jr(out)
+
     def api_exclusions(self, req, sess):
         """Open findings with a one-click Exclude, and the exclusion rules with Un-exclude. Writes exclusions.conf like 'vitals exclude add'."""
         import re as _re
@@ -570,7 +636,9 @@ class WebApp(object):
             s = dict(s)
             s.pop("problems_detail", None)
             slim.append(s)
-        return jr({"servers": slim, "interval": lf.interval, "updated": lf.updated, "enabled": True})
+        san_rows = [] if sess.get("group") else lf.san_snapshot()
+        return jr({"servers": slim, "interval": lf.interval, "updated": lf.updated, "enabled": True, "san": san_rows, "san_updated": lf.san_updated,
+                   "san_interval": lf.san_interval})
 
     # -- report templates ----------------------------------------------------------------------------------------------------------
     def api_templates(self, req, sess):

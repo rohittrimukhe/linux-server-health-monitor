@@ -137,3 +137,32 @@ class IncidentLogTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FleetPageTests(unittest.TestCase):
+    def test_an_old_member_says_upgrade_not_unreachable(self):
+        from lshme.ops import livefleet
+        self.assertTrue(livefleet.outdated("healthcheck: error: argument cmd: invalid choice: 'pulse' (choose from 'run', 'check')"))
+        self.assertFalse(livefleet.outdated("ssh: connect to host 172.16.101.54 port 22: Connection timed out"))
+
+    def test_storage_summary_for_the_dashboard(self):
+        import test_san
+        from lshme.ops import livefleet, san
+        a = test_san.arr("santricity")
+        s = livefleet.summarize(a, collect=lambda x: san.collect(x, test_san.FakeHttp(test_san.de_routes()), lambda h, p: (True, "")))
+        self.assertEqual((s["status"], s["failed_drives"], s["pools"][0]["pct"], s["hardware_bad"]), ("CRITICAL", 1, 85.0, ["Fan 2"]))
+        bad = livefleet.summarize(a, collect=lambda x: (_ for _ in ()).throw(san.SanError("cannot reach 172.16.101.55: timed out")))
+        self.assertEqual(bad["status"], "UNREACHABLE")
+
+    def test_server_page_api(self):
+        from test_web import WebCase
+        case = type("T", (WebCase,), {"runTest": lambda self: None})()
+        case.setUp()
+        try:
+            case.app.cfg.set("main", "fleet", "live", "no")
+            r = case.call("GET", "/api/server", user="viewer", query={"name": ["_local"]})
+            self.assertEqual(r.status, 200)
+            self.assertTrue(r.json["local"])
+            self.assertEqual(case.call("GET", "/api/server", user="viewer", query={"name": ["no-such-server"]}).status, 404)
+        finally:
+            case.tearDown()

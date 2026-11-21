@@ -342,6 +342,46 @@ def ontap(a, host, http):
     return out
 
 
+def santricity_perf(a, host, http):
+    """I/O now: system totals and the busiest volumes (two light requests)."""
+    base = "https://%s:%d/devmgr/v2/storage-systems/1" % (host, a["port"])
+    hdr = basic(a["username"], a["password"])
+    st = http.get(base + "/analysed-system-statistics", hdr, a["verify_tls"]) or {}
+    st = st[0] if isinstance(st, list) and st else st
+    out = {"read_iops": _num(st.get("readIOps")), "write_iops": _num(st.get("writeIOps")), "read_mbps": _num(st.get("readThroughput")),
+           "write_mbps": _num(st.get("writeThroughput")), "latency_ms": max(_num(st.get("readResponseTime")), _num(st.get("writeResponseTime"))), "volumes": []}
+    try:
+        vols = http.get(base + "/analysed-volume-statistics", hdr, a["verify_tls"]) or []
+        for v in vols:
+            out["volumes"].append({"name": v.get("volumeName") or v.get("volumeId", "?"), "iops": _num(v.get("readIOps")) + _num(v.get("writeIOps")),
+                                   "mbps": _num(v.get("readThroughput")) + _num(v.get("writeThroughput")),
+                                   "ms": max(_num(v.get("readResponseTime")), _num(v.get("writeResponseTime")))})
+        out["volumes"] = sorted(out["volumes"], key=lambda v: -v["iops"])[:5]
+    except SanError:
+        pass
+    return out
+
+
+PERF = {"santricity": santricity_perf}
+
+
+def perf(a, http=None, prefer=""):
+    """I/O now for the live graphs, or None when this make has no light reading (its I/O then comes with the full check)."""
+    fn = PERF.get(kind(a["type"]))
+    if not fn:
+        return None
+    hosts = ([prefer] if prefer in a["controllers"] else []) + [h for h in a["controllers"] if h != prefer]
+    last = None
+    for host in hosts:
+        try:
+            return fn(a, host, http or Http(timeout=10))
+        except SanError as e:
+            last = e
+            if "refused" in str(e):
+                break
+    raise last or SanError("no controller answered")
+
+
 DRIVERS = {"santricity": santricity, "msa": msa, "ontap": ontap}
 from lshme.ops import san_drivers as _more  # noqa: E402  (the drivers below use the helpers above)
 DRIVERS.update(unity=_more.unity, powerstore=_more.powerstore, primera=_more.primera, pure=_more.pure, svc=_more.svc, oceanstor=_more.oceanstor)
