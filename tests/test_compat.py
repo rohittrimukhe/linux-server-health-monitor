@@ -74,7 +74,9 @@ class CompatTest(unittest.TestCase):
 
     def test_read_only_commands(self):
         # each manages only its own units: the schedule timers, and the web interface service
-        allowed = {os.path.join(PKG, "ops", "scheduler.py"), os.path.join(PKG, "ops", "webservice.py")}
+        # the safe self-update and the self-repair restart only LRS Vitals' own services (lshme-watch, lshme-web) and clear its own failed jobs
+        allowed = {os.path.join(PKG, "ops", "scheduler.py"), os.path.join(PKG, "ops", "webservice.py"),
+                   os.path.join(PKG, "ops", "autoupdate.py"), os.path.join(PKG, "ops", "selfrepair.py")}
         for path in sources():
             if path in allowed:
                 continue

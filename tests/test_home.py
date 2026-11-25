@@ -251,11 +251,11 @@ class ScanScreenTests(HomeCase):
         self.assertTrue(os.path.exists(discover.profile_path(self.app.paths)))
 
     def test_force_a_missing_module_on_and_off(self):
-        ctx = self.ctx(["DOWN"] * 7 + ["ENTER", "y", "ESC"])  # row 8 is KVM
+        ctx = self.ctx(["DOWN"] * 8 + ["ENTER", "y", "ESC"])  # row 9 is KVM (after the SAN storage row)
         home.scan_screen(ctx)
         self.app.reload()
         self.assertEqual(self.app.cfg.get("main", "modules", "force_enabled"), "kvm")
-        ctx = self.ctx(["DOWN"] * 7 + ["ENTER", "ESC"])
+        ctx = self.ctx(["DOWN"] * 8 + ["ENTER", "ESC"])
         home.scan_screen(ctx)
         self.assertTrue(self.be.saw("checked (forced on)"))
         self.app.reload()
@@ -383,7 +383,8 @@ class SetupWizardTests(HomeCase):
         self.assertEqual(self.app.cfg.get("main", "modules", "auto_excluded"), "kvm,cluster")  # the scan was applied
         self.assertFalse(firstrun.needed(self.app))
         self.assertEqual(sorted(os.listdir(self.units)), ["lshme-daily.service", "lshme-daily.timer", "lshme-monthly.service", "lshme-monthly.timer",
-                                                          "lshme-scan.service", "lshme-scan.timer", "lshme-watch.service", "lshme-weekly.service", "lshme-weekly.timer"])
+                                                          "lshme-scan.service", "lshme-scan.timer", "lshme-update.service", "lshme-update.timer",
+                                                          "lshme-watch.service", "lshme-weekly.service", "lshme-weekly.timer"])
         for text in ("Welcome to LRS Vitals", "Not found, so left out of every scan and report", "Setup 3 of 11 - Organisation",
                      "Setup 6 of 11 - Services to watch", "Ready to finish", "Installed:"):
             self.assertTrue(self.be.saw(text), text)

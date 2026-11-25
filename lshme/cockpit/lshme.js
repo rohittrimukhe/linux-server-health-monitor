@@ -135,9 +135,14 @@
     function dur(s) { s = Math.max(0, Math.round(s || 0)); return s < 90 ? s + " s" : s < 5400 ? Math.round(s / 60) + " min" : Math.round(s / 3600) + " h"; }
     function bar(v, warn, crit) {
         var n = v === null || v === undefined ? null : Math.max(0, Math.min(100, v)), c = n === null ? "unk" : n >= crit ? "CRITICAL" : n >= warn ? "WARNING" : "HEALTHY";
-        return '<span class="mbar"><i class="' + c + '" style="width:' + (n === null ? 0 : n) + '%"></i></span><b>' + (n === null ? "–" : Math.round(n) + "%") + "</b>";
+        return '<span class="mbar"><i class="' + c + '" data-w="' + (n === null ? 0 : n) + '"></i></span><b>' + (n === null ? "–" : Math.round(n) + "%") + "</b>";
     }
-    function renderServers(d) {
+    /* Cockpit's security policy blocks inline style attributes, so bar widths are set through the DOM after the markup is in place. */
+    function fillBars(root) {
+        Array.prototype.forEach.call((root || document).querySelectorAll("[data-w]"), function (el) { el.style.width = el.getAttribute("data-w") + "%"; });
+    }
+    function renderServers(d) { renderServersMarkup(d); fillBars(document); }
+    function renderServersMarkup(d) {
         var list = (d && d.servers) || [];
         if (list.length < 2) { $("servers-card").hidden = true; return; }
         $("servers-card").hidden = false;

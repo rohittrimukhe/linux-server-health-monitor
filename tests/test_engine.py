@@ -61,7 +61,7 @@ class HistoryTest(unittest.TestCase):
             h.save(r)
         cur = RunResult("db01")
         cur.collected_at = now
-        m = mod("storage")
+        m = mod("storage", "CRITICAL")                                  # still open now, so it counts as repeating (a fixed one would be closed history)
         m.metric("fs.used_bytes:/u01", size * 0.4 + 10 * 5 * 2 ** 30)  # 90 GiB used of 100
         m.metric("fs.size_bytes:/u01", size)
         m.metric("cpu.usage_percent", 20)

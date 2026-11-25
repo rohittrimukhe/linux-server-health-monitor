@@ -113,7 +113,7 @@ class ProbeTest(unittest.TestCase):
         app = App(ROOT, home=home.dir)
         sent = []
         real = watch.deliver
-        watch.deliver = lambda app, subject, body, status, to=None: sent.append(to) or {"ok": True}
+        watch.deliver = lambda app, subject, body, status, to=None, alerts=None, recovered=None: sent.append(to) or {"ok": True}
         try:
             watch.Watcher(app).tick()
         finally:

@@ -95,7 +95,7 @@ class SchedulerTest(unittest.TestCase):
         rep = scheduler.install(home.cfg, r, "/opt/lshme/healthcheck", ["--config-dir", "/etc/lshme"])
         self.assertEqual(rep["errors"], [])
         self.assertEqual(sorted(os.listdir(sd)), ["lshme-daily.service", "lshme-daily.timer", "lshme-scan.service", "lshme-scan.timer",
-                                                  "lshme-weekly.service", "lshme-weekly.timer"])
+                                                  "lshme-update.service", "lshme-update.timer", "lshme-weekly.service", "lshme-weekly.timer"])
         svc = slurp(os.path.join(sd, "lshme-daily.service"))
         self.assertIn("ExecStart=/opt/lshme/healthcheck --config-dir /etc/lshme run --schedule daily --quiet --retries 2", svc)
         self.assertIn("OnCalendar=Mon,Tue,Wed,Thu,Fri,Sat *-*-* 09:00:00", slurp(os.path.join(sd, "lshme-daily.timer")))

@@ -65,7 +65,7 @@ for d in docs tools; do
 done
 for f in healthcheck CHANGELOG.md; do [ -f "$SRC/$f" ] && cp -a "$SRC/$f" "$APP/$f"; done
 chmod +x "$APP/healthcheck" 2>/dev/null || true
-SHA="$(curl -fsSL -H 'User-Agent: lrs-vitals-updater' "https://api.github.com/repos/$REPO/commits/$REF" 2>/dev/null | sed -n 's/^  "sha": "\([0-9a-f]*\)",*$/\1/p' | head -1)"
+SHA="$(curl -fsSL -H 'User-Agent: lrs-vitals-updater' "https://api.github.com/repos/$REPO/commits/$REF" 2>/dev/null | grep -o '"sha": *"[0-9a-f]\{40\}"' | head -1 | grep -o '[0-9a-f]\{40\}')"   # compact or pretty JSON
 [ -n "$SHA" ] && echo "$SHA" > "$APP/.lrs_commit"          # the automatic update knows which version is installed
 command -v restorecon >/dev/null 2>&1 && restorecon -R "$APP" >/dev/null 2>&1 || true
 
