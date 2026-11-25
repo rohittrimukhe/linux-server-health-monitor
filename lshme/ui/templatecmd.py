@@ -18,7 +18,7 @@ def add_parser(sub):
 
 def run(app, args):
     if args.action == "list":
-        C.table(["Id", "Name", "For", "Pages", "Sent to"], [[t["id"], t["name"], t["audience"], t["pages"], t["sent_to"]] for t in templates.catalog()])
+        C.table(["Id", "Name", "Pages", "Sent to"], [[t["id"], t["name"], t["pages"], t["sent_to"]] for t in templates.catalog()])
         C.out("Preview one: vitals templates preview executive-weekly --format pdf")
         return 0
     if not args.id:

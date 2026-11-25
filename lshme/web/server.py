@@ -547,6 +547,68 @@ class WebApp(object):
                 "pools": [{"name": p.get("name"), "pct": p.get("used_percent"), "free": p.get("available"), "state": p.get("state")} for p in kd.get("pools", [])]}
         return jr(out)
 
+    def api_sanview(self, req, sess):
+        """One SAN storage system for its own page: live state and I/O, every pool / volume / drive / controller / part from the latest
+        health check, its open findings, and history (pool use, IOPS, MB/s, response time) over 1, 7 or 30 days. Never the password."""
+        import socket as _socket
+        from lshme.core.model import RunResult
+        from lshme.engine.history import History
+        from lshme.ops import livefleet, san
+        name = (req.query.get("name") or [""])[0][:60]
+        try:
+            days = max(1, min(90, int((req.query.get("days") or ["7"])[0])))
+        except ValueError:
+            days = 7
+        try:
+            a = san.public(san.find(self.app.cfg, name))
+        except san.SanError:
+            return err("not found", 404)
+        live, series = {}, []
+        if livefleet.enabled(self.app.cfg):
+            lf = self.livefleet()
+            lf.start()
+            with lf.lock:
+                live = dict(lf.san.get(name) or {})
+                series = [list(x) for x in lf.san_perf.get(name, [])]
+                live["volumes_top"] = list(lf.san_vols.get(name, []))
+        detail, findings, run = None, [], None
+        try:
+            with open(os.path.join(self.app.paths.data_dir, "latest.json"), encoding="utf-8") as f:
+                run = RunResult.from_dict(json.load(f))
+        except (OSError, ValueError, KeyError):
+            run = None
+        if run:
+            m = run.module("san")
+            for d in ((m.data if m else {}) or {}).get("arrays", []):
+                if d.get("name") == name:
+                    detail = d
+            findings = [{"severity": f.severity, "component": f.component, "message": f.message, "recommendation": f.recommendation}
+                        for f in run.findings("WARNING") if f.module == "san" and (f.component == name or f.component.startswith(name + "/"))][:60]
+        hist = {}
+        host = run.host if run else _socket.gethostname()
+        since = time.time() - days * 86400
+
+        def thin(pts, n=400):
+            step = max(1, len(pts) // n)
+            return [[int(t), round(v, 2)] for t, v in pts[::step]]
+        try:
+            h = History(self.app.paths.history_db)
+            try:
+                for k in ("read_iops", "write_iops", "read_mbps", "write_mbps", "latency_ms", "reachable", "drives_failed"):
+                    hist[k] = thin(h.series(host, "san.%s:%s" % (k, name), since))
+                hist["pools"] = {}
+                for key in h.keys_like(host, "san.pool_used_percent:%s|" % name, since):
+                    hist["pools"][key.split("|", 1)[1]] = thin(h.series(host, key, since))
+            finally:
+                h.close()
+        except Exception:
+            pass
+        if detail:                                                # what the page needs, never anything secret
+            detail = {k: detail.get(k) for k in ("model", "system_name", "firmware", "status", "serial", "wwn", "controllers", "drives", "pools", "volumes",
+                                                 "hardware", "events", "perf", "unreachable", "failures", "reached", "error")}
+        return jr({"array": a, "live": live, "series": series, "detail": detail, "checked": run.collected_at if run and detail else None,
+                   "findings": findings, "history": hist, "days": days, "live_interval": self.livefleet().san_perf_interval if livefleet.enabled(self.app.cfg) else None})
+
     def api_repair(self, req, sess):
         """Check and repair LRS Vitals itself on this server or, from the central server, on a member over SSH. Administrators only."""
         from lshme.ops import fleet, livefleet, selfrepair

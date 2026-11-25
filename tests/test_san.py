@@ -235,6 +235,12 @@ class WebTests(unittest.TestCase):
                 self.assertTrue(t["ok"])
             finally:
                 san.test = orig
+            v = case.call("GET", "/api/sanview", user="viewer", query={"name": ["hhk-de"], "days": ["7"]})                # its own page: everyone may look, nobody sees the password
+            self.assertEqual(v.status, 200)
+            self.assertEqual(v.json["array"]["name"], "hhk-de")
+            self.assertNotIn("pw1", json.dumps(v.json))
+            self.assertIn("pools", v.json["history"])
+            self.assertEqual(case.call("GET", "/api/sanview", user="viewer", query={"name": ["nope"]}).status, 404)
             self.assertEqual(case.call("POST", "/api/san", {"action": "remove", "name": "hhk-de"}, user="admin").status, 200)
             self.assertEqual(case.call("GET", "/api/san", user="admin").json["arrays"], [])
         finally:
