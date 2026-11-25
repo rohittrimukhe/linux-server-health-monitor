@@ -8,10 +8,10 @@
   --card: var(--surface); --hover: #f8fafc; --input: #ffffff; --head: #f8fafc;
   --side: #123a6b; --side2: #0e2d57; --side-text: #d6e2f3; --side-muted: #9fb3cf; --side-on: rgba(255, 255, 255, .12);
   --brand: #123a6b; --accent: #2563eb; --accent-ink: #ffffff; --accent-soft: #e7efff; --accent-hover: #1d4ed8;
-  --ok: #15803d; --ok-soft: #dcfce7; --ok-ink: #14532d;
-  --warn: #b45309; --warn-soft: #fef3c7; --warn-ink: #78350f;
-  --crit: #b91c1c; --crit-soft: #fee2e2; --crit-ink: #7f1d1d;
-  --info: #2563eb; --info-soft: #e7efff; --info-ink: #1e3a8a;
+  --ok: #1e7a46; --ok-soft: #edf6f0; --ok-ink: #17532f;
+  --warn: #a35f0c; --warn-soft: #f8f3ea; --warn-ink: #6f4108;
+  --crit: #b42318; --crit-soft: #fbefee; --crit-ink: #7a1a12;
+  --info: #2f5fb3; --info-soft: #eef3fb; --info-ink: #1e3a6e;
   --shadow: 0 1px 3px rgba(15, 23, 42, .04), 0 1px 2px rgba(15, 23, 42, .02);
   --shadow-2: 0 4px 12px -2px rgba(15, 23, 42, .08), 0 2px 6px -1px rgba(15, 23, 42, .04);
   --shadow-3: 0 12px 28px -4px rgba(15, 23, 42, .14);
@@ -23,7 +23,7 @@
 :root[data-theme="light"] {
   --bg: #f4f6fa; --surface: #ffffff; --surface2: #f8fafc; --text: #0f172a; --muted: #475569; --line: #e2e8f0; --track: #e6ebf2; --hover: #eef3fa; --input: #ffffff; --head: #ffffff;
   --side: #0f2747; --side2: #0b1f3a; --brand: #0b3a6f; --accent: #2563eb; --accent-soft: #e7efff;
-  --ok: #15803d; --ok-soft: #dcfce7; --ok-ink: #14532d; --warn: #b45309; --warn-soft: #fef3c7; --warn-ink: #78350f; --crit: #b91c1c; --crit-soft: #fee2e2; --crit-ink: #7f1d1d;
+  --ok: #1e7a46; --ok-soft: #edf6f0; --ok-ink: #17532f; --warn: #a35f0c; --warn-soft: #f8f3ea; --warn-ink: #6f4108; --crit: #b42318; --crit-soft: #fbefee; --crit-ink: #7a1a12;
   --info: #1d4ed8; --info-soft: #dbeafe; --info-ink: #1e3a8a; --login-a: #0f2747; --login-b: #0a1a30;
 }
 /* Dusk: a soft dark, easy on the eyes */
@@ -396,7 +396,7 @@ main.enter > .stack > *:nth-child(n+6) { animation-delay: 200ms; }
 }
 
 /* ---- the glance strip and the symbols of what is watched ---- */
-.glance { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; margin-bottom: 16px; }
+.glance { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 176px), 1fr)); gap: 14px; margin-bottom: 16px; }
 .gl { --tone: var(--accent); --tone-soft: var(--accent-soft); position: relative; overflow: hidden; display: flex; gap: 14px; align-items: center;
   padding: 16px 18px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--card, var(--surface)); box-shadow: var(--shadow); }
 .gl::after { content: ""; position: absolute; inset: auto -30% -60% auto; width: 180px; height: 180px; border-radius: 50%;
@@ -544,3 +544,50 @@ button.danger { background: var(--crit); border-color: var(--crit); color: #fff;
 .srv { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
 .gl { border-radius: var(--radius); }
 @media (min-width: 1920px) { main { padding-left: 32px; padding-right: 32px; } }
+
+/* ---- mature palette: white surfaces, colour only as a thin accent, a dot or the number itself ---- */
+.gl::after { display: none; }
+.gl { padding: 18px 20px; }
+.gl .sym-badge.big, .fleetbar .sym-badge.big { background: var(--surface2, #f4f6f9); color: var(--tone); border: 1px solid var(--line); }
+.gl .pill, .gl-meta .pill { background: transparent; padding: 0; font-weight: 600; }
+.gl.tone-warn .gl-value, .gl.tone-crit .gl-value { color: var(--text); }
+.gl.tone-ok { box-shadow: inset 0 3px 0 var(--ok), var(--shadow); } .gl.tone-warn { box-shadow: inset 0 3px 0 var(--warn), var(--shadow); }
+.gl.tone-crit { box-shadow: inset 0 3px 0 var(--crit), var(--shadow); } .gl.tone-info { box-shadow: inset 0 3px 0 var(--info), var(--shadow); }
+.score-pill, .score-pill.tone-ok, .score-pill.tone-warn, .score-pill.tone-crit { background: var(--surface); border: 1.5px solid currentColor; }
+.score-pill.tone-ok { color: var(--ok); } .score-pill.tone-warn { color: var(--warn); } .score-pill.tone-crit { color: var(--crit); }
+.card-foot, .card-foot.tone-ok, .card-foot.tone-warn, .card-foot.tone-crit { background: var(--surface2, #f6f8fb); color: var(--muted); border: 1px solid var(--line); }
+.card-foot.tone-warn > :first-child { color: var(--warn-ink); font-weight: 600; } .card-foot.tone-crit > :first-child { color: var(--crit-ink); font-weight: 600; }
+.card-foot.tone-ok > :first-child { color: var(--ok-ink); font-weight: 600; }
+.card-foot > :first-child::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; background: currentColor; }
+.srv.st-HEALTHY .sym-badge, .srv.st-WARNING .sym-badge, .srv.st-CRITICAL .sym-badge { background: var(--surface2, #f4f6f9); border: 1px solid var(--line); }
+.srv { border-left-width: 3px; }
+.warnline { background: var(--surface2, #f6f8fb); border: 1px solid var(--line); border-left: 3px solid var(--warn); color: var(--text); }
+
+/* ---- Cockpit / PatternFly look (Oracle Linux 10 web console) for the default and Light themes:
+   near-black navigation, light grey canvas, white cards with a fine border, Cockpit blue, status in muted gold / green / red ---- */
+:root:not([data-theme]), :root[data-theme="light"] {
+  --bg: #f2f2f2; --surface: #ffffff; --surface2: #f5f5f5; --text: #151515; --muted: #6a6e73; --line: #d2d2d2; --track: #e7e7e7;
+  --card: #ffffff; --hover: #f5f5f5; --input: #ffffff; --head: #fafafa;
+  --side: #212427; --side2: #1b1d21; --side-text: #e0e0e0; --side-muted: #a2a5a9; --side-on: rgba(255, 255, 255, .10);
+  --brand: #0066cc; --accent: #0066cc; --accent-ink: #ffffff; --accent-soft: #e7f1fa; --accent-hover: #004080;
+  --ok: #3e8635; --ok-soft: #f3faf2; --ok-ink: #1e4f18;
+  --warn: #c58c00; --warn-soft: #fdf7e7; --warn-ink: #795600;
+  --crit: #c9190b; --crit-soft: #faeae8; --crit-ink: #7d1007;
+  --info: #2b9af3; --info-soft: #e7f1fa; --info-ink: #002952;
+  --shadow: none; --shadow-2: 0 2px 6px rgba(3, 3, 3, .08); --shadow-3: 0 8px 20px rgba(3, 3, 3, .14);
+  --radius: 12px; --radius-sm: 8px;
+  --font: "Red Hat Text", RedHatText, Overpass, "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --login-a: #212427; --login-b: #151515;
+}
+:root:not([data-theme]) .gl, :root[data-theme="light"] .gl,
+:root:not([data-theme]) .gl.tone-ok, :root:not([data-theme]) .gl.tone-warn, :root:not([data-theme]) .gl.tone-crit, :root:not([data-theme]) .gl.tone-info,
+:root[data-theme="light"] .gl.tone-ok, :root[data-theme="light"] .gl.tone-warn, :root[data-theme="light"] .gl.tone-crit, :root[data-theme="light"] .gl.tone-info { box-shadow: none; }
+:root:not([data-theme]) .gl .sym-badge.big, :root[data-theme="light"] .gl .sym-badge.big { background: transparent; border: 0; width: 32px; height: 32px; }
+:root:not([data-theme]) .gl.tone-warn .gl-meta, :root:not([data-theme]) .gl.tone-warn .pill { color: var(--warn-ink); }
+:root:not([data-theme]) .gl.tone-crit .gl-meta, :root:not([data-theme]) .gl.tone-crit .pill { color: var(--crit-ink); }
+:root:not([data-theme]) .gl.tone-ok .gl-meta, :root:not([data-theme]) .gl.tone-ok .pill { color: var(--ok-ink); }
+:root:not([data-theme]) .card, :root:not([data-theme]) .srv, :root:not([data-theme]) .gl, :root[data-theme="light"] .card, :root[data-theme="light"] .srv { border-color: var(--line); }
+:root:not([data-theme]) .btn.primary, :root:not([data-theme]) button.primary, :root[data-theme="light"] .btn.primary, :root[data-theme="light"] button.primary { border-radius: 999px; }
+:root:not([data-theme]) .top nav a.on, :root[data-theme="light"] .top nav a.on { box-shadow: inset 3px 0 0 #73bcf7; background: rgba(255, 255, 255, .08); }
+.gl.v2 .gl-top { flex-wrap: nowrap; gap: 8px; } .gl.v2 .gl-label { min-width: 0; } .gl.v2 .gl-top .sym-badge { flex: none; }
+:root:not([data-theme]) .gl.v2 .sym-badge, :root[data-theme="light"] .gl.v2 .sym-badge { background: transparent; width: 24px; height: 24px; }

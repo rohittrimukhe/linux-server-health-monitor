@@ -126,6 +126,7 @@ def build(app, ptype="weekly", variant="summary", now=None):
         blocks.append(table("SAN storage", ["Storage", "Model", "Status", "Controllers", "Drives", "Fullest pool", "Response"], srows, align=["", "", "", "", "r", "", "r"]))
     blocks.append(note("The full report of each server follows, in the order above; SAN storage details are in the report of the server that monitors it."))
     d.add("Estate at a glance", blocks)
+    d.attention_unit = "system"
     d.attention = sum(1 for s in statuses if s != "HEALTHY") + sum(1 for _, a in sans if a.get("error") or a.get("status") != "optimal")
     # 2. every server's own report
     for r, doc in sorted(docs, key=lambda x: (ORDER.get(x[1].status if x[1] else "UNKNOWN", 3), x[0].host)):

@@ -171,12 +171,31 @@ def worst(levels):
     return "cr" if "cr" in levels else "wn" if "wn" in levels else "ok"
 
 
+TS_MAX = 32503680000          # 1 Jan 3000: later (or broken) times are never converted - the C library raises [Errno 75] for them
+
+
+def local(ts):
+    """time.localtime() that never fails: a time outside 1970..3000 (a forecast centuries away, a value in milliseconds) is clamped."""
+    try:
+        ts = float(ts)
+    except (TypeError, ValueError):
+        ts = 0.0
+    if ts != ts:
+        ts = 0.0
+    return time.localtime(min(max(ts, 0.0), TS_MAX))
+
+
 def stamp(ts, fmt="%d %b %H:%M"):
-    return time.strftime(fmt, time.localtime(ts))
+    try:
+        if ts is None or not 0 <= float(ts) <= TS_MAX:
+            return "-"
+    except (TypeError, ValueError):
+        return "-"
+    return time.strftime(fmt, local(ts))
 
 
 def day_key(ts):
-    return time.strftime("%Y-%m-%d", time.localtime(ts))
+    return time.strftime("%Y-%m-%d", local(ts))
 
 
 # -- data access -------------------------------------------------------------------

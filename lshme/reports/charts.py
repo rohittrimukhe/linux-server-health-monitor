@@ -199,7 +199,7 @@ def line(points, maxv=100.0, unit="", height=210, color="#0b5cad", bands=((70, C
     step = max(1, len(pts) // 40)
     for t, v in pts[::step]:
         out.append('<circle cx="%.1f" cy="%.1f" r="3" fill="var(--card,#fff)" stroke="%s" stroke-width="2"><title>%s: %s%s</title></circle>' % (
-            X(t), Y(v), color, _t.strftime("%Y-%m-%d %H:%M", _t.localtime(t)), _fmt(v), unit))
+            X(t), Y(v), color, _t.strftime("%Y-%m-%d %H:%M", _safe_lt(t)), _fmt(v), unit))
     lt, lv = pts[-1]
     out.append('<circle cx="%.1f" cy="%.1f" r="5" fill="%s"/>' % (X(lt), Y(lv), color))
     out.append('<text x="%.1f" y="%.1f" font-size="13" font-weight="800" fill="%s">%s%s</text>' % (X(lt) + 8, Y(lv) + 4, color, _fmt(lv), unit))
@@ -207,9 +207,14 @@ def line(points, maxv=100.0, unit="", height=210, color="#0b5cad", bands=((70, C
         t = t0 + span * i / 4
         fmt = "%H:%M" if span < 2 * 86400 else "%d %b"
         out.append('<text x="%.1f" y="%d" text-anchor="%s" font-size="11" fill="currentColor" opacity=".6">%s</text>' % (
-            X(t), height - 9, "start" if i == 0 else "end" if i == 4 else "middle", _t.strftime(fmt, _t.localtime(t))))
+            X(t), height - 9, "start" if i == 0 else "end" if i == 4 else "middle", _t.strftime(fmt, _safe_lt(t))))
     out.append("</svg>")
     return "".join(out)
+
+
+def _safe_lt(t):
+    from lshme.reports.periodic import local
+    return local(t)
 
 
 def card(title, body, extra=""):

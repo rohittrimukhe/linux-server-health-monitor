@@ -12,6 +12,7 @@ import time
 
 from lshme.reports import minipdf as _mp
 from lshme.reports.minipdf import MARGIN, PAGE_H, PAGE_W, MiniPDF, _esc
+from lshme.reports import periodic as _P
 from lshme.reports.periodic import Bar, Cell
 
 # paper sizes in points (portrait); the layout is worked out from the page width, so every size and orientation fits
@@ -19,16 +20,16 @@ PAGES = {"a4": (595.28, 841.89), "letter": (612.0, 792.0), "legal": (612.0, 1008
 DEFAULT_MARGIN_MM = 8           # small margins: as much room for the content as printers allow
 _PAGE_LOCK = threading.RLock()  # the page geometry is module state while one PDF is drawn
 
-BLUE = (0.145, 0.388, 0.922)      # #2563EB accent (the same design system as the dashboard)
-DARK = (0.071, 0.227, 0.420)      # #123A6B navy
-INK = (0.059, 0.090, 0.165)       # #0F172A
-MUT = (0.357, 0.420, 0.498)       # #5B6B7F
-LINE = (0.886, 0.910, 0.941)      # #E2E8F0
+BLUE = (0.0, 0.400, 0.800)        # #0066CC Cockpit blue (the same design system as the dashboard)
+DARK = (0.129, 0.141, 0.153)      # #212427 Cockpit navigation
+INK = (0.082, 0.082, 0.082)       # #151515
+MUT = (0.416, 0.431, 0.451)       # #6A6E73
+LINE = (0.824, 0.824, 0.824)      # #D2D2D2
 HEADBG = (0.945, 0.957, 0.973)    # table header
 ZEBRA = (0.973, 0.980, 0.988)     # #F8FAFC
-FG = {"ok": (0.082, 0.502, 0.239), "wn": (0.706, 0.325, 0.035), "cr": (0.725, 0.110, 0.110), "na": (0.392, 0.455, 0.545)}
-BG = {"ok": (0.863, 0.988, 0.906), "wn": (0.996, 0.953, 0.780), "cr": (0.996, 0.886, 0.886), "na": (0.945, 0.961, 0.976)}
-SOLID = {"HEALTHY": (0.12, 0.56, 0.24), "WARNING": (0.94, 0.56, 0.0), "CRITICAL": (0.77, 0.13, 0.12)}
+FG = {"ok": (0.243, 0.525, 0.208), "wn": (0.475, 0.337, 0.0), "cr": (0.788, 0.098, 0.043), "na": (0.416, 0.431, 0.451)}     # Cockpit / PatternFly status colours
+BG = {"ok": (0.953, 0.980, 0.949), "wn": (0.992, 0.969, 0.906), "cr": (0.980, 0.918, 0.910), "na": (0.961, 0.961, 0.961)}
+SOLID = {"HEALTHY": (0.243, 0.525, 0.208), "WARNING": (0.773, 0.549, 0.0), "CRITICAL": (0.788, 0.098, 0.043)}
 USABLE = PAGE_W - 2 * MARGIN
 TXT = 9.2          # table text size (largest tried)
 TEXT_SIZES = (9.2, 8.6, 8.0, 7.4)
@@ -508,7 +509,7 @@ class PeriodicPDF(MiniPDF):
         span = (t1 - t0) / 86400.0
         for q in range(5):
             t = t0 + (t1 - t0) * q / 4.0
-            s = time.strftime("%H:%M" if span <= 2 else "%d %b", time.localtime(t))
+            s = time.strftime("%H:%M" if span <= 2 else "%d %b", _P.local(t))
             self.put(min(max(X(t) - tw(s, 7.5) / 2, px0 - 6), px1 - tw(s, 7.5)), py0 - 11, s, 7.5, "F1", MUT)
         for val, col in ((c.get("warn"), (0.94, 0.56, 0.0)), (c.get("crit"), FG["cr"])):
             if val is not None and mn <= val <= mx:

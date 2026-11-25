@@ -25,7 +25,7 @@ class SelfRepairTests(unittest.TestCase):
         self.assertEqual(selfrepair.failed_jobs(r), ["lshme-daily.service"])
         self.assertEqual(selfrepair.cause(r, "lshme-daily.service"), "lshme.ops.san.SanError: cannot reach 172.16.101.55: timed out")
         r2 = FakeRunner({"journalctl -u lshme-weekly.service": (0, "Starting...\nError: SMTP host is not configured\nlshme-weekly.service: Failed with result 'exit-code'.\n")})
-        self.assertIn("Failed with result", selfrepair.cause(r2, "lshme-weekly.service"))
+        self.assertEqual(selfrepair.cause(r2, "lshme-weekly.service"), "Error: SMTP host is not configured")     # its own message, not systemd's summary
         home = TempHome()
         try:
             app = App(ROOT, home=home.dir)

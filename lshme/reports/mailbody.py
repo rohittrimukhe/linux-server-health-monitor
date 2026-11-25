@@ -13,12 +13,12 @@ from html import escape as E
 
 from lshme.reports.periodic import Bar, Cell
 
-GREEN, AMBER, RED, GREY = (30, 142, 62), (245, 158, 11), (197, 34, 31), (226, 232, 240)
-HEX = {"ok": "#15803d", "wn": "#b45309", "cr": "#b91c1c", "na": "#64748b"}
-SOFT = {"ok": "#dcfce7", "wn": "#fef3c7", "cr": "#fee2e2", "na": "#f1f5f9"}
-EDGE = {"ok": "#15803d", "wn": "#d97706", "cr": "#b91c1c", "na": "#94a3b8"}
-BARC = {"ok": "#16a34a", "wn": "#d97706", "cr": "#dc2626"}
-STATUS = {"HEALTHY": "#15803d", "WARNING": "#b45309", "CRITICAL": "#b91c1c"}
+GREEN, AMBER, RED, GREY = (30, 122, 70), (196, 132, 46), (180, 35, 24), (226, 232, 240)
+HEX = {"ok": "#1e7a46", "wn": "#a35f0c", "cr": "#b42318", "na": "#64748b"}
+SOFT = {"ok": "#f5f9f6", "wn": "#fbf8f2", "cr": "#fcf4f3", "na": "#f6f8fa"}      # barely tinted: colour lives in the edge
+EDGE = {"ok": "#1e7a46", "wn": "#c4842e", "cr": "#b42318", "na": "#94a3b8"}
+BARC = {"ok": "#2f8a57", "wn": "#c4842e", "cr": "#c2412f"}
+STATUS = {"HEALTHY": "#1e7a46", "WARNING": "#a35f0c", "CRITICAL": "#b42318"}
 FONT = "font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif"      # no quotes: the styles sit inside single-quoted attributes
 MAX_LOGO = 150 * 1024
 
@@ -203,7 +203,7 @@ def _compare(headers, rows):
 
 def _button(url):
     return ("<tr><td class='pad' align='left' style='padding:20px 28px 0'><table role='presentation' cellpadding='0' cellspacing='0'><tr>"
-            "<td bgcolor='#2563eb' style='background:#2563eb;border-radius:10px'><a href='%s' style='display:inline-block;padding:11px 22px;color:#ffffff;"
+            "<td bgcolor='#0066cc' style='background:#0066cc;border-radius:999px;padding:11px 22px'><a href='%s' style='display:inline-block;color:#ffffff;"
             "font-size:14px;font-weight:700;text-decoration:none;%s'>Open the full report &rarr;</a></td></tr></table></td></tr>") % (E(url), FONT)
 
 
@@ -213,17 +213,18 @@ def build(doc, report_files=(), link=""):
     status = doc.status
     scol = STATUS.get(status, "#64748b")
     att = doc.attention if getattr(doc, "attention", None) is not None else doc.counts.get("CRITICAL", 0) + doc.counts.get("WARNING", 0)
-    att_txt = ("1 item needs attention" if att == 1 else "%d items need attention" % att) if att else "All clear"
+    unit = getattr(doc, "attention_unit", "") or "item"
+    att_txt = ("1 %s needs attention" % unit if att == 1 else "%d %ss need attention" % (att, unit)) if att else "All clear"
     lrs = _logo(getattr(doc, "brand_logo", ""), "lrs-logo", images, 38)
     cust = _logo(getattr(doc, "customer_logo", ""), "customer-logo", images, 34)
     base = getattr(doc, "title_plain", "") or doc.title
     head = ("<tr><td class='pad' style='padding:16px 28px;background:#ffffff;border-bottom:1px solid #e2e8f0'><table role='presentation' width='100%%' cellpadding='0' cellspacing='0'><tr>"
-            "<td class='logo' align='left'>%s</td><td class='logo' align='right'>%s</td></tr></table></td></tr>") % (lrs or "<b style='%s;color:#0b3d91;font-size:16px'>LRS Vitals</b>" % FONT,
+            "<td class='logo' align='left'>%s</td><td class='logo' align='right'>%s</td></tr></table></td></tr>") % (lrs or "<b style='%s;color:#212427;font-size:16px'>LRS Vitals</b>" % FONT,
                                                                                          cust or "<span style='%s;color:#334155;font-size:14px;font-weight:700'>%s</span>" % (FONT, E(getattr(doc, "customer", "") or "")))
-    band = ("<tr><td class='pad' bgcolor='#123a6b' style='background:#123a6b;background-image:linear-gradient(135deg,#123a6b,#0e2d57);padding:22px 28px;%s'>"
+    band = ("<tr><td class='pad' bgcolor='#212427' style='background:#212427;padding:22px 28px;%s'>"
             "<table role='presentation' width='100%%' cellpadding='0' cellspacing='0'><tr><td style='vertical-align:middle'>"
             "<div class='big' style='color:#ffffff;font-size:22px;font-weight:700;line-height:1.2'>%s</div>"
-            "<div style='color:#c7d7f5;font-size:13px;margin-top:6px'>%s</div></td>"
+            "<div style='color:#c4c7cb;font-size:13px;margin-top:6px'>%s</div></td>"
             "<td class='side' align='right' style='vertical-align:middle;width:170px'><table role='presentation' cellpadding='0' cellspacing='0'><tr>"
             "<td bgcolor='%s' style='background:%s;border-radius:8px;padding:10px 16px;text-align:center;%s'>"
             "<div style='color:#fff;font-size:17px;font-weight:800;letter-spacing:.5px'>%s</div><div style='color:#fff;font-size:11.5px;margin-top:2px'>%s</div>"
@@ -244,7 +245,7 @@ def build(doc, report_files=(), link=""):
         legend = "".join(
             "<tr><td style='padding:5px 0'><span style='display:inline-block;width:11px;height:11px;border-radius:3px;background:%s'>&nbsp;</span></td>"
             "<td style='padding:5px 8px;font-size:14px;color:#334155;%s'>%s</td><td style='padding:5px 0;font-size:14px;font-weight:800;color:#0f172a;text-align:right;%s'>%d</td></tr>" % (
-                c, FONT, E(t), FONT, n) for c, t, n in (("#1e8e3e", "Passed", okn), ("#f59e0b", "Warning", wn), ("#c5221f", "Critical", cr)))
+                c, FONT, E(t), FONT, n) for c, t, n in (("#1e7a46", "Passed", okn), ("#c4842e", "Warning", wn), ("#b42318", "Critical", cr)))
         inner = ("<table role='presentation' cellpadding='0' cellspacing='0'><tr>"
                  "<td style='width:132px;vertical-align:middle'><img src='cid:checks-donut' width='120' height='120' alt='%d of %d checks passed' style='display:block;border:0'></td>"
                  "<td style='vertical-align:middle;padding-left:18px'><div style='font-size:26px;font-weight:800;color:#0f172a;%s'>%d of %d</div>"
@@ -264,11 +265,11 @@ def build(doc, report_files=(), link=""):
     if s["compare"]:
         rows.append(_section("Compared with the previous period", _compare(*s["compare"])))
     if s["points"]:
-        icon = {"ok": ("&#10004;", "#1e8e3e"), "wn": ("!", "#e8830c"), "cr": ("&#10006;", "#c5221f")}
+        dot = {"ok": "#1e7a46", "wn": "#c4842e", "cr": "#b42318"}
         pts = "".join(
-            "<tr><td style='vertical-align:top;padding:6px 10px 6px 0;width:22px'><span style='display:inline-block;width:20px;height:20px;line-height:20px;border-radius:10px;"
-            "background:%s;color:#fff;text-align:center;font-size:12px;font-weight:800;%s'>%s</span></td>"
-            "<td style='padding:6px 0;font-size:14px;line-height:1.5;color:#1e293b;%s'>%s</td></tr>" % (icon[lv][1], FONT, icon[lv][0], FONT, E(t)) for lv, t in s["points"])
+            "<tr><td style='vertical-align:top;padding:12px 10px 6px 0;width:12px'><table role='presentation' cellpadding='0' cellspacing='0'><tr>"
+            "<td bgcolor='%s' width='9' height='9' style='background:%s;width:9px;height:9px;border-radius:5px;font-size:1px;line-height:1px'>&nbsp;</td></tr></table></td>"
+            "<td style='padding:6px 0;font-size:14px;line-height:1.5;color:#1e293b;%s'>%s</td></tr>" % (dot[lv], dot[lv], FONT, E(t)) for lv, t in s["points"])
         rows.append(_section("Summary", "<table role='presentation' width='100%%' cellpadding='0' cellspacing='0'>%s</table>" % pts))
     if s["actions"]:
         acts = "".join(
@@ -278,7 +279,7 @@ def build(doc, report_files=(), link=""):
                 SOFT[lv], SOFT[lv], EDGE[lv], FONT, i, E(m), E(w)) for i, (lv, m, w) in enumerate(s["actions"], 1))
         rows.append(_section("What needs attention", "<table role='presentation' width='100%%' cellpadding='0' cellspacing='0'>%s</table>" % acts))
     elif s["checks"]:
-        rows.append(_section("What needs attention", "<div style='font-size:14px;color:#1e8e3e;%s'>Nothing. Every check is within its limits.</div>" % FONT))
+        rows.append(_section("What needs attention", "<div style='font-size:14px;color:#1e7a46;%s'>Nothing. Every check is within its limits.</div>" % FONT))
     if s["closed"]:
         rows.append(_section("Resolved", "<div style='font-size:14px;color:#334155;%s'>%d issue%s found in this period %s now closed and no longer count%s in the score.</div>" % (
             FONT, s["closed"], "" if s["closed"] == 1 else "s", "is" if s["closed"] == 1 else "are", "s" if s["closed"] == 1 else "")))
@@ -291,9 +292,9 @@ def build(doc, report_files=(), link=""):
                     E(dict(doc.meta).get("Generated by", "LRS Vitals")), E(doc.copyright)))
     html = ("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
             "<meta name='color-scheme' content='light'><title>%s</title>%s</head>"
-            "<body style='margin:0;padding:0;background:#eef2f7;%s'>"
+            "<body style='margin:0;padding:0;background:#f2f2f2;%s'>"
             "<div style='display:none;max-height:0;overflow:hidden'>%s - %s</div>"
-            "<table role='presentation' width='100%%' cellpadding='0' cellspacing='0' bgcolor='#eef2f7' style='background:#eef2f7'><tr><td class='outer' align='center' style='padding:20px 10px'>"
+            "<table role='presentation' width='100%%' cellpadding='0' cellspacing='0' bgcolor='#f2f2f2' style='background:#f2f2f2'><tr><td class='outer' align='center' style='padding:20px 10px'>"
             "<table class='wrap' role='presentation' width='660' cellpadding='0' cellspacing='0' bgcolor='#ffffff' style='width:100%%;max-width:660px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden'>"
             "%s</table></td></tr></table></body></html>") % (E(doc.title), PHONE_CSS, FONT, E(status), E(att_txt), "".join(rows))
     return html, images

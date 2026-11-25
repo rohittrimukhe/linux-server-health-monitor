@@ -354,3 +354,20 @@ class OnlyWhatIsInstalledTest(unittest.TestCase):
                 self.assertEqual(len(files), 2)
         finally:
             home.cleanup()
+
+
+class FarAwayTimesTest(unittest.TestCase):
+    """A forecast centuries away or a time in milliseconds must not stop a report ([Errno 75] on Linux)."""
+
+    def test_stamp_and_day_key(self):
+        from lshme.reports import periodic as P
+        self.assertEqual(P.stamp(1e18), "-")
+        self.assertEqual(P.stamp(None), "-")
+        self.assertEqual(P.stamp(float("nan")), "-")
+        self.assertTrue(P.day_key(1e18).startswith("3000"))
+        self.assertTrue(P.day_key(-5).startswith("19"))
+
+    def test_chart_with_bad_time(self):
+        from lshme.reports import charts
+        fn = [getattr(charts, n) for n in dir(charts) if n.startswith("_safe_lt")][0]
+        self.assertEqual(fn(1e18).tm_year, 3000)

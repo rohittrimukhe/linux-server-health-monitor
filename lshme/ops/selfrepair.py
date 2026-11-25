@@ -46,7 +46,8 @@ def cause(runner, unit, lines=60):
         exc = [l for l in tail if re.match(r"^[\w.]+(Error|Exception|Exit|Interrupt|Busy)\b", l)]
         pick = (exc or tail or [rows[-1]])[-1 if not exc else 0]
         return re.sub(r"\s+", " ", pick)[:300]
-    hits = [l for l in rows if ERR.search(l)]
+    own = [l for l in rows if not re.search(r"^(lshme-[\w.@-]+: |Failed to start |Started |Stopped )|Main process exited|Failed with result|Consumed .* CPU time", l)]
+    hits = [l for l in own if ERR.search(l)] or [l for l in rows if ERR.search(l)]      # LRS Vitals' own message before systemd's summary
     pick = hits[-1] if hits else (rows[-1] if rows else "")
     return re.sub(r"\s+", " ", pick)[:300]
 
