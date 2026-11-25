@@ -21,6 +21,7 @@
             else if (k === "text") el.textContent = v;
             else if (k.slice(0, 2) === "on") el.addEventListener(k.slice(2), v);
             else if (k === "value") el.value = v;
+            else if (k === "style") el.style.cssText = v;          // through the style object: allowed by the page's security policy (an attribute is not)
             else if (k === "checked" || k === "disabled" || k === "selected") el[k] = !!v;
             else el.setAttribute(k, v === true ? "" : v);
         }
