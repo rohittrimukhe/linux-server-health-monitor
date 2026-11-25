@@ -105,7 +105,7 @@ class SchedulerTest(unittest.TestCase):
         self.assertIn("OnCalendar=Sun *-*-* 02:00:00", slurp(os.path.join(sd, "lshme-scan.timer")))
         self.assertIn("systemctl enable --now lshme-scan.timer", r.calls)
         removed = scheduler.uninstall(home.cfg, r)
-        self.assertEqual(len(removed), 6)
+        self.assertEqual(len(removed), 8)                 # daily, scan, update and weekly: service + timer each
         cron = os.path.join(home.dir, "cron-lshme")
         home.cfg.set("schedule", "scheduler", "backend", "cron")
         home.cfg.set("schedule", "scheduler", "cron_file", cron)
