@@ -109,7 +109,7 @@ def build_parser():
     r.add_argument("--exit-status", action="store_true", help="exit 0/1/2 for healthy/warning/critical")
 
     c = sub.add_parser("check", help="quick on-screen check of one or more modules (no reports)")
-    c.add_argument("modules", help="module name(s), comma-separated; see 'healthcheck modules'")
+    c.add_argument("modules", help="module name(s), comma-separated; see 'vitals modules'")
     c.add_argument("--days", type=int, default=1)
     c.add_argument("--details", action="store_true", help="print every table")
 
@@ -150,7 +150,7 @@ def build_parser():
     x.add_argument("name", nargs="?", help="rule name (add/remove)")
     x.add_argument("--code", help="finding code, wildcards allowed (e.g. COCKPIT_SELF_SIGNED, ORACLE_INVALID_*)")
     x.add_argument("--component", default="*", help="component glob(s), comma-separated (e.g. /mnt/backup*, oracle:ORCL*)")
-    x.add_argument("--module", default="", help="limit to a module (see 'healthcheck modules')")
+    x.add_argument("--module", default="", help="limit to a module (see 'vitals modules')")
     x.add_argument("--hosts", default="*", help="host glob(s) for fleet use, comma-separated")
     x.add_argument("--reason", help="why this is accepted (shown in reports)")
     x.add_argument("--owner", default="", help="who approved it")
@@ -536,7 +536,7 @@ def dispatch(app, cmd, args):
             w = watch.Watcher(app)
             st = w.state
             if not st.get("last_tick"):
-                C.out("Real-time monitoring has not run yet. Start it with: healthcheck watch install")
+                C.out("Real-time monitoring has not run yet. Start it with: vitals watch install")
                 return 0
             C.out("Last check: %s   checks: %s   last tick CPU: %s ms   memory: %s MB" % (
                 time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(st["last_tick"])), st.get("ticks"), st.get("last_tick_cpu_ms"), st.get("rss_mb")))
@@ -615,7 +615,7 @@ def dispatch(app, cmd, args):
         httpd = live.make_server(app.paths.data_dir, args.bind, args.port)
         C.out("Live monitoring page: http://%s:%d/   (Ctrl+C to stop)" % (args.bind, httpd.server_address[1]))
         if not os.path.exists(os.path.join(app.paths.data_dir, "watch_metrics.json")):
-            C.out(C.c("Graphs fill in once real-time monitoring runs: healthcheck watch install", "yellow"))
+            C.out(C.c("Graphs fill in once real-time monitoring runs: vitals watch install", "yellow"))
         if args.bind not in ("127.0.0.1", "localhost", "::1"):
             C.out(C.c("Note: the page has no login; restrict access with a firewall, an SSH tunnel or a reverse proxy.", "yellow"))
         try:

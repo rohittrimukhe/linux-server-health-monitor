@@ -545,7 +545,46 @@ class WebApp(object):
                 "vms": [{"name": v.get("name"), "state": v.get("state"), "vcpus": v.get("vcpus"), "memory": v.get("memory"), "cpu": v.get("cpu_percent"),
                          "disk": sum(d.get("allocation") or 0 for d in v.get("disks") or [])} for v in kd.get("vms", [])],
                 "pools": [{"name": p.get("name"), "pct": p.get("used_percent"), "free": p.get("available"), "state": p.get("state")} for p in kd.get("pools", [])]}
+        try:
+            days = max(1, min(90, int((req.query.get("days") or ["7"])[0])))
+        except ValueError:
+            days = 7
+        out["days"] = days
+        out["history"] = self.server_history(run.host if run else (_socket.gethostname() if local else name), days)
         return jr(out)
+
+    def server_history(self, host, days):
+        """CPU, memory, swap, load per core, health score and every filesystem over the period: the watcher's hourly figures
+        where it runs (average and peak per hour), otherwise one point per health check."""
+        from lshme.engine.history import History
+        since = time.time() - days * 86400
+        out = {"cpu": [], "cpu_max": [], "mem": [], "mem_max": [], "swap": [], "load": [], "score": [], "fs": {}, "source": "health checks"}
+
+        def thin(pts, n=500):
+            step = max(1, len(pts) // n)
+            return [[int(t), round(v, 2)] for t, v in pts[::step] if v is not None]
+        try:
+            h = History(self.app.paths.history_db)
+        except Exception:
+            return out
+        try:
+            hourly = h.hourly(host, since)
+            if len(hourly) >= 3:
+                out["source"] = "real-time watcher, per hour"
+                for k in ("cpu", "cpu_max", "mem", "mem_max", "swap"):
+                    out[k] = thin([(r["ts"], r[k]) for r in hourly])
+                out["load"] = thin([(r["ts"], r["load"]) for r in hourly])
+            else:
+                for k, key in (("cpu", "cpu.usage_percent"), ("mem", "memory.used_percent"), ("swap", "swap.used_percent"), ("load", "cpu.load5_per_core")):
+                    out[k] = thin(h.series(host, key, since))
+            out["score"] = thin([(r["ts"], r["score"]) for r in reversed(h.runs(host, days=days, limit=2000)) if r.get("score") is not None])
+            for key in h.keys_like(host, "fs.used_percent:", since)[:12]:
+                out["fs"][key.split(":", 1)[1]] = thin(h.series(host, key, since))
+        except Exception:
+            pass
+        finally:
+            h.close()
+        return out
 
     def api_sanview(self, req, sess):
         """One SAN storage system for its own page: live state and I/O, every pool / volume / drive / controller / part from the latest

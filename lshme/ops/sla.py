@@ -258,7 +258,7 @@ def build_doc(result, label, cfg, host=None, scores=None):
     if result["coverage"] is not None and result["coverage"] < 90:
         findings.append({"severity": "WARNING", "code": "SLA_LOW_COVERAGE", "component": "watch", "module": "sla", "evidence": "",
                          "message": "Real-time monitoring covered only %.1f%% of the period; availability reflects monitored time" % result["coverage"],
-                         "recommendation": "Keep 'healthcheck watch' running (healthcheck watch install)."})
+                         "recommendation": "Keep 'vitals watch' running (vitals watch install)."})
     d.findings = findings
     d.counts = {"CRITICAL": sum(1 for f in findings if f["severity"] == "CRITICAL"),
                 "WARNING": sum(1 for f in findings if f["severity"] == "WARNING"), "UNKNOWN": 0, "INFO": 0}

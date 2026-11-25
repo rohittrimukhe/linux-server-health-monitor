@@ -105,7 +105,7 @@ def drift_module(ctx, paths):
     res = ModuleResult("drift", "Configuration Drift", 5)
     if not base:
         res.status = "SKIPPED"
-        res.summary = "no baseline saved (run: healthcheck baseline save)"
+        res.summary = "no baseline saved (run: vitals baseline save)"
         res.skip("no baseline")
         return res
     cur = snapshot(ctx)
@@ -120,7 +120,7 @@ def drift_module(ctx, paths):
         text = "; ".join(detail)
         rows.append([LABEL[key], len(added), len(removed), text[:500]])
         res.add(SEVERITY[key], "DRIFT_" + key.upper(), LABEL[key], "Drift in %s since baseline: %s" % (LABEL[key], text[:300]),
-                recommendation="Confirm the change was approved; refresh the baseline afterwards (healthcheck baseline save).")
+                recommendation="Confirm the change was approved; refresh the baseline afterwards (vitals baseline save).")
     res.table("Drift since baseline of %s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(base.get("taken", 0))),
               ["Area", "Added/changed", "Removed", "Detail"], rows or [["none", 0, 0, "no drift detected"]], kind="summary")
     res.data = {"baseline_taken": base.get("taken"), "differences": diffs}

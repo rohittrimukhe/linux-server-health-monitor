@@ -639,3 +639,38 @@ main, footer { transition: margin-left 220ms var(--ease-out, ease-out), opacity 
   html.nav-auto .top .who, html.nav-auto .top .brand .cust, html.nav-auto .top .brand img.cust { transition: opacity 160ms ease; }
 }
 @media (prefers-reduced-motion: reduce) { main, footer { transition: none; } }
+.gl.clickable { cursor: pointer; transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
+.gl.clickable:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-2); }
+.gl.clickable:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.alertbar a.fb-name { font-weight: 700; text-decoration: none; border-bottom: 1px dashed currentColor; }
+.alertbar a.fb-name:hover { border-bottom-style: solid; }
+.strong-link { font-weight: 700; color: var(--accent); text-decoration: none; } .strong-link:hover { text-decoration: underline; }
+.badge-set { gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+/* ---- wall view (TV / NOC screen) ---- */
+.strip-wall { border-radius: 999px; padding: 4px 12px; min-height: 0; font-size: 12.5px; margin-left: auto; margin-right: 8px; }
+body.wall-mode .top, body.wall-mode footer, body.wall-mode .strip { display: none !important; }
+body.wall-mode main { margin-left: 0 !important; padding: 18px 22px; }
+body.wall-mode { background: #151515; }
+.wall-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; color: #f0f0f0; flex-wrap: wrap; }
+.wall-title { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; } .wall-title b { font-size: clamp(20px, 2vw, 30px); }
+.wall-sum { font-size: clamp(14px, 1.3vw, 18px); font-weight: 700; padding: 4px 12px; border-radius: 999px; }
+.wall-sum.ok { background: #1e4f18; color: #d6f5d0; } .wall-sum.warn { background: #5c4300; color: #ffe8a8; } .wall-sum.crit { background: #7d1007; color: #ffd9d4; }
+.wall-clock { font-size: clamp(20px, 2vw, 30px); font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 8px; }
+.wall-tools .btn, .wall-tools button { background: #2a2c30; color: #f0f0f0; border-color: #3c3f44; }
+.wall-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+.wall-tile { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; border-radius: 14px; background: #212427; color: #f0f0f0; text-decoration: none;
+  border: 1px solid #3c3f44; border-top: 6px solid #6a6e73; min-height: 170px; transition: transform .15s ease, border-color .15s ease; }
+.wall-tile:hover { transform: translateY(-2px); border-color: #73bcf7; }
+.wall-tile.ok { border-top-color: #3e8635; } .wall-tile.warn { border-top-color: #f0ab00; } .wall-tile.crit { border-top-color: #c9190b; background: #2c1d1c; } .wall-tile.info { border-top-color: #2b9af3; }
+.wt-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.wt-name { font-size: clamp(17px, 1.4vw, 22px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wt-st { font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: #3c3f44; white-space: nowrap; }
+.wall-tile.ok .wt-st { background: #1e4f18; color: #d6f5d0; } .wall-tile.warn .wt-st { background: #5c4300; color: #ffe8a8; } .wall-tile.crit .wt-st { background: #7d1007; color: #ffd9d4; }
+.wt-sub { color: #a2a5a9; font-size: 13px; }
+.wt-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
+.wm { background: #2a2c30; border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.wm span { font-size: 11.5px; color: #a2a5a9; text-transform: uppercase; letter-spacing: .05em; }
+.wm b { font-size: clamp(18px, 1.6vw, 26px); font-variant-numeric: tabular-nums; }
+.wm.warn b { color: #f4c145; } .wm.crit b { color: #ff7468; } .wm.ok b { color: #95d58e; }
+.wt-msg { color: #ffb3aa; font-size: 14px; }
+.wt-foot { margin-top: auto; color: #c7c7c7; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
