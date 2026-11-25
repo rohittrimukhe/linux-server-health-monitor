@@ -57,6 +57,8 @@
             o.body = JSON.stringify(body || {});
         }
         return fetch(path, o).then(function (r) {
+            var b = r.headers.get("X-LRS-Build");
+            if (b) { if (!S.build) S.build = b; else if (b !== S.build && !S.buildNote) newBuild(); }
             return r.json().catch(function () { return {}; }).then(function (j) {
                 if (r.status === 401 && path !== "/api/login" && path !== "/api/me") { showLogin(); throw new Error("Signed out"); }
                 if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
@@ -65,6 +67,11 @@
         });
     }
     function fail(e) { toast(e.message || String(e), "bad"); }
+    function newBuild() {                                                 // the program was updated while this tab was open
+        S.buildNote = h("div", { class: "build-note", role: "status" }, h("span", { text: "A new version of LRS Vitals is installed." }),
+            h("button", { type: "button", class: "primary small", text: "Reload", onclick: function () { location.reload(); } }));
+        document.body.appendChild(S.buildNote);
+    }
 
     /* ---------------------------------------------------------------- widgets */
     var toastBox;
@@ -315,7 +322,9 @@
             msg.textContent = "";
             api("POST", "/api/login", { user: user.value, password: pass.value }).then(function (me) { S.me = me; shell(); }).catch(function (x) { msg.textContent = x.message; pass.value = ""; });
         } }, user, pass, h("button", { class: "primary", type: "submit", text: "Sign in" }), msg);
-        root.appendChild(h("div", { class: "login" }, h("div", { class: "card" }, h("img", { src: "/lrs_logo.png", alt: "LRS Services" }), h("h1", { text: "LRS Vitals" }), form)));
+        root.appendChild(h("div", { class: "login" }, h("div", { class: "card" }, h("img", { src: "/lrs_logo.png", alt: "LRS Services" }),
+            h("div", { class: "product" }, h("img", { src: "/vitals.svg", alt: "", class: "pmark" }), h("h1", null, h("b", { text: "LRS" }), " Vitals")),
+            h("p", { class: "muted small tagline", text: "Server, storage and database health" }), form)));
         user.focus();
     }
     function allowed(p) { return (!p.admin || S.me.role === "admin") && (!S.me.group || ["fleet", "reports", "account", "help"].indexOf(p.id) >= 0); }
@@ -399,7 +408,7 @@
         pin.addEventListener("click", function () { setNavAuto(!navAuto()); paintPin(); pin.blur(); });   // a mouse click must not hold the menu open
         paintPin();
         var top = h("header", { class: "top" }, h("div", { class: "in" }, pin,
-            h("div", { class: "brand" }, h("span", { class: "mark", "aria-hidden": "true", text: "LRS" }), h("img", { src: "/lrs_logo.png", alt: "LRS Services", class: "lrs" }),
+            h("div", { class: "brand" }, h("img", { class: "mark pmark", src: "/vitals.svg", alt: "", "aria-hidden": "true" }), h("img", { src: "/lrs_logo.png", alt: "LRS Services", class: "lrs" }),
                 br.logo ? h("img", { src: "/brand/logo?t=" + Date.now(), alt: br.customer || "customer logo", class: "cust" }) : (br.customer ? h("span", { class: "cust", text: br.customer }) : null)),
             nav,
             h("div", { class: "who" }, h("span", { class: "host", text: S.me.host }), h("span", { text: S.me.user + " (" + S.me.role + ")" }),

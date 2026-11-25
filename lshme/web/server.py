@@ -30,7 +30,8 @@ from lshme.web import auth, confmeta
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 STATIC = {"/": ("index.html", "text/html; charset=utf-8"), "/index.html": ("index.html", "text/html; charset=utf-8"),
-          "/app.js": ("app.js", "application/javascript; charset=utf-8"), "/app.css": ("app.css", "text/css; charset=utf-8")}
+          "/app.js": ("app.js", "application/javascript; charset=utf-8"), "/app.css": ("app.css", "text/css; charset=utf-8"),
+          "/vitals.svg": ("vitals.svg", "image/svg+xml"), "/favicon.svg": ("vitals.svg", "image/svg+xml")}
 CSP = ("default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-src 'self'; "
        "frame-ancestors 'self'; base-uri 'none'; form-action 'self'")
 REPORT_CSP = ("default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; "
@@ -106,12 +107,21 @@ class WebApp(object):
                 self.sample_at = time.time()
             return self.sample
 
+    def build_id(self):
+        """Which program is installed (version and commit): an open dashboard tab compares it and offers a reload after an update."""
+        try:
+            st = os.stat(os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "app.js"))
+            return "%s-%d-%d" % (VERSION, int(st.st_mtime), st.st_size)
+        except OSError:
+            return VERSION
+
     def security_headers(self, resp, ctype_is_report=False):
         h = resp.headers
         h.setdefault("X-Content-Type-Options", "nosniff")
         h.setdefault("X-Frame-Options", "SAMEORIGIN")
         h.setdefault("Referrer-Policy", "no-referrer")
         h.setdefault("Cache-Control", "no-store")
+        h.setdefault("X-LRS-Build", self.build_id())
         h.setdefault("Content-Security-Policy", CSP)
         if self.secure:
             h.setdefault("Strict-Transport-Security", "max-age=31536000")

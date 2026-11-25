@@ -674,3 +674,32 @@ body.wall-mode { background: #151515; }
 .wm.warn b { color: #f4c145; } .wm.crit b { color: #ff7468; } .wm.ok b { color: #95d58e; }
 .wt-msg { color: #ffb3aa; font-size: 14px; }
 .wt-foot { margin-top: auto; color: #c7c7c7; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.build-note { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 70; display: flex; align-items: center; gap: 14px;
+  background: #151515; color: #fff; padding: 10px 12px 10px 18px; border-radius: 999px; box-shadow: var(--shadow-3); font-size: 14px; }
+.wall-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+.wall-tile { min-height: 210px; }
+.wall-grid:has(> .wall-tile:nth-child(-n+4):last-child) .wall-tile { min-height: 300px; }
+.wall-grid:has(> .wall-tile:nth-child(-n+4):last-child) .wm b { font-size: clamp(26px, 2.6vw, 44px); }
+.wall-grid:has(> .wall-tile:nth-child(-n+4):last-child) .wt-name { font-size: clamp(22px, 2vw, 32px); }
+/* ---- phones: a tidy top bar, two tiles per row, nothing that only makes sense on a big screen ---- */
+@media (max-width: 700px) {
+  .who .pick { display: none; }                          /* theme and refresh live on the Account page */
+  .who .host { word-break: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
+  .who { grid-template-columns: 1fr auto; align-items: center; }
+  .strip-wall { display: none; }
+  .glance { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .gl.v2 { padding: 12px 12px 14px; } .gl.v2 .gl-value { font-size: 24px; } .gl.v2 .gl-label { font-size: 10.5px; }
+  .gl.v2 .pill, .gl-meta { white-space: normal; font-size: 11.5px; }
+  .tm-row.full .tm-svg { height: 170px; }
+  .crumbs .btn.crumb { padding: 5px 12px; }
+}
+/* ---- the LRS Vitals mark ---- */
+.top .brand img.mark.pmark { background: transparent; padding: 0; border-radius: 10px; }
+.login .product { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 2px 0 2px; }
+.login .product img.pmark { width: 38px; height: 38px; margin: 0; padding: 0; background: transparent; border-radius: 0; max-width: none; }
+.login .product h1 { margin: 0; font-size: 24px; font-weight: 500; letter-spacing: -.01em; } .login .product h1 b { font-weight: 800; color: #0066cc; }
+.login .tagline { text-align: center; margin: 0 0 14px; }
+/* summary tiles: fill every row; a short last row stretches instead of leaving one orphan tile */
+.glance { display: flex; flex-wrap: wrap; gap: 14px; }
+.glance > .gl { flex: 1 1 158px; min-width: 0; }
+@media (max-width: 700px) { .glance { gap: 10px; } .glance > .gl { flex: 1 1 calc(50% - 10px); } }
