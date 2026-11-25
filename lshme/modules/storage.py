@@ -108,18 +108,95 @@ def multipath(ctx):
     for line in r.out.splitlines():
         m = re.match(r"^(\S+)\s+\(([^)]*)\)\s+(dm-\d+)\s*(.*)", line) or re.match(r"^(\S+)\s+(dm-\d+)\s*(.*)", line)
         if m and not line.startswith((" ", "|", "`")) and "dm-" in line:
+            dm = re.search(r"\b(dm-\d+)\b", line)
             cur = {"name": m.group(1), "wwid": m.group(2) if m.lastindex >= 4 else "", "paths": 0,
-                   "active": 0, "failed": 0, "detail": line.strip()}
+                   "active": 0, "failed": 0, "detail": line.strip(), "dm": dm.group(1) if dm else "", "devs": []}
             maps.append(cur)
             continue
         if cur is not None and re.search(r"\d+:\d+:\d+:\d+\s+\S+\s+\d+:\d+", line):
             cur["paths"] += 1
+            dv = re.search(r"\d+:\d+:\d+:\d+\s+(\S+)\s+\d+:\d+", line)
+            if dv:
+                cur["devs"].append(dv.group(1))
             low = line.lower()
             if "failed" in low or "faulty" in low or "offline" in low:
                 cur["failed"] += 1
             elif "active" in low and "ready" in low:
                 cur["active"] += 1
     return {"available": True, "maps": maps, "raw": r.out[:20000], "error": "" if r.ok else r.brief_error()}
+
+
+def san_links(ctx):
+    """How this server is connected to SAN storage: iSCSI sessions (one per portal) and Fibre Channel ports."""
+    out = {"iscsi": [], "fc": []}
+    if ctx.has("iscsiadm"):
+        r = ctx.run(["iscsiadm", "-m", "session", "-P", "1"], timeout=30)
+        target, cur = "", None
+        for line in r.out.splitlines():
+            m = re.match(r"\s*Target:\s*(\S+)", line)
+            if m:
+                target, cur = m.group(1), None
+                continue
+            m = re.match(r"\s*Current Portal:\s*(\S+)", line)
+            if m:
+                cur = {"target": target, "portal": m.group(1).split(",")[0], "state": ""}
+                out["iscsi"].append(cur)
+                continue
+            m = re.match(r"\s*iSCSI Session State:\s*(\S+)", line)
+            if m and cur is not None and not cur["state"]:
+                cur["state"] = m.group(1)
+    for d in sorted(x.rstrip("/") for x in (ctx.runner.glob("/sys/class/fc_host/host*") or []) if re.match(r"^/sys/class/fc_host/host\d+/?$", x)):
+        port = {"host": d.rstrip("/").rsplit("/", 1)[-1], "state": ctx.read(d + "/port_state", "").strip(),
+                "wwpn": ctx.read(d + "/port_name", "").strip(), "speed": ctx.read(d + "/speed", "").strip()}
+        for k in ("link_failure_count", "loss_of_sync_count", "loss_of_signal_count", "invalid_crc_count"):
+            v = ctx.read(d + "/statistics/" + k, "").strip()
+            try:
+                port[k] = int(v, 16) if v.startswith("0x") else int(v)
+            except ValueError:
+                pass
+        out["fc"].append(port)
+    out["nvme"] = []
+    if ctx.has("nvme"):                                          # NVMe over Fabrics: each controller path and its state
+        r = ctx.run(["nvme", "list-subsys"], timeout=30)
+        sub = ""
+        for line in r.out.splitlines():
+            m = re.match(r"^(nvme-subsys\d+)\s*-\s*NQN=(\S+)", line.strip())
+            if m:
+                sub = m.group(2)
+                continue
+            m = re.search(r"\+-\s*(nvme\d+)\s+(\w+)\s+(\S+)\s+(\w+)", line)
+            if m and m.group(2).lower() in ("tcp", "rdma", "fc"):
+                out["nvme"].append({"subsystem": sub, "controller": m.group(1), "transport": m.group(2), "address": m.group(3), "state": m.group(4).lower()})
+    out["scsi_bad"] = []
+    for d in ctx.runner.glob("/sys/block/sd*") or []:
+        if not re.match(r"^/sys/block/sd[a-z]+$", d.rstrip("/")):
+            continue
+        st = ctx.read(d.rstrip("/") + "/device/state", "").strip().lower()
+        if st and st != "running":
+            out["scsi_bad"].append({"device": d.rstrip("/").rsplit("/", 1)[-1], "state": st})
+    out["dm_suspended"] = []
+    if ctx.has("dmsetup"):
+        r = ctx.run(["dmsetup", "info", "-c", "--noheadings", "-o", "name,suspended", "--separator", "|"], timeout=30)
+        for line in r.out.splitlines():
+            p = [x.strip() for x in line.split("|")]
+            if len(p) == 2 and p[1].lower() == "suspended":
+                out["dm_suspended"].append(p[0])
+    out["multipathd"] = ""
+    if ctx.has("systemctl") and ctx.has("multipath"):
+        out["multipathd"] = ctx.run(["systemctl", "is-active", "multipathd"], timeout=15).out.strip()
+    return out
+
+
+def map_users(ctx, m, fs_list, lv):
+    """What on this server sits on a multipath map: mounted filesystems, LVM physical volumes, anything holding its dm device."""
+    rx = re.compile(r"^/dev/mapper/%s(p?\d+)?$" % re.escape(m["name"]))
+    users = ["%s (mounted)" % f["mountpoint"] for f in fs_list if rx.match(f.get("device", ""))]
+    users += [("LVM volume group %s" % p["vg"]) if p.get("vg") else ("LVM physical volume %s" % p["pv"]) for p in lv.get("pvs", []) if rx.match(p.get("pv", ""))]
+    if not users and m.get("dm"):
+        held = [h for h in (ctx.runner.listdir("/sys/block/%s/holders" % m["dm"]) or []) if h]
+        if held:
+            users.append("held by %s" % ", ".join(held))
+    return users
 
 
 def mdraid(ctx):
@@ -293,6 +370,14 @@ def run(ctx, res):
                     res.add(sev, "LV_DATA_FULL", "%s/%s" % (x["vg"], x["lv"]),
                             "LVM %s %s/%s is %.1f%% full" % (kind, x["vg"], x["lv"], x["data_percent"]),
                             recommendation="Extend or remove the snapshot/thin pool before it fills and becomes invalid.")
+        for x in lv["lvs"]:
+            if len(x.get("attr", "")) > 8 and x["attr"][8] == "p":
+                res.add("CRITICAL", "LV_PARTIAL", "%s/%s" % (x["vg"], x["lv"]), "LVM logical volume %s/%s is partial: part of it is on a missing disk" % (x["vg"], x["lv"]),
+                        recommendation="Data on the missing part cannot be read; restore the disk or LUN.")
+        for v in lv["vgs"]:
+            if len(v.get("attr", "")) > 3 and v["attr"][3] == "p":
+                res.add("CRITICAL", "VG_PARTIAL", v["vg"], "LVM volume group %s is partial: one of its disks is missing" % v["vg"],
+                        recommendation="Logical volumes on the missing disk cannot be used; restore the disk or LUN before changing the volume group.")
         for p in lv["pvs"]:
             if "m" in p["attr"][2:3]:
                 res.add("CRITICAL", "PV_MISSING", p["pv"], "LVM physical volume %s is missing" % p["pv"],
@@ -305,8 +390,16 @@ def run(ctx, res):
                   [[m["name"], m["wwid"], m["paths"], m["active"], m["failed"]] for m in mp_data["maps"]])
         for m in mp_data["maps"]:
             if m["failed"] and m["failed"] >= m["paths"]:
-                res.add("CRITICAL", "MULTIPATH_ALL_FAILED", m["name"], "All %d paths of %s have failed" % (m["paths"], m["name"]),
-                        recommendation="The LUN is unreachable; engage SAN/storage team immediately.")
+                users = map_users(ctx, m, fs_list, lv)
+                m["users"] = users
+                if users:
+                    res.add("CRITICAL", "MULTIPATH_ALL_FAILED", m["name"], "All %d paths of %s have failed - in use: %s" % (m["paths"], m["name"], "; ".join(users)),
+                            recommendation="Data on it cannot be read or written. Restore the SAN connection or mapping for this server; "
+                                           "if the LUN was removed on purpose, move or unmount what uses it first.")
+                else:
+                    res.add("WARNING", "MULTIPATH_STALE", m["name"], "All %d paths of %s have failed and nothing on this server uses it - most likely a LUN unmapped or deleted on the SAN"
+                            % (m["paths"], m["name"]),
+                            recommendation="Ask the storage team whether this LUN is still meant for this server. Until the stale entry is cleared on the host it adds I/O errors to the logs. Paths: %s." % (", ".join(m.get("devs") or []) or "-"))
             elif m["failed"]:
                 res.add("WARNING", "MULTIPATH_PATH_FAILED", m["name"], "%d of %d paths of %s have failed" % (m["failed"], m["paths"], m["name"]),
                         recommendation="Check HBA/FC switch ports and SAN zoning; redundancy is reduced.")
@@ -316,6 +409,50 @@ def run(ctx, res):
     else:
         res.skip("multipath not installed")
 
+    links = san_links(ctx)
+    if links["iscsi"]:
+        res.table("iSCSI sessions", ["Target", "Portal", "State"], [[x["target"], x["portal"], x["state"]] for x in links["iscsi"]])
+        for x in links["iscsi"]:
+            if x["state"] and x["state"].upper() != "LOGGED_IN":
+                res.add("WARNING", "ISCSI_SESSION_DOWN", "%s@%s" % (x["target"].split(":")[-1], x["portal"]), "iSCSI session to %s via %s is %s" % (x["target"], x["portal"], x["state"]),
+                        recommendation="Check the network path to the storage port; the remaining paths carry the I/O until it is back.")
+    if links["fc"]:
+        res.table("Fibre Channel ports", ["Port", "State", "WWPN", "Speed"], [[x["host"], x["state"], x["wwpn"], x["speed"]] for x in links["fc"]])
+        online = [x for x in links["fc"] if x["state"].lower() == "online"]
+        if mp_data.get("maps") and not online:
+            res.add("CRITICAL", "FC_ALL_DOWN", "fibre channel", "No Fibre Channel port is online (%s)" % ", ".join("%s %s" % (x["host"], x["state"]) for x in links["fc"]),
+                    recommendation="The server has lost its SAN connection: check cables, the FC switch and the HBA.")
+        elif online:
+            for x in links["fc"]:
+                if x["state"] and x["state"].lower() != "online":
+                    res.add("INFO", "FC_PORT_DOWN", x["host"], "Fibre Channel port %s is %s (another port is online)" % (x["host"], x["state"]),
+                            recommendation="If this port should be connected, check its cable and switch port; an unused port can be ignored.")
+    for x in links["fc"]:
+        for k in ("link_failure_count", "loss_of_sync_count", "loss_of_signal_count", "invalid_crc_count"):
+            if k in x:
+                res.metric("fc.%s:%s" % (k, x["host"]), x[k])
+    if links.get("nvme"):
+        res.table("NVMe over Fabrics paths", ["Subsystem", "Controller", "Transport", "Address", "State"],
+                  [[x["subsystem"], x["controller"], x["transport"], x["address"], x["state"]] for x in links["nvme"]])
+        for sub in sorted(set(x["subsystem"] for x in links["nvme"])):
+            paths = [x for x in links["nvme"] if x["subsystem"] == sub]
+            live = [x for x in paths if x["state"] == "live"]
+            if not live:
+                res.add("CRITICAL", "NVME_ALL_PATHS_DOWN", sub, "No NVMe over Fabrics path to %s is live (%s)" % (sub, ", ".join("%s %s" % (x["controller"], x["state"]) for x in paths)),
+                        recommendation="The namespaces of this subsystem cannot be reached; check the storage network and the target.")
+            elif len(live) < len(paths):
+                res.add("WARNING", "NVME_PATH_DOWN", sub, "%d of %d NVMe over Fabrics paths to %s are not live" % (len(paths) - len(live), len(paths), sub),
+                        recommendation="Redundancy is reduced; check the storage network port of the paths that are down.")
+    for x in links.get("scsi_bad", []):
+        res.add("WARNING", "SCSI_DEVICE_OFFLINE", x["device"], "Disk path %s is %s at the kernel level" % (x["device"], x["state"]),
+                recommendation="The kernel stopped using this path; check the cable, HBA or storage port it goes through.")
+    for name in links.get("dm_suspended", []):
+        res.add("CRITICAL", "DM_SUSPENDED", name, "Device-mapper device %s is suspended: every read and write to it waits" % name,
+                recommendation="A suspended device usually means an interrupted LVM or multipath change; find out who suspended it before resuming it.")
+    if mp_data.get("maps") and links.get("multipathd") and links["multipathd"] != "active":
+        res.add("CRITICAL", "MULTIPATHD_DOWN", "multipathd", "multipathd is %s while %d multipath disks are in use" % (links["multipathd"], len(mp_data["maps"])),
+                recommendation="Without multipathd a failed path is not replaced by a working one; start it (systemctl start multipathd).")
+    res.data["san_links"] = links
     if md:
         res.table("Software RAID (md)", ["Array", "State", "Level", "Members", "Degraded"],
                   [[a["name"], a["state"], a["level"], a["members"], "YES" if a["degraded"] else "no"] for a in md])

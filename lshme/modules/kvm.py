@@ -192,6 +192,7 @@ def run(ctx, res):
             for r in parse_table(v("domblkinfo", name, "--all").out):
                 if r.get("Target") in paths:
                     disks.append({"name": r["Target"], "path": paths[r["Target"]], "capacity": to_int(r.get("Capacity")), "allocation": to_int(r.get("Allocation"))})
+        macs = [r.get("MAC", "").lower() for r in parse_table(v("domiflist", name).out) if r.get("MAC")]     # links the VM to the server inside it
         snaps = parse_table(v("snapshot-list", name).out)
         oldest = None
         for s in snaps:
@@ -203,7 +204,7 @@ def run(ctx, res):
         autostart = info.get("Autostart", "") == "enable"
         vm = {"name": name, "state": state, "vcpus": vcpus, "memory": mem_kib * 1024, "max_memory": max_kib * 1024,
               "cpu_percent": cpu_pct, "host_cpu_cores": host_cores, "emulation_cpu_cores": emu_cores, "memory_used_percent": mem_used_pct, "autostart": autostart,
-              "persistent": info.get("Persistent", ""), "disks": disks, "interfaces": nics,
+              "persistent": info.get("Persistent", ""), "disks": disks, "interfaces": nics, "macs": macs,
               "disk_read_bps": max(rd, 0), "disk_write_bps": max(wr, 0), "net_rx_bps": max(rx, 0), "net_tx_bps": max(tx, 0),
               "snapshots": len(snaps), "oldest_snapshot_days": round((time.time() - oldest) / 86400, 1) if oldest else None,
               "uptime_hint": info.get("CPU time", "")}

@@ -56,6 +56,9 @@ select 'BROKEN|'||job||'|'||nvl(schema_user,'-')||'|'||failures||'|'||broken fro
 select 'ACCT|'||username||'|'||account_status||'|'||nvl(to_char(expiry_date,'YYYY-MM-DD'),'-') from dba_users where account_status='OPEN' and expiry_date < sysdate+14;
 select 'DIAG|'||name||'|'||value from v$diag_info where name in ('Diag Trace','Diag Alert','ADR Home');
 select 'BDUMP|'||value from v$parameter where name='background_dump_dest';
+select 'ASMDG|'||name||'|'||state||'|'||type||'|'||total_mb||'|'||free_mb||'|'||usable_file_mb||'|'||offline_disks from v$asm_diskgroup;
+select 'ASMDISK|'||nvl(g.name,'-')||'|'||nvl(d.name,'-')||'|'||d.path||'|'||d.mode_status||'|'||d.state||'|'||d.header_status from v$asm_disk d, v$asm_diskgroup g where d.group_number=g.group_number(+) and (d.mode_status<>'ONLINE' or d.state not in ('NORMAL'));
+select * from (select 'PATCH|'||patch_id||'|'||action||'|'||status||'|'||to_char(action_time,'YYYY-MM-DD')||'|'||replace(nvl(description,'-'),'|','/') from dba_registry_sqlpatch order by action_time desc) where rownum<=3;
 select 'END|done' from dual;
 exit
 """
@@ -449,6 +452,43 @@ def check(ctx, res, inst):
     for a in rows.get("ACCT", []):
         res.add("INFO", "ORACLE_ACCOUNT_EXPIRING", label, "Account %s password expires %s" % (a[0], a[2] if len(a) > 2 else "?"),
                 recommendation="Change the password before expiry to avoid application outages.")
+
+    # ASM disk groups (where a SAN path failure reaches the database first) and patch level
+    dg_rows = []
+    for g in rows.get("ASMDG", []):
+        if len(g) < 7:
+            continue
+        name_, state, red, total, free, usable, offline = g[0], g[1], g[2], to_int(g[3], 0), to_int(g[4], 0), to_int(g[5], 0), to_int(g[6], 0)
+        pct = round(100.0 * (total - free) / total, 1) if total else 0.0
+        dg_rows.append([name_, state, red, "%.1f%%" % pct, fmt_bytes(free * 1048576), fmt_bytes(max(usable, 0) * 1048576), offline])
+        res.metric("oracle.%s.asm_used_percent:%s" % (inst["name"], name_), pct)
+        if state not in ("MOUNTED", "CONNECTED"):
+            res.add("CRITICAL", "ORACLE_ASM_DG_STATE", "%s %s" % (label, name_), "ASM disk group %s is %s" % (name_, state),
+                    recommendation="Files in this disk group cannot be used; check its disks and the SAN paths behind them.")
+        if offline:
+            res.add("CRITICAL", "ORACLE_ASM_DISK_OFFLINE", "%s %s" % (label, name_), "ASM disk group %s has %d offline disk(s)" % (name_, offline),
+                    recommendation="The group runs without full redundancy (or stops if it has none); check the SAN disks behind it.")
+        sev = severity_for(pct, tw, tc)
+        if sev:
+            res.add(sev, "ORACLE_ASM_DG_FULL", "%s %s" % (label, name_), "ASM disk group %s is %.1f%% used (%s free)" % (name_, pct, fmt_bytes(free * 1048576)),
+                    recommendation="Add disks to the group or free space in it.")
+        if usable < 0:
+            res.add("WARNING", "ORACLE_ASM_NO_REBALANCE_ROOM", "%s %s" % (label, name_),
+                    "ASM disk group %s cannot restore redundancy after a disk failure (usable file MB %d)" % (name_, usable),
+                    recommendation="Keep enough free space to rebuild a failed disk.")
+    if dg_rows:
+        res.table("Oracle %s — ASM disk groups" % inst["name"], ["Disk group", "State", "Redundancy", "Used", "Free", "Usable", "Offline disks"], dg_rows, kind="summary")
+    bad_disks = [d for d in rows.get("ASMDISK", []) if len(d) >= 6]
+    if bad_disks:
+        res.table("Oracle %s — ASM disks not online" % inst["name"], ["Disk group", "Disk", "Path", "Mode", "State", "Header"], bad_disks)
+    patches = [p for p in rows.get("PATCH", []) if len(p) >= 5]
+    if patches:
+        res.table("Oracle %s — latest patches" % inst["name"], ["Patch", "Action", "Status", "Applied", "Description"], patches)
+        info["patch"] = {"id": patches[0][0], "applied": patches[0][3], "description": patches[0][4]}
+        if patches[0][2] not in ("SUCCESS", "WITH ERRORS (RAR)"):
+            res.add("WARNING", "ORACLE_PATCH_STATUS", label, "Latest SQL patch %s finished with status %s" % (patches[0][0], patches[0][2]),
+                    recommendation="Re-run datapatch and check its log.")
+    info["asm"] = dg_rows
 
     # alert log
     al = alert_log(ctx, inst, rows)

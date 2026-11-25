@@ -335,6 +335,7 @@
     var PAGES = [
         { id: "dashboard", title: "Dashboard", draw: drawDashboard },
         { id: "fleet", title: "Servers", draw: drawFleet },
+        { id: "map", title: "Dependencies", draw: drawMap },
         { id: "reports", title: "Reports", draw: drawReports },
         { id: "scan", title: "Server scan", draw: drawScan },
         { id: "settings", title: "Settings", draw: drawSettings, admin: true },
@@ -356,6 +357,7 @@
         fleet: "<rect x='3' y='4' width='18' height='6' rx='1.5'/><rect x='3' y='14' width='18' height='6' rx='1.5'/><path d='M7 7h.01M7 17h.01'/>",
         reports: "<path d='M7 3h8l4 4v14H7z'/><path d='M15 3v4h4M10 12h6M10 16h6'/>",
         scan: "<circle cx='11' cy='11' r='6'/><path d='M21 21l-5-5'/>",
+        map: "<circle cx='12' cy='4.5' r='2.5'/><circle cx='5' cy='19.5' r='2.5'/><circle cx='12' cy='19.5' r='2.5'/><circle cx='19' cy='19.5' r='2.5'/><path d='M12 7v10M12 12H5v5M12 12h7v5'/>",
         settings: "<circle cx='12' cy='12' r='3'/><path d='M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14 3h-4l-.6 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2L10 21h4l.6-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z'/>",
         operations: "<path d='M4 6h16M4 12h16M4 18h10'/><circle cx='18' cy='18' r='2'/>",
         account: "<circle cx='12' cy='8' r='4'/><path d='M4 21c1.5-4 5-6 8-6s6.5 2 8 6'/>",
@@ -489,7 +491,16 @@
     function drawDashboard(box) {
         var bannerBox = h("div"), live = h("div", { class: "stack" });
         var alerts = alertsCard(), fleetLive = liveFleetCard(), findings = exclusionsCard();
-        box.appendChild(h("div", { class: "stack" }, bannerBox, fleetLive.el, alerts.el, findings.el, live));
+        var impactBox = h("div");                                       // what a current failure takes down (from the dependency map)
+        box.appendChild(h("div", { class: "stack" }, bannerBox, impactBox, fleetLive.el, alerts.el, findings.el, live));
+        (function impactLoop() {
+            if (!document.body.contains(impactBox)) return;
+            api("GET", "/api/topology").then(function (d) {
+                steady(impactBox);
+                if (d.impacts && d.impacts.length) impactBox.appendChild(card("Impact", h("a", { href: "#/map", class: "btn small", text: "Dependency map" }), impactList(d.impacts.slice(0, 4))));
+            }).catch(function () { /* the map is optional on the dashboard */ });
+            setTimeout(impactLoop, 60000);
+        })();
         var run = runWidget(function () { tick(); });
         var stopped = false, timer = null;
         var lastHl = null;
@@ -957,6 +968,52 @@
         S.cleanup = function () { stopped = true; if (timer) clearInterval(timer); S.tmOpen = null; document.body.classList.remove("tm-open"); };
     }
 
+    /* ---------------------------------------------------------------- dependency map: hardware, SAN, hosts, VMs, servers, databases */
+    var KIND = { hardware: "Hardware", san: "SAN storage", pool: "Pool", volume: "Volume", disk: "SAN disk", mount: "Filesystem", server: "Server", vm: "VM", database: "Database" };
+    function depNode(n) {
+        var label = h("span", { class: "dep-label" }, h("i", { class: "dep-dot " + n.status, title: n.status }), h("span", { class: "dep-kind", text: KIND[n.kind] || n.kind }),
+            n.href ? h("a", { href: n.href, class: "dep-name", text: n.name }) : h("b", { class: "dep-name", text: n.name }),
+            n.detail ? h("span", { class: "muted small", text: n.detail }) : null);
+        if (!n.children || !n.children.length) return h("li", { class: "dep leaf" }, label);
+        var d = h("details", { open: n.status !== "ok" || ["hardware", "san", "server"].indexOf(n.kind) >= 0 }, h("summary", null, label),
+            h("ul", { class: "dep-list" }, n.children.map(depNode)));
+        return h("li", { class: "dep" }, d);
+    }
+    function impactList(imp) {
+        return h("div", { class: "stack" }, imp.map(function (i) {
+            var c = i.cause, by = {};
+            i.affected.forEach(function (a) { (by[a.kind] = by[a.kind] || []).push(a); });
+            return h("div", { class: "impact " + (c.status === "down" ? "down" : "crit") },
+                h("div", { class: "impact-head" }, h("i", { class: "dep-dot " + c.status }), h("b", { text: (KIND[c.kind] || c.kind) + " " + c.name }),
+                    h("span", { text: c.status === "down" ? " cannot be reached" : " has failed" }), c.detail ? h("span", { class: "muted", text: " - " + c.detail }) : null),
+                h("div", { class: "impact-body" }, h("span", { class: "muted", text: "At risk: " }),
+                    ["hardware", "server", "vm", "database", "pool", "volume", "disk", "mount"].filter(function (k) { return by[k]; }).map(function (k) {
+                        return h("span", { class: "impact-group" }, h("b", { text: by[k].length + " " + (KIND[k] || k).toLowerCase() + (by[k].length > 1 ? "s" : "") + ": " }),
+                            by[k].slice(0, 6).map(function (a, j) { return h("span", null, j ? ", " : "", a.href ? h("a", { href: a.href, text: a.name }) : a.name); }),
+                            by[k].length > 6 ? " +" + (by[k].length - 6) : "");
+                    })));
+        }));
+    }
+    function drawMap(box) {
+        var wrap = h("div", { class: "stack" }), stopped = false, timer = null;
+        box.appendChild(wrap);
+        function paint(d) {
+            steady(wrap);
+            var c = d.counts;
+            wrap.appendChild(card("Dependency map", h("span", { class: "muted", text: [c.hardware && c.hardware + " hardware", c.san && c.san + " SAN", c.server + " servers", c.vm && c.vm + " VMs", c.database && c.database + " databases"].filter(Boolean).join(" - ") }),
+                h("p", { class: "muted small", text: "What runs on what: server hardware -> server -> VMs -> the servers inside them -> their databases; SAN storage -> pools -> volumes -> the host disk -> filesystem or VM. A failure puts everything below it at risk. Links match automatically: SAN volumes by WWN, VMs by MAC address or name; hardware by the server chosen when it was added." })));
+            wrap.appendChild(card("Impact now", null, d.impacts.length ? impactList(d.impacts) : h("p", { class: "okline" }, h("span", { class: "dot ok" }), "Nothing has failed: no server, VM or database is at risk from a failure above it.")));
+            wrap.appendChild(card("Everything", h("span", { class: "muted", text: "click a line to fold it" }), d.trees.length ? h("ul", { class: "dep-list top" }, d.trees.map(depNode)) : h("p", { class: "muted", text: "No health check results yet." })));
+        }
+        function load() {
+            api("GET", "/api/topology").then(function (d) { if (!stopped) paint(d); }).catch(function (e) { if (!stopped && e.message !== "Signed out") { clear(wrap); wrap.appendChild(card("Dependencies", null, h("p", { class: "err", text: e.message }))); } });
+        }
+        load();
+        var every = refreshSeconds() * 1000;
+        timer = every ? setInterval(load, Math.max(every, 30000)) : null;
+        S.cleanup = function () { stopped = true; if (timer) clearInterval(timer); };
+    }
+
     /* ---------------------------------------------------------------- wall view: for a TV or NOC screen */
     function drawWall(box) {
         var stopped = false, timer = null, grid = h("div", { class: "wall-grid" }), head = h("div", { class: "wall-head" });
@@ -1149,6 +1206,66 @@
             } }), h("button", { type: "button", text: "Cancel", onclick: function () { close(); } }))));
     }
 
+    /* Server hardware through its BMC: add any make (iDRAC, iLO, XClarity, IMM, iRMC, CIMC, Supermicro, Redfish, IPMI), test, remove */
+    function bmcCard() {
+        var box = card("Server hardware", h("span", { class: "muted", text: "iDRAC, iLO, XClarity, IPMI ... read-only" }), h("p", { class: "muted", text: "Loading..." }));
+        if (S.me.role !== "admin") { clear(box); box.appendChild(h("h2", null, h("span", { text: "Server hardware" }))); box.appendChild(h("p", { class: "muted", text: "Administrators add server hardware here." })); return box; }
+        function load() { api("GET", "/api/bmc").then(paint).catch(fail); }
+        function paint(d) {
+            clear(box);
+            box.appendChild(h("h2", null, h("span", { text: "Server hardware" }), h("span", { class: "muted", text: d.items.length + " added" })));
+            box.appendChild(d.items.length ? table(["Name", "Make", "Address", "For server", "User", "Password", ""], d.items.map(function (a) {
+                return [h("b", { text: a.name }), a.type_label, a.address + " : " + a.port, a.server === "_local" ? "this server" : (a.server || "-"), a.username || "-",
+                    a.has_password ? "saved" : h("span", { class: "err", text: "missing" }),
+                    h("div", { class: "row" },
+                        h("button", { class: "small", type: "button", text: "Test", onclick: function () {
+                            toast("Testing " + a.name + "...", "");
+                            api("POST", "/api/bmc", { action: "test", saved: true, name: a.name }).then(function (r) { toast(r.message, r.ok ? "good" : "bad"); }).catch(fail);
+                        } }),
+                        h("button", { class: "small", type: "button", text: "Edit", onclick: function () { form(d, a); } }),
+                        h("button", { class: "small danger", type: "button", text: "Remove", onclick: function () {
+                            ask("Stop checking hardware " + a.name + " and forget its saved password? Its history stays.", function () { api("POST", "/api/bmc", { action: "remove", name: a.name }).then(function () { toast("Removed " + a.name, "good"); load(); }).catch(fail); }, true);
+                        } }))];
+            })) : h("p", { class: "muted", text: "No server hardware added. Add each server's management controller (iDRAC, iLO, XClarity, IMM ...) to check power supplies, fans, temperatures, drives, memory and its event log, and to see which VMs and databases a hardware fault would take down." }));
+            box.appendChild(h("div", { class: "row" }, h("button", { class: "primary", type: "button", text: "Add server hardware", onclick: function () { form(d, null); } })));
+        }
+        function form(d, a) {
+            var type = h("select", { "aria-label": "Make" }, d.types.map(function (t) { return h("option", { value: t.type, text: t.label, selected: a ? a.type === t.type : t.type === "redfish" }); }));
+            var howto = h("p", { class: "muted small" });
+            var name = h("input", { type: "text", placeholder: "short name, e.g. kvm1-xcc", value: a ? a.name : "", disabled: !!a });
+            var addr = h("input", { type: "text", placeholder: "BMC management IP or name", value: a ? a.address : "" });
+            var port = h("input", { type: "number", min: 1, max: 65535, value: a ? a.port : 443 });
+            var user = h("input", { type: "text", placeholder: "read-only user", autocomplete: "off", value: a ? a.username : "" });
+            var pass = h("input", { type: "password", autocomplete: "new-password", placeholder: a && a.has_password ? "saved - leave empty to keep" : "password" });
+            var names = ["_local"].concat(((S.fleet && S.fleet.servers) || []).filter(function (s) { return s.key && s.key !== "_local"; }).map(function (s) { return s.key; }));
+            var server = h("select", { "aria-label": "Server" }, h("option", { value: "", text: "(not linked)" }), names.map(function (n) {
+                return h("option", { value: n, text: n === "_local" ? "this server (" + S.me.host + ")" : n, selected: a ? a.server === n : false });
+            }));
+            var tls = h("input", { type: "checkbox", checked: a ? a.verify_tls : false });
+            var result = h("p", { class: "muted", text: "" });
+            function sync() { var t = type.value, x = d.types.filter(function (y) { return y.type === t; })[0]; howto.textContent = "How to connect: " + x.howto; if (!a) port.value = x.port; }
+            type.addEventListener("change", sync); sync();
+            function body(action) { return { action: action, name: a ? a.name : name.value.trim(), type: type.value, address: addr.value.trim(), port: +port.value, username: user.value.trim(), password: pass.value, verify_tls: tls.checked, server: server.value }; }
+            var close = modal(a ? "Edit server hardware " + a.name : "Add server hardware", h("div", { class: "stack" },
+                h("label", null, "Make ", type), howto,
+                h("div", { class: "row" }, h("label", null, "Name ", name), h("label", null, "Port ", port)),
+                h("div", { class: "row" }, h("label", null, "BMC address ", addr), h("label", null, "Runs server ", server)),
+                h("div", { class: "row" }, h("label", null, "User ", user), h("label", null, "Password ", pass)),
+                h("label", { class: "check" }, tls, " Check the BMC's HTTPS certificate (leave off for the usual self-signed one)"),
+                result,
+                h("div", { class: "row" },
+                    h("button", { type: "button", text: "Test connection", onclick: function () {
+                        result.className = "muted"; result.textContent = "Testing...";
+                        api("POST", "/api/bmc", body("test")).then(function (r) { result.className = r.ok ? "okline" : "err"; result.textContent = r.message; }).catch(function (e) { result.className = "err"; result.textContent = e.message; });
+                    } }),
+                    h("button", { class: "primary", type: "button", text: "Save", onclick: function () {
+                        api("POST", "/api/bmc", body("save")).then(function (r) { toast("Saved server hardware " + r.name + ". It is checked with every health check.", "good"); close(); load(); }).catch(fail);
+                    } }))), true);
+        }
+        load();
+        return box;
+    }
+
     /* SAN storage: add any make, test the connection, remove (administrators) */
     function sanCard() {
         var box = card("SAN storage", h("span", { class: "muted", text: "any make, read-only" }), h("p", { class: "muted", text: "Loading..." }));
@@ -1213,6 +1330,7 @@
         var wrap = h("div", { class: "stack" });
         outer.appendChild(wrap);
         outer.appendChild(sanCard());
+        outer.appendChild(bmcCard());
         var timer = null, stopped = false, busy = false;
         function tile(label, value, cls) { return h("div", { class: "card tile " + (cls || "") }, h("div", { class: "big", text: String(value) }), h("div", { class: "muted", text: label })); }
         function paint(d) {

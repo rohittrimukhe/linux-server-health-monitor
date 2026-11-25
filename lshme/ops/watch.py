@@ -278,6 +278,9 @@ def rotation_probe(app, state, now):
     from lshme import modules as modreg
     from lshme.core.context import Context
     names = [n for n in as_list(setting(app.cfg, "rotation_modules")) if n in modreg.MODULE_ORDER]
+    for n in ("storage", "bmc"):                   # SAN paths, LVM, iSCSI / FC and server hardware always alert between health checks
+        if n not in names and n not in as_list(app.cfg.get("main", "watch", "rotation_skip", "")):
+            names.append(n)
     every = max(1, int(float(setting(app.cfg, "rotation_minutes")))) * 60
     last = state.setdefault("rotation_last", {})
     cache = state.setdefault("rotation_findings", {})

@@ -176,6 +176,14 @@ def _num(v, default=0):
         return default
 
 
+def wwn(v):
+    """A volume's world-wide name as the host sees it (multipath WWID without its leading 3): lower case hex, no 'naa.' or colons."""
+    v = str(v or "").strip().lower()
+    for junk in ("naa.", "eui.", ":", "-", " "):
+        v = v.replace(junk, "")
+    return v if all(c in "0123456789abcdef" for c in v) and len(v) >= 16 else ""
+
+
 def _pct(used, total):
     return round(100.0 * used / total, 1) if total else None
 
@@ -218,7 +226,7 @@ def santricity(a, host, http):
     pools = dict((v.get("volumeGroupRef") or v.get("id"), v.get("label")) for v in (g(p + "/storage-pools") or []))
     for v in g(p + "/volumes") or []:
         maps = v.get("listOfMappings") or []
-        out["volumes"].append({"name": v.get("label") or v.get("name", "?"), "pool": pools.get(v.get("volumeGroupRef"), ""), "capacity": _num(v.get("capacity")),
+        out["volumes"].append({"wwn": wwn(v.get("wwn") or v.get("worldWideName")), "name": v.get("label") or v.get("name", "?"), "pool": pools.get(v.get("volumeGroupRef"), ""), "capacity": _num(v.get("capacity")),
                                "status": str(v.get("status", "unknown")).lower(), "mapped": bool(v.get("mapped") or maps),
                                "hosts": len(maps)})
     hw = g(p + "/hardware-inventory") or {}
@@ -273,7 +281,7 @@ def msa(a, host, http):
         out["pools"].append({"name": p.get("name", "?"), "raid": p.get("storage-type", ""), "capacity": total, "used": total - free, "free": free,
                              "used_percent": _pct(total - free, total), "status": "optimal" if str(p.get("health", "")).upper() == "OK" else str(p.get("health", "unknown")).lower()})
     for v in g("volumes").get("volumes") or []:
-        out["volumes"].append({"name": v.get("volume-name", "?"), "pool": v.get("storage-pool-name", ""), "capacity": blocks(v.get("size-numeric")),
+        out["volumes"].append({"wwn": wwn(v.get("wwn") or v.get("serial-number")), "name": v.get("volume-name", "?"), "pool": v.get("storage-pool-name", ""), "capacity": blocks(v.get("size-numeric")),
                                "status": "optimal" if str(v.get("health", "")).upper() == "OK" else str(v.get("health", "unknown")).lower(), "mapped": None, "hosts": None})
     for cmd, key, label in (("fans", "fan", "Fan"), ("power-supplies", "power-supplies", "Power supply")):
         try:

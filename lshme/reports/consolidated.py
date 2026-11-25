@@ -124,6 +124,42 @@ def build(app, ptype="weekly", variant="summary", now=None):
                           "%d (%d failed)" % (len(a.get("drives", [])), failed) if a.get("drives") else "-",
                           Bar(full["used_percent"], 80, 90) if full else Cell("-", "fl"), ("%.1f ms" % a["perf"]["latency_ms"]) if (a.get("perf") or {}).get("latency_ms") else "-"])
         blocks.append(table("SAN storage", ["Storage", "Model", "Status", "Controllers", "Drives", "Fullest pool", "Response"], srows, align=["", "", "", "", "r", "", "r"]))
+    hw = []
+    for r, _ in docs:                                                    # server hardware read through the BMCs
+        m = r.module("bmc")
+        if m and m.status != "SKIPPED":
+            hw += [b for b in (m.data or {}).get("bmcs", [])]
+    if hw:
+        hrows = []
+        for b in hw:
+            bad = [x["name"] for x in b.get("psus", []) + b.get("fans", []) + b.get("drives", []) + b.get("memory_faults", []) + b.get("cpu_faults", []) if x.get("status") in ("critical", "warning")]
+            temps = [t["celsius"] for t in b.get("temps", []) if t.get("celsius") is not None]
+            st = "cr" if b.get("error") or b.get("status") == "critical" or b.get("power") not in ("on", "unknown", None) else "wn" if b.get("status") == "warning" else "ok"
+            hrows.append([Cell(b["name"], "b"), b.get("server") or "-", ("%s %s" % (b.get("make", ""), b.get("model", ""))).strip() or "-", b.get("serial") or "-",
+                          Cell("UNREACHABLE", "chip-cr") if b.get("error") else chip(st), b.get("power") or "-",
+                          ", ".join(bad[:4]) or ("cannot be read" if b.get("error") else "none"), ("%.0f C" % max(temps)) if temps else "-",
+                          ("%.0f W" % b["power_watts"]) if b.get("power_watts") is not None else "-"])
+            if st != "ok":
+                pts.append(("cr" if st == "cr" else "wn", "Server hardware %s: %s" % (b["name"], b.get("error") or (", ".join(bad[:3]) or b.get("status", "")))))
+        blocks.append(table("Server hardware", ["Hardware", "Server", "Make / model", "Serial", "Status", "Power", "Faults", "Hottest", "Power draw"], hrows,
+                            align=["", "", "", "", "", "", "", "r", "r"]))
+        blocks[1]["items"] = [p for p in pts if p[0] != "ok" or len(pts) == 1][:12]
+    try:                                                                 # what each current failure puts at risk (dependency map)
+        from lshme.ops import topology
+        imp = topology.snapshot(app)["impacts"]
+    except Exception:
+        imp = []
+    if imp:
+        kinds = {"hardware": "hardware", "san": "SAN storage", "pool": "pool", "volume": "volume", "disk": "SAN disk", "mount": "filesystem", "server": "server", "vm": "VM", "database": "database"}
+        irows = []
+        for i in imp:
+            c = i["cause"]
+            by = {}
+            for a2 in i["affected"]:
+                by.setdefault(a2["kind"], []).append(a2["name"])
+            irows.append([Cell("%s %s" % (kinds.get(c["kind"], c["kind"]).capitalize(), c["name"]), "b"), chip("cr"), Cell(c.get("detail") or "", "wrap"),
+                          Cell("; ".join("%d %s%s: %s" % (len(v), kinds.get(k, k), "s" if len(v) > 1 else "", ", ".join(v[:5])) for k, v in by.items()), "wrap")])
+        blocks.append(table("Impact: what each failure puts at risk", ["Failed", "Status", "Detail", "At risk"], irows))
     blocks.append(note("The full report of each server follows, in the order above; SAN storage details are in the report of the server that monitors it."))
     d.add("Estate at a glance", blocks)
     d.attention_unit = "system"

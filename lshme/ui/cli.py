@@ -224,11 +224,12 @@ def build_parser():
     e.add_argument("--output", help="file path (default stdout)")
     e.add_argument("--modules")
 
-    from lshme.ui import archivecmd, estatecmd, logocmd, rawcmd, repaircmd, sancmd, templatecmd, updatecmd
+    from lshme.ui import archivecmd, bmccmd, estatecmd, logocmd, rawcmd, repaircmd, sancmd, templatecmd, updatecmd
     archivecmd.add_parser(sub)
     rawcmd.add_parser(sub)
     logocmd.add_parser(sub)
     sancmd.add_parser(sub)
+    bmccmd.add_parser(sub)
     updatecmd.add_parser(sub)
     repaircmd.add_parser(sub)
     estatecmd.add_parser(sub)
@@ -851,6 +852,9 @@ def dispatch(app, cmd, args):
     elif cmd == "san":
         from lshme.ui import sancmd
         return sancmd.run(app, args)
+    elif cmd == "bmc":
+        from lshme.ui import bmccmd
+        return bmccmd.run(app, args)
     elif cmd == "update":
         from lshme.ui import updatecmd
         return updatecmd.run(app, args)

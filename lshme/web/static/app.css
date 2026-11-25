@@ -716,3 +716,23 @@ main, footer { transition: none !important; }
 }
 @media (prefers-reduced-motion: reduce) { html.nav-auto .top, html.nav-auto body::after { transition: none !important; } }
 .pri.p3 { color: var(--info-ink); background: var(--info-soft); }
+/* ---- dependency map ---- */
+.dep-list { list-style: none; margin: 0; padding-left: 22px; border-left: 1px dashed var(--line); }
+.dep-list.top { padding-left: 0; border-left: 0; }
+.dep { margin: 3px 0; }
+.dep > details > summary { cursor: pointer; list-style: none; }
+.dep > details > summary::-webkit-details-marker { display: none; }
+.dep > details > summary::before { content: "\25B8"; display: inline-block; width: 14px; color: var(--muted); transition: transform .15s ease; }
+.dep > details[open] > summary::before { transform: rotate(90deg); }
+.dep.leaf { padding-left: 14px; }
+.dep-label { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 8px; border-radius: 8px; }
+.dep-label:hover { background: var(--hover); }
+.dep-kind { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); min-width: 74px; }
+.dep-name { font-weight: 650; color: var(--text); text-decoration: none; } a.dep-name:hover { color: var(--accent); text-decoration: underline; }
+.dep-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: var(--track); flex: none; }
+.dep-dot.ok { background: var(--ok); } .dep-dot.warn { background: var(--warn); } .dep-dot.crit, .dep-dot.down { background: var(--crit); }
+.dep-dot.down { box-shadow: 0 0 0 3px var(--crit-soft); } .dep-dot.off { background: transparent; border: 2px solid var(--muted); width: 8px; height: 8px; }
+.impact { border: 1px solid var(--line); border-left: 4px solid var(--crit); border-radius: var(--radius-sm); padding: 10px 14px; background: var(--surface); }
+.impact-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15px; }
+.impact-body { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13.5px; }
+.impact-group a { color: var(--accent); }

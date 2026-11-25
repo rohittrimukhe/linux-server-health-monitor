@@ -72,9 +72,44 @@ class StorageTest(unittest.TestCase):
         self.assertIn(("LV_DATA_FULL", "vg_ora/snap1", "WARNING"), found)
         mp = dict((f.component, f.code) for f in res.findings if f.code.startswith("MULTIPATH"))
         self.assertEqual(mp.get("mpatha"), "MULTIPATH_PATH_FAILED")
-        self.assertEqual(mp.get("mpathb"), "MULTIPATH_ALL_FAILED")
+        self.assertEqual(mp.get("mpathb"), "MULTIPATH_STALE")                 # dead and nothing uses it: a LUN removed on the SAN
         self.assertNotIn("/dev/shm", [r[0] for r in res.tables[0].rows])
         self.assertAlmostEqual(res.metrics["fs.used_percent:/new_backup"], 96.0)
+
+    def test_dead_san_disk_in_use_lvm_iscsi_and_fc(self):
+        df = DF + "/dev/mapper/mpathb xfs 268435456000 112742891520 155692564480 42% /VM-OS-DATA" + chr(10)
+        mounts = MOUNTS + "/dev/mapper/mpathb /VM-OS-DATA xfs rw 0 0" + chr(10)
+        iscsi = chr(10).join(["Target: iqn.2002-09.com.lenovo:de4200 (non-flash)", "	Current Portal: 10.1.1.55:3260,1",
+                              "		iSCSI Session State: LOGGED_IN", "	Current Portal: 10.1.1.56:3260,2", "		iSCSI Session State: FAILED"])
+        r = runner({"df -P -T -B1": (0, df), "vgs": (0, "  vg_ora|214748364800|0|1|1|wz-pn-" + chr(10)), "iscsiadm -m session": (0, iscsi)})
+        r.files["/proc/mounts"] = mounts
+        r.files.update({"/sys/class/fc_host/host1/port_state": "Linkdown", "/sys/class/fc_host/host2/port_state": "Linkdown"})
+        r.dirs = list(getattr(r, "dirs", []) or []) + ["/sys/class/fc_host/host1", "/sys/class/fc_host/host2"]
+        res = run_module(storage, r)
+        f = dict((x.code + ":" + x.component, x) for x in res.findings)
+        self.assertEqual(f["MULTIPATH_ALL_FAILED:mpathb"].severity, "CRITICAL")
+        self.assertIn("/VM-OS-DATA (mounted)", f["MULTIPATH_ALL_FAILED:mpathb"].message)
+        self.assertNotIn("multipath -f", f["MULTIPATH_ALL_FAILED:mpathb"].recommendation)          # advice only: it never removes anything
+        self.assertEqual(f["VG_PARTIAL:vg_ora"].severity, "CRITICAL")
+        self.assertEqual(f["ISCSI_SESSION_DOWN:de4200@10.1.1.56:3260"].severity, "WARNING")
+        self.assertEqual(f["FC_ALL_DOWN:fibre channel"].severity, "CRITICAL")
+        self.assertEqual(len(res.data["san_links"]["iscsi"]), 2)
+
+    def test_multipathd_suspended_dm_offline_path_nvme_partial_lv(self):
+        nvme = chr(10).join(["nvme-subsys0 - NQN=nqn.2014-08.org.nvmexpress:de4200", "\\", " +- nvme0 tcp traddr=10.1.1.55,trsvcid=4420 live",
+                             " +- nvme1 tcp traddr=10.1.1.56,trsvcid=4420 connecting"])
+        r = runner({"systemctl is-active multipathd": (3, "inactive"), "dmsetup info": (0, "mpatha|Active" + chr(10) + "vg_ora-lv_ora|Suspended" + chr(10)),
+                    "nvme list-subsys": (0, nvme), "systemctl": (0, ""), "dmsetup": (0, ""),
+                    "lvs": (0, "  vg_ora|lv_ora|214748364800|-wi-ao--p-||||/dev/sdb(0)" + chr(10))})
+        r.files.update({"/sys/block/sdq/device/state": "offline", "/sys/block/sda/device/state": "running"})
+        r.dirs = list(getattr(r, "dirs", []) or []) + ["/sys/block/sdq", "/sys/block/sda"]
+        f = dict((x.code + ":" + x.component, x.severity) for x in run_module(storage, r).findings)
+        self.assertEqual(f.get("MULTIPATHD_DOWN:multipathd"), "CRITICAL")
+        self.assertEqual(f.get("DM_SUSPENDED:vg_ora-lv_ora"), "CRITICAL")
+        self.assertEqual(f.get("SCSI_DEVICE_OFFLINE:sdq"), "WARNING")
+        self.assertNotIn("SCSI_DEVICE_OFFLINE:sda", f)
+        self.assertEqual(f.get("NVME_PATH_DOWN:nqn.2014-08.org.nvmexpress:de4200"), "WARNING")
+        self.assertEqual(f.get("LV_PARTIAL:vg_ora/lv_ora"), "CRITICAL")
 
     def test_df_failure_is_unknown_not_crash(self):
         res = run_module(storage, runner({"df -P -T -B1": (124, "", "timed out")}))

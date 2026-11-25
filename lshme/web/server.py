@@ -207,7 +207,7 @@ class WebApp(object):
         if req.method not in ("GET", "HEAD") and sess["role"] != "admin" and name != "password":
             self.audit("web-denied", sess, route=name)
             raise PermissionError("your account is read-only")
-        if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file", "branding", "branding/logo", "san") and sess["role"] != "admin":
+        if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file", "branding", "branding/logo", "san", "bmc") and sess["role"] != "admin":
             raise PermissionError("administrators only")
         return handler(req, sess)
 
@@ -660,6 +660,45 @@ class WebApp(object):
         return jr({"array": a, "live": live, "series": series, "detail": detail, "checked": run.collected_at if run and detail else None,
                    "findings": findings, "history": hist, "days": days, "live_interval": self.livefleet().san_perf_interval if livefleet.enabled(self.app.cfg) else None})
 
+    def api_topology(self, req, sess):
+        """The dependency map (hardware, SAN, hosts, VMs, servers, databases) and what each current failure takes down."""
+        from lshme.ops import topology
+        if sess.get("group"):
+            raise PermissionError("this account only sees its own servers and reports")
+        return jr(topology.snapshot(self.app))
+
+    def api_bmc(self, req, sess):
+        """Server hardware (BMC): list (never the password), add or change, test, remove. Administrators only."""
+        from lshme.ops import bmc
+        if req.method != "POST":
+            return jr({"items": [bmc.public(a) for a in bmc.bmcs(self.app.cfg)],
+                       "types": [{"type": t, "label": l, "port": p, "howto": bmc.HOWTO[t]} for t, (l, p) in bmc.TYPES.items()]})
+        d = req.json()
+        action, name = d.get("action"), str(d.get("name", ""))[:40]
+        if action == "remove":
+            bmc.find(self.app.cfg, name)
+            bmc.remove(self.app, name)
+            self.audit("web-bmc-remove", sess, name=name)
+            return jr({"ok": True})
+        if action == "test" and d.get("saved"):
+            return jr(bmc.test(bmc.find(self.app.cfg, name)))
+        t = bmc.kind(d.get("type", ""))
+        a = {"name": bmc.safe_name(name), "type": t, "address": str(d.get("address", "")).strip(), "port": int(d.get("port") or bmc.TYPES[t][1]),
+             "username": str(d.get("username", ""))[:80], "password": str(d.get("password", "")), "verify_tls": bool(d.get("verify_tls")), "enabled": True,
+             "server": str(d.get("server", ""))[:120]}
+        if not a["password"]:
+            try:
+                a["password"] = bmc.find(self.app.cfg, a["name"])["password"]
+            except bmc.BmcError:
+                pass
+        if action == "test":
+            return jr(bmc.test(a))
+        if action != "save":
+            raise ValueError("unknown action")
+        saved = bmc.save(self.app, a["name"], t, a["address"], a["username"], d.get("password") or None, a["port"], a["verify_tls"], True, a["server"])
+        self.audit("web-bmc-save", sess, name=saved, type=t, address=a["address"], server=a["server"])
+        return jr({"ok": True, "name": saved})
+
     def api_repair(self, req, sess):
         """Check and repair LRS Vitals itself on this server or, from the central server, on a member over SSH. Administrators only."""
         from lshme.ops import fleet, livefleet, selfrepair
@@ -726,8 +765,14 @@ class WebApp(object):
             local = server in ("_local", _socket.gethostname())
             if scope == "here" and not local and server not in [m.name for m in members]:
                 raise ValueError("unknown server %s" % server)
-            if scope == "here" and local:
-                fields["hosts"] = _socket.gethostname()
+            if scope == "here" and local:                               # the name in the health check, and this computer's own name
+                names = [_socket.gethostname(), _socket.gethostname().split(".")[0]]
+                try:
+                    with open(os.path.join(self.app.paths.data_dir, "latest.json"), encoding="utf-8") as f:
+                        names.insert(0, json.load(f).get("host", ""))
+                except (OSError, ValueError):
+                    pass
+                fields["hosts"] = ",".join(sorted(set(n for n in names if n), key=names.index))
             saved = scope == "all" or local
             if saved:
                 for k, v in fields.items():

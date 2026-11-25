@@ -2,7 +2,7 @@
 # Copyright (c) 2026 LRS Services Pvt Ltd, Mumbai. All rights reserved.
 """More SAN drivers (see lshme.ops.san for the common shape): Dell Unity, Dell PowerStore, HPE 3PAR / Primera / Alletra 9000,
 Pure Storage FlashArray, IBM FlashSystem / Storwize / SVC, Huawei OceanStor / Dorado. Read-only calls only."""
-from lshme.ops.san import SanError, _num, _pct, basic, empty, tolerant
+from lshme.ops.san import SanError, _num, _pct, basic, empty, tolerant, wwn
 
 
 def _st(ok, value):
@@ -31,7 +31,7 @@ def unity(a, host, http):
         out["pools"].append({"name": p.get("name", "?"), "raid": str(p.get("raidType", "")), "capacity": total, "used": used, "free": _num(p.get("sizeFree")),
                              "used_percent": _pct(used, total), "status": _st(good(p), "degraded")})
     for v in g("/lun/instances?fields=name,sizeTotal,health,pool"):
-        out["volumes"].append({"name": v.get("name", "?"), "pool": (v.get("pool") or {}).get("id", ""), "capacity": _num(v.get("sizeTotal")),
+        out["volumes"].append({"wwn": wwn(v.get("wwn")), "name": v.get("name", "?"), "pool": (v.get("pool") or {}).get("id", ""), "capacity": _num(v.get("sizeTotal")),
                                "status": _st(good(v), "degraded"), "mapped": None, "hosts": None})
     for path, label in (("/fan/instances?fields=name,health", "Fan"), ("/powerSupply/instances?fields=name,health", "Power supply"),
                         ("/battery/instances?fields=name,health", "Battery")):
@@ -85,7 +85,7 @@ def powerstore(a, host, http):
         except SanError:
             pass
     for v in g("/volume?select=name,size,state"):
-        out["volumes"].append({"name": v.get("name", "?"), "pool": "", "capacity": _num(v.get("size")), "status": _st(str(v.get("state", "Ready")) == "Ready", v.get("state")),
+        out["volumes"].append({"wwn": wwn(v.get("wwn")), "name": v.get("name", "?"), "pool": "", "capacity": _num(v.get("size")), "status": _st(str(v.get("state", "Ready")) == "Ready", v.get("state")),
                                "mapped": None, "hosts": None})
     if any(c["status"] != "optimal" for c in out["controllers"]) or any(d["status"] != "optimal" for d in out["drives"]):
         out["status"] = "needs attention"
@@ -123,7 +123,7 @@ def primera(a, host, http):
             out["pools"].append({"name": c.get("name", "?"), "raid": "CPG", "capacity": total, "used": used, "free": total - used,
                                  "used_percent": _pct(used, total), "status": state.get(c.get("state"), "unknown")})
         for v in g("/volumes").get("members") or []:
-            out["volumes"].append({"name": v.get("name", "?"), "pool": v.get("userCPG", ""), "capacity": _num(v.get("sizeMiB")) * 1048576,
+            out["volumes"].append({"wwn": wwn(v.get("wwn")), "name": v.get("name", "?"), "pool": v.get("userCPG", ""), "capacity": _num(v.get("sizeMiB")) * 1048576,
                                    "status": state.get(v.get("state"), "unknown"), "mapped": None, "hosts": None})
         try:
             for d in g("/disks").get("members") or []:
@@ -168,7 +168,7 @@ def pure(a, host, http):
     if total:
         out["pools"].append({"name": "Array", "raid": "RAID-HA", "capacity": total, "used": used, "free": total - used, "used_percent": _pct(used, total), "status": "optimal"})
     for v in g("/volumes?destroyed=false"):
-        out["volumes"].append({"name": v.get("name", "?"), "pool": "", "capacity": _num(v.get("provisioned")), "status": "optimal", "mapped": None, "hosts": None})
+        out["volumes"].append({"wwn": wwn(("624a9370" + v["serial"]) if v.get("serial") else ""), "name": v.get("name", "?"), "pool": "", "capacity": _num(v.get("provisioned")), "status": "optimal", "mapped": None, "hosts": None})
     for h in g("/hardware"):
         st = str(h.get("status", "ok"))
         out["hardware"].append({"kind": str(h.get("type", "part")).replace("_", " "), "name": h.get("name", "?"),
@@ -216,7 +216,7 @@ def svc(a, host, http):
         out["pools"].append({"name": p.get("name", "?"), "raid": "", "capacity": total, "used": total - free, "free": free, "used_percent": _pct(total - free, total),
                              "status": _st(p.get("status") == "online", p.get("status"))})
     for v in g("lsvdisk", {"bytes": True}) or []:
-        out["volumes"].append({"name": v.get("name", "?"), "pool": v.get("mdisk_grp_name", ""), "capacity": _num(v.get("capacity")),
+        out["volumes"].append({"wwn": wwn(v.get("vdisk_UID")), "name": v.get("name", "?"), "pool": v.get("mdisk_grp_name", ""), "capacity": _num(v.get("capacity")),
                                "status": _st(v.get("status") == "online", v.get("status")), "mapped": None, "hosts": None})
     for cmd, label in (("lsenclosurepsu", "Power supply"), ("lsenclosurebattery", "Battery")):
         try:
@@ -266,7 +266,7 @@ def oceanstor(a, host, http):
         out["pools"].append({"name": p.get("NAME", "?"), "raid": "", "capacity": total, "used": total - free, "free": free, "used_percent": _pct(total - free, total),
                              "status": _st(good(p), "degraded")})
     for v in g("/lun"):
-        out["volumes"].append({"name": v.get("NAME", "?"), "pool": v.get("PARENTNAME", ""), "capacity": sect(v.get("CAPACITY")), "status": _st(good(v), "degraded"),
+        out["volumes"].append({"wwn": wwn(v.get("WWN")), "name": v.get("NAME", "?"), "pool": v.get("PARENTNAME", ""), "capacity": sect(v.get("CAPACITY")), "status": _st(good(v), "degraded"),
                                "mapped": str(v.get("EXPOSEDTOINITIATOR", "")).lower() == "true", "hosts": None})
     for path, label in (("/fan", "Fan"), ("/power", "Power supply"), ("/backup_power", "Battery")):
         try:

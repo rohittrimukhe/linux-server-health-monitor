@@ -76,6 +76,19 @@ class OracleTest(unittest.TestCase):
         res = self.run_db(make_runner(fixture("sqlplus_primary.txt")))
         self.assertAlmostEqual(res.metrics["oracle.ORCL.fra_used_percent"], 85.0, places=0)
 
+    def test_asm_disk_groups_and_patch_level(self):
+        extra = chr(10).join(["ASMDG|DATA|MOUNTED|NORMAL|1048576|52428|-1200|1", "ASMDG|FRA|DISMOUNTED|EXTERNAL|0|0|0|0",
+                              "ASMDISK|DATA|DATA_0003|/dev/mapper/mpathc|OFFLINE|NORMAL|MEMBER",
+                              "PATCH|36233263|APPLY|SUCCESS|2026-10-20|Database Release Update : 19.24.0.0.240716"]) + chr(10)
+        res = self.run_db(make_runner(fixture("sqlplus_primary.txt").replace("END|done", extra + "END|done")))
+        f = dict((x.code, x.severity) for x in res.findings)
+        self.assertEqual(f["ORACLE_ASM_DISK_OFFLINE"], "CRITICAL")
+        self.assertEqual(f["ORACLE_ASM_DG_STATE"], "CRITICAL")
+        self.assertEqual(f["ORACLE_ASM_DG_FULL"], "CRITICAL")                       # 95 % used
+        self.assertEqual(f["ORACLE_ASM_NO_REBALANCE_ROOM"], "WARNING")
+        self.assertTrue(any("latest patches" in t.title for t in res.tables))
+        self.assertAlmostEqual(res.metrics["oracle.ORCL.asm_used_percent:DATA"], 95.0, places=0)
+
     def test_instance_down_and_listener_down(self):
         r = make_runner("ERROR:\nORA-01034: ORACLE not available\nORA-27101: shared memory realm does not exist\n", lsnr_rc=1)
         c = codes(self.run_db(r))
