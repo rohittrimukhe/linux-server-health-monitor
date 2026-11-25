@@ -703,3 +703,15 @@ body.wall-mode { background: #151515; }
 .glance { display: flex; flex-wrap: wrap; gap: 14px; }
 .glance > .gl { flex: 1 1 158px; min-width: 0; }
 @media (max-width: 700px) { .glance { gap: 10px; } .glance > .gl { flex: 1 1 calc(50% - 10px); } }
+/* ---- sidebar fold, smooth: only the menu's clip and a light overlay animate (both run on the graphics card); the page never re-flows ---- */
+main, footer { transition: none !important; }
+@media (min-width: 981px) {
+  html.nav-auto:has(.top:hover) main, html.nav-auto:has(.top:hover) footer,
+  html.nav-auto:has(.top :focus-visible) main, html.nav-auto:has(.top :focus-visible) footer { opacity: 1 !important; filter: none !important; pointer-events: auto !important; }
+  html.nav-auto .top { will-change: clip-path; transition: clip-path 200ms cubic-bezier(.2, .8, .2, 1) !important; }
+  html.nav-auto body::after { content: ""; position: fixed; inset: 0; z-index: 29; background: rgba(15, 17, 20, .28); opacity: 0; pointer-events: none;
+    transition: opacity 200ms ease; will-change: opacity; }
+  html.nav-auto:has(.top:hover) body::after, html.nav-auto:has(.top :focus-visible) body::after { opacity: 1; }
+  html.nav-auto .top nav a, html.nav-auto .top nav a span { transition: none; }
+}
+@media (prefers-reduced-motion: reduce) { html.nav-auto .top, html.nav-auto body::after { transition: none !important; } }

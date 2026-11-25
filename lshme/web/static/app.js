@@ -104,10 +104,14 @@
         }));
     }
     function badge(s) { return h("span", { class: "badge b-" + s, text: s }); }
-    function steady(el) {                                                 // redraw without the page jumping: keep the old height for one frame
-        var hgt = el.offsetHeight;
-        if (hgt) { el.style.minHeight = hgt + "px"; requestAnimationFrame(function () { el.style.minHeight = ""; }); }
+    function steady(el) {                                                 // redraw without the page moving: keep the old height and the scroll position
+        var hgt = el.offsetHeight, y = window.pageYOffset, x = window.pageXOffset;
+        if (hgt) el.style.minHeight = hgt + "px";
         clear(el);
+        requestAnimationFrame(function () {                               // the new content is in place by now
+            if (window.pageYOffset !== y) window.scrollTo(x, y);
+            requestAnimationFrame(function () { el.style.minHeight = ""; if (window.pageYOffset !== y) window.scrollTo(x, y); });
+        });
     }
     var UPGRADE_CMD = "curl -fsSL https://raw.githubusercontent.com/rohittrimukhe/linux-server-health-monitor/main/tools/upgrade_from_github.sh -o /tmp/upgrade.sh && bash /tmp/upgrade.sh";
     function runRepair(server, label) {
@@ -937,7 +941,7 @@
             api("GET", "/api/sanview?name=" + encodeURIComponent(name) + "&days=" + days).then(function (d) {
                 if (stopped) return;
                 var keep = S.tmOpen;
-                clear(wrap); paint(d);
+                paint(d);                                           // paint() keeps the height and the scroll position
                 if (keep) [].forEach.call(wrap.querySelectorAll(".tm"), function (g) { var t = g.querySelector(".tm-title"), b = g.querySelector(".tm-expand"); if (t && b && t.textContent === keep) b.click(); });
             }).catch(function (e) {
                 if (!stopped && e.message !== "Signed out") { clear(wrap); wrap.appendChild(card("SAN storage", null, h("p", { class: "err", text: e.message === "not found" ? "This storage system is not configured." : e.message }))); }
