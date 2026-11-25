@@ -549,8 +549,10 @@ class WebApp(object):
                 "host": run.host, "ip": run.ip, "os": sd.get("distribution", ""), "kernel": sd.get("kernel", ""), "uptime": sd.get("uptime", ""),
                 "hardware": sd.get("virtualization", "") or sd.get("product", ""), "roles": run.meta.get("roles") or [],
                 "modules": mods, "filesystems": sorted(fs, key=lambda f: -(f["pct"] or 0))[:20],
-                "findings": [{"severity": f.severity, "module": f.module, "component": f.component, "message": f.message, "recommendation": f.recommendation}
+                "findings": [{"severity": f.severity, "code": f.code, "module": f.module, "component": f.component, "message": f.message, "recommendation": f.recommendation}
                              for f in run.findings("WARNING")][:60],
+                "advice": [{"severity": f.severity, "code": f.code, "module": f.module, "component": f.component, "message": f.message, "recommendation": f.recommendation}
+                           for f in run.findings("INFO") if f.severity == "INFO" and f.recommendation][:20],
                 "excluded": run.excluded[:30],
                 "vms": [{"name": v.get("name"), "state": v.get("state"), "vcpus": v.get("vcpus"), "memory": v.get("memory"), "cpu": v.get("cpu_percent"),
                          "disk": sum(d.get("allocation") or 0 for d in v.get("disks") or [])} for v in kd.get("vms", [])],
@@ -715,12 +717,33 @@ class WebApp(object):
             problems = exclusions.Rule(name, fields).validate()
             if problems:
                 raise ValueError("; ".join(problems))
-            for k, v in fields.items():
-                if v:
-                    self.app.cfg.set("exclusions", "exclude:" + name, k, v)
-            self.app.save_config("exclusions")
-            self.audit("web-exclusion-add", sess, rule=name, **fields)
-            return jr({"ok": True, "name": name})
+            import shlex as _shlex
+            import socket as _socket
+            from lshme.ops import branding, fleet
+            scope = "all" if d.get("scope") == "all" else "here"          # this server only, or every server in the estate
+            server = str(d.get("server", "_local") or "_local")
+            members = fleet.servers(self.app.cfg)
+            local = server in ("_local", _socket.gethostname())
+            if scope == "here" and not local and server not in [m.name for m in members]:
+                raise ValueError("unknown server %s" % server)
+            if scope == "here" and local:
+                fields["hosts"] = _socket.gethostname()
+            saved = scope == "all" or local
+            if saved:
+                for k, v in fields.items():
+                    if v:
+                        self.app.cfg.set("exclusions", "exclude:" + name, k, v)
+                self.app.save_config("exclusions")
+            remote = []
+            for m in members if scope == "all" else [m for m in members if not local and m.name == server]:
+                cmd = "vitals exclude add %s --code %s --component %s --reason %s --owner %s%s" % (
+                    _shlex.quote(name), _shlex.quote(code), _shlex.quote(comp), _shlex.quote(fields["reason"] or "accepted from the central dashboard"),
+                    _shlex.quote(fields["owner"]), (" --until " + _shlex.quote(until)) if until else "")
+                target = "%s@%s" % (m.user, m.host) if m.user else m.host
+                r = self.app.runner.run(branding._ssh_base(m) + [target, cmd], timeout=60)
+                remote.append({"server": m.name, "ok": bool(r.ok), "detail": "added" if r.ok else ((r.err or r.out or "failed").strip().splitlines() or ["failed"])[-1][:160]})
+            self.audit("web-exclusion-add", sess, rule=name, scope=scope, server=server, remote=",".join("%s:%s" % (x["server"], "ok" if x["ok"] else "failed") for x in remote), **fields)
+            return jr({"ok": True, "name": name, "scope": scope, "saved_here": saved, "remote": remote})
         now = time.time()
         rules = []
         for r in exclusions.load(self.app.cfg):

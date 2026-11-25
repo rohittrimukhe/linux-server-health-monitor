@@ -826,10 +826,14 @@
             wrap.appendChild(card("History", ranges, hg.childNodes.length ? hg : h("p", { class: "muted", text: "No history yet for this period; the graphs fill in as health checks run." }),
                 h("p", { class: "muted small", text: "Source: " + (HS.source || "health checks") + ". Point at a graph for exact values; Expand opens it full screen." })));
             wrap.appendChild(card("Findings in the latest health check", h("span", { class: "muted", text: (C.counts.CRITICAL || 0) + " critical, " + (C.counts.WARNING || 0) + " warning" }),
-                C.findings.length ? table(["Level", "Area", "Where", "Finding", "What to do"], C.findings.map(function (f) {
-                    return [h("span", { class: "pri " + (f.severity === "CRITICAL" ? "p1" : "p2"), text: f.severity === "CRITICAL" ? "CRIT" : "WARN" }), f.module, h("b", { text: f.component }), f.message, h("span", { class: "muted small", text: f.recommendation || "" })];
+                C.findings.length ? table(["Level", "Area", "Where", "Finding", "What to do", ""], C.findings.map(function (f) {
+                    return [h("span", { class: "pri " + (f.severity === "CRITICAL" ? "p1" : f.severity === "INFO" ? "p3" : "p2"), text: f.severity === "CRITICAL" ? "CRIT" : f.severity === "INFO" ? "ADVICE" : "WARN" }), f.module, h("b", { text: f.component }), f.message, h("span", { class: "muted small", text: f.recommendation || "" }),
+                        S.me.role === "admin" && f.code ? h("button", { class: "small", type: "button", text: "Exclude", onclick: function () { excludeForm(f, d.local ? "_local" : d.name, load); } }) : ""];
                 })) : h("p", { class: "okline" }, h("span", { class: "dot ok" }), "Nothing to fix."),
                 (C.excluded || []).length ? h("p", { class: "muted small", text: C.excluded.length + " accepted exception(s) are kept out of the score." }) : null));
+            if ((C.advice || []).length) wrap.appendChild(card("Recommendations", h("span", { class: "muted", text: "not counted in the score" }), table(["Area", "Where", "Recommendation", "How"], C.advice.map(function (f) {
+                return [f.module, h("b", { text: f.component }), f.message, h("span", { class: "muted small", text: f.recommendation || "" })];
+            }))));
             wrap.appendChild(card("Checks by area", null, table(["Area", "Score", "Critical", "Warning", "Summary"], C.modules.filter(function (m) { return m.status !== "SKIPPED"; }).map(function (m) {
                 return [h("b", { text: m.title }), m.score === null ? "-" : m.score, m.critical, m.warning, h("span", { class: "muted small", text: m.summary })];
             }), [1, 2, 3])));
@@ -1114,26 +1118,35 @@
             })) : h("p", { class: "muted", text: "No exceptions. Exclude a finding above when it is accepted (for example root SSH login by policy)." }));
             box.appendChild(h("p", { class: "muted small", text: "An exclusion needs a reason and is shown in every report under 'Accepted exceptions', so nothing is hidden. Give an end date to have it come back automatically." }));
         }
-        function form(f) {
-            var reason = h("input", { type: "text", placeholder: "why it is accepted (required)", maxlength: 300 });
-            var owner = h("input", { type: "text", placeholder: "approved by", value: S.me.user, maxlength: 80 });
-            var until = h("input", { type: "date" });
-            var scope = h("select", null, h("option", { value: "this", text: "Only " + (f.component || "this item") }), h("option", { value: "all", text: "Every " + f.code + " finding" }));
-            var close = modal("Exclude: " + (f.component || f.code), h("div", { class: "stack" },
-                h("p", { text: f.message }),
-                h("label", null, "Applies to ", scope),
-                h("label", null, "Reason ", reason),
-                h("div", { class: "row" }, h("label", null, "Approved by ", owner), h("label", null, "Until (optional) ", until)),
-                h("div", { class: "row" }, h("button", { class: "primary", type: "button", text: "Exclude", onclick: function () {
-                    if (!reason.value.trim()) return toast("Give a reason; it is shown in the reports", "bad");
-                    api("POST", "/api/exclusions", { action: "add", code: f.code, component: scope.value === "all" ? "*" : f.component, module: f.module,
-                        reason: reason.value.trim(), owner: owner.value.trim(), until: until.value }).then(function (r) {
-                        toast("Excluded (" + r.name + "). It leaves the score and alerts from the next check.", "good"); close(); load();
-                    }).catch(fail);
-                } }), h("button", { type: "button", text: "Cancel", onclick: function () { close(); } }))));
-        }
+        function form(f) { excludeForm(f, "_local", load); }
         load();
         return { el: box, load: load };
+    }
+
+    /* Exclude a finding: which item, on this server only or on every server, with a reason (shown in every report) */
+    function excludeForm(f, server, done) {
+        var reason = h("input", { type: "text", placeholder: "why it is accepted (required)", maxlength: 300 });
+        var owner = h("input", { type: "text", placeholder: "approved by", value: S.me.user, maxlength: 80 });
+        var until = h("input", { type: "date" });
+        var what = h("select", null, h("option", { value: "this", text: "Only " + (f.component || "this item") }), h("option", { value: "all", text: "Every " + f.code + " finding" }));
+        var many = S.fleet && S.fleet.servers && S.fleet.servers.length > 1;
+        var where = h("select", null, h("option", { value: "here", text: "Only this server" + (server && server !== "_local" ? " (" + server + ")" : "") }),
+            many ? h("option", { value: "all", text: "All servers" }) : null);
+        var close = modal("Exclude: " + (f.component || f.code), h("div", { class: "stack" },
+            h("p", { text: f.message }),
+            h("div", { class: "row" }, h("label", null, "Applies to ", what), h("label", null, "On ", where)),
+            h("label", null, "Reason ", reason),
+            h("div", { class: "row" }, h("label", null, "Approved by ", owner), h("label", null, "Until (optional) ", until)),
+            h("div", { class: "row" }, h("button", { class: "primary", type: "button", text: "Exclude", onclick: function () {
+                if (!reason.value.trim()) return toast("Give a reason; it is shown in the reports", "bad");
+                api("POST", "/api/exclusions", { action: "add", code: f.code, component: what.value === "all" ? "*" : f.component, module: f.module, scope: where.value, server: server || "_local",
+                    reason: reason.value.trim(), owner: owner.value.trim(), until: until.value }).then(function (r) {
+                    var bad = (r.remote || []).filter(function (x) { return !x.ok; });
+                    var on = r.scope === "all" ? "on all servers" : "on this server";
+                    toast(bad.length ? "Excluded here, but not on: " + bad.map(function (x) { return x.server + " (" + x.detail + ")"; }).join("; ") : "Excluded " + on + " (" + r.name + "). It leaves the score and alerts from the next check.", bad.length ? "bad" : "good");
+                    close(); if (done) done();
+                }).catch(fail);
+            } }), h("button", { type: "button", text: "Cancel", onclick: function () { close(); } }))));
     }
 
     /* SAN storage: add any make, test the connection, remove (administrators) */
@@ -1388,12 +1401,12 @@
                         s.own ? h("button", { class: "small", text: "Use the default", onclick: function () { api("POST", "/api/branding/remove", { scope: s.name }).then(paint).catch(fail); } }) : "",
                         s.logo ? h("a", { class: "btn small", href: "/api/branding/logo?scope=" + encodeURIComponent(s.name), target: "_blank", rel: "noopener", text: "View" }) : ""];
                 })));
-                box.appendChild(h("div", { class: "row" }, h("button", { text: "Send logos to the servers", onclick: function () {
+                box.appendChild(h("div", { class: "row" }, h("button", { class: "primary", text: "Send logo and customer name to all servers", onclick: function () {
                     api("POST", "/api/branding/push", {}).then(function (r) {
                         var bad = r.results.filter(function (x) { return !x.ok; });
                         toast(bad.length ? bad.length + " of " + r.results.length + " failed: " + bad.map(function (x) { return x.server + " (" + x.detail + ")"; }).join("; ") : "Sent to " + r.results.length + " server(s).", bad.length ? "bad" : "good");
                     }).catch(fail);
-                } }), h("span", { class: "muted", text: "Each server writes its own reports, so it needs its own copy of the logo." })));
+                } }), h("span", { class: "muted", text: "Each server writes its own reports and alert e-mails, so it needs its own copy of the logo, the customer and short name and the e-mail sender name." })));
             }
         }
         api("GET", "/api/branding").then(paint).catch(function () { clear(box); });

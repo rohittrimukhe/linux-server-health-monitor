@@ -301,6 +301,14 @@ def _ssh_base(sv, scp=False):
     return cmd
 
 
+def identity(app):
+    """(file, section, key, value) of the customer identity that every server should share."""
+    cfg = app.cfg
+    out = [("main", "general", k, (cfg.get("main", "general", k, "") or "").strip()) for k in ("company", "customer", "customer_short")]
+    out.append(("smtp", "smtp", "sender_name", (cfg.get("smtp", "smtp", "sender_name", "") or "").strip()))
+    return out
+
+
 def push(app, names=None):
     """Copy each server's logo (its own, else the default) to it and point its [general] logo at it. Returns [{'server','ok','detail'}]."""
     results = []
@@ -319,6 +327,12 @@ def push(app, names=None):
             r = app.runner.run(_ssh_base(sv, True) + [src, "%s:%s" % (target, remote)], timeout=120)
         if r.ok:
             r = app.runner.run(_ssh_base(sv) + [target, "chmod 640 %s && vitals config set main general logo %s" % (remote, remote)], timeout=60)
-        results.append({"server": sv.name, "ok": bool(r.ok), "detail": "sent" if r.ok else ((r.err or r.out or "failed").strip().splitlines() or ["failed"])[-1][:200]})
+        sent = "logo"
+        if r.ok:                                       # the same customer identity everywhere: names on reports, e-mail sender and subject
+            sets = ["vitals config set %s %s %s %s" % (f, sec, k, shlex.quote(v)) for f, sec, k, v in identity(app) if v]
+            if sets:
+                r = app.runner.run(_ssh_base(sv) + [target, " && ".join(sets) + " && (systemctl try-restart lshme-watch >/dev/null 2>&1 || true)"], timeout=90)
+                sent = "logo, customer name and e-mail sender"
+        results.append({"server": sv.name, "ok": bool(r.ok), "detail": "sent: " + sent if r.ok else ((r.err or r.out or "failed").strip().splitlines() or ["failed"])[-1][:200]})
     app.audit("logo-push", servers=",".join(x["server"] for x in results), ok=sum(1 for x in results if x["ok"]))
     return results

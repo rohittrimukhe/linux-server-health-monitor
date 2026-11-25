@@ -139,9 +139,12 @@ def run(ctx, res):
         res.add("WARNING", "FIREWALL_INACTIVE", "firewall", "No active host firewall (%s)" % fw["tool"],
                 recommendation="Enable firewalld/nftables with a minimal rule set.")
     prl = sshd.get("permitrootlogin", "").lower()
-    if prl == "yes" and not ctx.cfg.getbool("main", "security", "permit_root_login_allowed", False):
-        res.add("WARNING", "SSH_ROOT_LOGIN", "sshd", "SSH allows direct root login with password (PermitRootLogin yes)",
-                recommendation="Set PermitRootLogin prohibit-password or no and use named accounts with sudo.")
+    mode = (ctx.cfg.get("main", "security", "root_login_check", "advice") or "advice").strip().lower()    # advice | warning | off
+    if prl == "yes" and mode != "off" and not ctx.cfg.getbool("main", "security", "permit_root_login_allowed", False):
+        res.add("WARNING" if mode == "warning" else "INFO", "SSH_ROOT_LOGIN", "sshd",
+                "SSH allows direct root login with password (PermitRootLogin yes)" + ("" if mode == "warning" else " - recommendation, not counted in the score"),
+                recommendation="Set PermitRootLogin prohibit-password or no and use named accounts with sudo. "
+                               "(Counted in the score only with [security] root_login_check = warning.)")
     if sshd.get("passwordauthentication", "").lower() == "yes" and not ctx.cfg.getbool("main", "security", "password_authentication_allowed", True):
         res.add("WARNING", "SSH_PASSWORD_AUTH", "sshd", "SSH password authentication is enabled",
                 recommendation="Prefer key-based authentication.")

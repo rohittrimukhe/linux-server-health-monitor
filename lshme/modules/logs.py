@@ -9,7 +9,7 @@ import re
 import time
 from collections import Counter
 
-from lshme.core.util import parse_log_time
+from lshme.core.util import fmt_duration, parse_log_time
 
 NAME = "logs"
 TITLE = "Logs & Events"
@@ -125,10 +125,15 @@ def run(ctx, res):
     counts = Counter()
     samples = {}
     ips = Counter()
+    last_seen = {}
+    now = time.time()
     for line in lines + app_lines:
         for cat, sev, rx, desc, rec, mn in COMPILED + custom:
             if rx.search(line):
                 counts[cat] += 1
+                ts = parse_log_time(line, now)
+                if ts and ts <= now + 300 and ts > last_seen.get(cat, 0):
+                    last_seen[cat] = ts
                 samples.setdefault(cat, [])
                 if len(samples[cat]) < 5:
                     samples[cat].append(line[:400])
@@ -140,6 +145,7 @@ def run(ctx, res):
     ctx.shared["log_counts"] = dict(counts)
 
     ssh_warn, ssh_crit = ctx.t("logs", "ssh_fail_warning", 20), ctx.t("logs", "ssh_fail_critical", 200)
+    quiet = ctx.t("logs", "quiet_hours", 2)          # a critical log error with nothing new for this many hours counts as a warning
     rows = []
     for cat, sev, rx, desc, rec, mn in COMPILED + custom:
         n = counts.get(cat, 0)
@@ -160,8 +166,16 @@ def run(ctx, res):
                     evidence=evidence, recommendation=rec)
             continue
         if n >= mn:
-            res.add(sev, "LOG_" + cat.upper(), cat, "%s: %d occurrence(s) in the last %d day(s)" % (desc, n, days),
-                    evidence=evidence, recommendation=rec)
+            msg = "%s: %d occurrence(s) in the last %d day(s)" % (desc, n, days)
+            seen = last_seen.get(cat)
+            if seen:
+                msg += ", last at %s" % time.strftime("%d %b %H:%M", time.localtime(seen))
+                res.metric("logs.last_seen:" + cat, seen)
+            if sev == "CRITICAL" and seen and now - seen > quiet * 3600:      # it stopped: still worth knowing, no longer an emergency
+                sev = "WARNING"
+                msg += " - none in the last %s, it looks resolved" % fmt_duration(now - seen)
+                rec = (rec + " " if rec else "") + "If the cause was fixed, this clears by itself once the old entries are older than %d day(s)." % days
+            res.add(sev, "LOG_" + cat.upper(), cat, msg, evidence=evidence, recommendation=rec)
     boots = reboots(ctx, days)
     if boots:
         res.add("INFO", "LOG_REBOOTS", "reboot", "%d reboot/shutdown event(s) in the last %d day(s)" % (len(boots), days),

@@ -259,8 +259,9 @@ def analyse(hist, run, cfg):
     if rec:
         res.table("Recurring issues (last %d days)" % window, ["Code", "Component", "Severity", "Runs affected", "Latest message"],
                   [list(r) for r in rec])
+        crit_now = set((f.code, f.component) for f in run.findings("CRITICAL"))
         for code, comp, sev, n, msg in rec:
-            if n >= 5 and sev == "CRITICAL":
+            if n >= 5 and sev == "CRITICAL" and (code, comp) in crit_now:     # once it is no longer critical, the repetition has stopped
                 res.add("WARNING", "RECURRING_CRITICAL", comp, "%s on %s has been critical in %d runs" % (code, comp, n),
                         recommendation="A repeating critical issue needs a root-cause fix, not repeated manual recovery.")
     score_hist = [(r["ts"], r["score"]) for r in reversed(hist.runs(host, window, 200))]

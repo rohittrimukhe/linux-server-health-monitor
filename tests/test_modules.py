@@ -137,6 +137,12 @@ class LogsTest(unittest.TestCase):
         r = FakeRunner({"journalctl": (0, "\n".join(lines)), "last": (0, "")}, dirs=["/run/systemd/system"])
         res = run_module(logs, r)
         c = codes(res)
+        self.assertEqual(c["LOG_IO_ERROR"], "WARNING")                    # old entries, nothing new for hours: it stopped
+        self.assertIn("it looks resolved", [f for f in res.findings if f.code == "LOG_IO_ERROR"][0].message)
+        recent = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 600))
+        lines = [recent + l[19:] if l.startswith("2026-11-12T01") else l for l in lines]
+        res = run_module(logs, FakeRunner({"journalctl": (0, chr(10).join(lines)), "last": (0, "")}, dirs=["/run/systemd/system"]))
+        c = codes(res)
         self.assertEqual(c["LOG_OOM"], "CRITICAL")
         self.assertEqual(c["LOG_IO_ERROR"], "CRITICAL")
         self.assertEqual(c["LOG_FS_ERROR"], "CRITICAL")
@@ -167,8 +173,11 @@ class SecurityTest(unittest.TestCase):
         c = codes(run_module(security, r, {"main": "[security]\nrequire_auditd = yes\npassword_authentication_allowed = no\n"}))
         self.assertEqual(c["SELINUX_MODE"], "WARNING")
         self.assertEqual(c["FIREWALL_INACTIVE"], "WARNING")
-        self.assertEqual(c["SSH_ROOT_LOGIN"], "WARNING")
+        self.assertEqual(c["SSH_ROOT_LOGIN"], "INFO")                                   # advice by default: shown, not in the score
         self.assertEqual(c["SSH_PASSWORD_AUTH"], "WARNING")
+        c2 = codes(run_module(security, r, {"main": "[security]" + chr(10) + "root_login_check = warning" + chr(10)}))
+        self.assertEqual(c2["SSH_ROOT_LOGIN"], "WARNING")
+        self.assertNotIn("SSH_ROOT_LOGIN", codes(run_module(security, r, {"main": "[security]" + chr(10) + "root_login_check = off" + chr(10)})))
         self.assertEqual(c["EXTRA_UID0"], "CRITICAL")
         self.assertEqual(c["EMPTY_PASSWORD"], "CRITICAL")
         self.assertEqual(c["AUDITD_INACTIVE"], "WARNING")

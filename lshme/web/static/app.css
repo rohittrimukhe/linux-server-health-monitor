@@ -715,3 +715,4 @@ main, footer { transition: none !important; }
   html.nav-auto .top nav a, html.nav-auto .top nav a span { transition: none; }
 }
 @media (prefers-reduced-motion: reduce) { html.nav-auto .top, html.nav-auto body::after { transition: none !important; } }
+.pri.p3 { color: var(--info-ink); background: var(--info-soft); }

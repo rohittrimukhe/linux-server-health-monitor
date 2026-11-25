@@ -96,6 +96,14 @@ class BrandingTest(unittest.TestCase):
         self.assertIn("-P 2222", scp[1])
         self.assertTrue(scp[1].endswith("oracle@10.0.0.3:/var/lib/lshme/branding/customer_logo.jpg"))    # its own JPEG
         self.assertTrue(any("vitals config set main general logo /var/lib/lshme/branding/customer_logo.jpg" in c for c in calls))
+        self.app.cfg.set("main", "general", "customer_short", "PDHHK")                      # the customer identity travels with the logo
+        self.app.cfg.set("smtp", "smtp", "sender_name", "PDHHK Oracle Health Reports")
+        self.app.runner = FakeRunner({"ssh": (0, ""), "scp": (0, "")})
+        res = branding.push(self.app, ["kvm2"])
+        self.assertIn("customer name", res[0]["detail"])
+        joined = " ".join(self.app.runner.calls)
+        self.assertIn("vitals config set main general customer_short PDHHK", joined)
+        self.assertIn("vitals config set smtp smtp sender_name 'PDHHK Oracle Health Reports'", joined)
         failing = FakeRunner({"ssh": (255, "", "Permission denied (publickey)"), "scp": (0, "")})
         self.app.runner = failing
         res = branding.push(self.app, ["db1"])
