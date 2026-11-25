@@ -120,6 +120,13 @@ def run(ctx, res):
     for u in failed:
         if u["unit"] in crit_units:
             continue  # already reported as CRITICAL_SERVICE_DOWN
+        if u["unit"].startswith("lshme-"):                         # our own job: say why it failed; the watcher clears it after this alert
+            from lshme.ops import selfrepair
+            why = selfrepair.cause(ctx.runner, u["unit"])
+            res.add("WARNING", "SERVICE_FAILED", u["unit"], "LRS Vitals job %s failed%s" % (u["unit"], (": " + why) if why else ""),
+                    evidence=u["description"],
+                    recommendation="LRS Vitals clears the failed state itself after this alert; fix the reason above. 'vitals repair' checks everything.")
+            continue
         res.add("WARNING", "SERVICE_FAILED", u["unit"], "Service %s is in failed state" % u["unit"],
                 evidence=u["description"],
                 recommendation="Inspect 'systemctl status %s'; fix or reset-failed if obsolete." % u["unit"])

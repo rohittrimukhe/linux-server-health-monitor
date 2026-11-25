@@ -63,6 +63,56 @@ def size_to_bytes(text):
     return float(m.group(1)) * mult
 
 
+def cause_text(vm, cpu=True):
+    """Short reason in the alert: host cores, QEMU overhead, disk and network rates."""
+    bits = []
+    if cpu and vm.get("host_cpu_cores") is not None:
+        bits.append("host CPU for this VM %.1f cores" % vm["host_cpu_cores"])
+        if vm.get("emulation_cpu_cores"):
+            bits.append("of which disk/network emulation %.1f" % vm["emulation_cpu_cores"])
+    io = (vm.get("disk_read_bps") or 0) + (vm.get("disk_write_bps") or 0)
+    if io >= 1024 * 1024:
+        bits.append("disk %s read, %s write per second" % (fmt_bytes(vm.get("disk_read_bps") or 0), fmt_bytes(vm.get("disk_write_bps") or 0)))
+    net = (vm.get("net_rx_bps") or 0) + (vm.get("net_tx_bps") or 0)
+    if net >= 1024 * 1024:
+        bits.append("network %s in, %s out per second" % (fmt_bytes(vm.get("net_rx_bps") or 0), fmt_bytes(vm.get("net_tx_bps") or 0)))
+    return (" (" + "; ".join(bits) + ")") if bits else ""
+
+
+def inside_vm(ctx, name):
+    """When the VM runs LRS Vitals itself and reports to this central server: its own CPU, I/O wait and busiest programs."""
+    try:
+        from lshme.ops import dashboard
+        runs, _ = dashboard.load_results(ctx.paths)
+    except Exception:
+        return ""
+    n = name.lower()
+    for r in runs:
+        names = set(x.lower() for x in (r.meta.get("fleet_name", ""), r.host, (r.host or "").split(".")[0]) if x)
+        if n not in names and n.split(".")[0] not in names:
+            continue
+        cm = r.module("cpu_memory")
+        if not cm:
+            return ""
+        u = (cm.data or {}).get("usage") or {}
+        top = []
+        for t in cm.tables:
+            if t.title == "Top processes by CPU":
+                top = ["%s %s%%" % (row[6], row[2]) for row in t.rows[:3] if len(row) >= 7]
+        age = int((time.time() - r.collected_at) / 60)
+        return "Inside the VM (its LRS Vitals, %d min ago): CPU %s%%, I/O wait %s%%, steal %s%%%s" % (
+            age, u.get("usage", "?"), u.get("iowait", "?"), u.get("steal", "?"), ("; busiest: " + ", ".join(top)) if top else "")
+    return ""
+
+
+def cpu_advice(vm, inside):
+    if inside:
+        return "Busiest programs inside the VM are listed above: tune or reschedule them, or give the VM more vCPU if this is its normal load."
+    if (vm.get("emulation_cpu_cores") or 0) >= 1.0:
+        return "Much of the load is disk/network emulation on the host: check the VM's I/O and use virtio devices with iothreads."
+    return "Add this VM as a server in servers.conf (install LRS Vitals inside it) to see which program uses the CPU; otherwise check it with top inside the VM."
+
+
 def run(ctx, res):
     if not ctx.has("virsh"):
         res.status = "SKIPPED"
@@ -108,9 +158,18 @@ def run(ctx, res):
         vcpus = to_int(b.get("vcpu.current") or info.get("CPU(s)"), 0) or 0
         mem_kib = to_int(b.get("balloon.current") or (info.get("Used memory", "0").split() or ["0"])[0], 0) or 0
         max_kib = to_int(b.get("balloon.maximum") or (info.get("Max memory", "0").split() or ["0"])[0], 0) or 0
-        cpu_pct = None
+        cpu_pct = host_cores = emu_cores = None
         if "cpu.time" in a and "cpu.time" in b and vcpus:
-            cpu_pct = round(100.0 * (int(b["cpu.time"]) - int(a["cpu.time"])) / (elapsed * 1e9 * vcpus), 1)
+            host_cores = max(0.0, (int(b["cpu.time"]) - int(a["cpu.time"])) / (elapsed * 1e9))     # everything QEMU uses for this VM
+            vt = [to_int(b.get("vcpu.%d.time" % n), None) - to_int(a.get("vcpu.%d.time" % n), 0) for n in range(vcpus)
+                  if b.get("vcpu.%d.time" % n) is not None and a.get("vcpu.%d.time" % n) is not None]
+            if vt:                                                     # the guest's own vCPUs: at most 100 %
+                guest = max(0.0, sum(vt) / (elapsed * 1e9))
+                cpu_pct = round(min(100.0, 100.0 * guest / vcpus), 1)
+                emu_cores = round(max(0.0, host_cores - guest), 2)      # disk / network emulation and other QEMU threads
+            else:
+                cpu_pct = round(100.0 * host_cores / vcpus, 1)
+            host_cores = round(host_cores, 2)
         mem_used_pct = None
         if b.get("balloon.available") and b.get("balloon.unused"):
             avail, unused = to_int(b["balloon.available"], 0), to_int(b["balloon.unused"], 0)
@@ -143,7 +202,7 @@ def run(ctx, res):
                 oldest = ts if oldest is None else min(oldest, ts)
         autostart = info.get("Autostart", "") == "enable"
         vm = {"name": name, "state": state, "vcpus": vcpus, "memory": mem_kib * 1024, "max_memory": max_kib * 1024,
-              "cpu_percent": cpu_pct, "memory_used_percent": mem_used_pct, "autostart": autostart,
+              "cpu_percent": cpu_pct, "host_cpu_cores": host_cores, "emulation_cpu_cores": emu_cores, "memory_used_percent": mem_used_pct, "autostart": autostart,
               "persistent": info.get("Persistent", ""), "disks": disks, "interfaces": nics,
               "disk_read_bps": max(rd, 0), "disk_write_bps": max(wr, 0), "net_rx_bps": max(rx, 0), "net_tx_bps": max(tx, 0),
               "snapshots": len(snaps), "oldest_snapshot_days": round((time.time() - oldest) / 86400, 1) if oldest else None,
@@ -176,7 +235,14 @@ def run(ctx, res):
             res.add("WARNING", "VM_AUTOSTART_DOWN", name, "VM %s is marked autostart but is shut off" % name,
                     recommendation="Confirm whether the VM should be running.")
         if cpu_pct is not None and cpu_pct >= ctx.t("kvm", "vm_cpu_warning", 90):
-            res.add("WARNING", "VM_CPU_HIGH", name, "VM %s CPU at %.0f%% of its %d vCPU" % (name, cpu_pct, vcpus))
+            res.add("WARNING", "VM_CPU_HIGH", name, "VM %s: its %d vCPU are %.0f%% busy%s" % (name, vcpus, cpu_pct, cause_text(vm)),
+                    evidence=inside_vm(ctx, name),
+                    recommendation=cpu_advice(vm, inside_vm(ctx, name)))
+        if emu_cores is not None and emu_cores >= max(1.0, 0.5 * vcpus):
+            res.add("WARNING", "VM_EMULATION_HIGH", name, "VM %s: QEMU uses %.1f host CPU cores besides its %d vCPU for disk and network work%s" % (
+                name, emu_cores, vcpus, cause_text(vm, cpu=False)),
+                    recommendation="This is I/O handled by emulated devices. Use virtio disks and network cards, give busy disks an I/O thread "
+                                   "(iothreads), and look inside the VM for the program doing the I/O.")
         if vm["oldest_snapshot_days"] is not None and vm["oldest_snapshot_days"] >= snap_age:
             res.add("WARNING", "VM_OLD_SNAPSHOT", name, "VM %s has a snapshot %.0f days old (%d snapshots)" % (
                 name, vm["oldest_snapshot_days"], len(snaps)),

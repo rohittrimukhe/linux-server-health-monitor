@@ -547,6 +547,33 @@ class WebApp(object):
                 "pools": [{"name": p.get("name"), "pct": p.get("used_percent"), "free": p.get("available"), "state": p.get("state")} for p in kd.get("pools", [])]}
         return jr(out)
 
+    def api_repair(self, req, sess):
+        """Check and repair LRS Vitals itself on this server or, from the central server, on a member over SSH. Administrators only."""
+        from lshme.ops import fleet, livefleet, selfrepair
+        if req.method != "POST":
+            raise ValueError("use POST")
+        d = req.json()
+        name = str(d.get("server", "_local"))[:120]
+        if name in ("", "_local"):
+            steps = selfrepair.repair(self.app, fix=not d.get("check"))
+            self.audit("web-repair", sess, server="this server")
+            return jr({"server": "this server", "steps": steps, "ok": all(s["ok"] for s in steps)})
+        members = dict((s.name, s) for s in fleet.servers(self.app.cfg))
+        if name not in members:
+            return err("not found", 404)
+        lf = self.livefleet()
+        r = self.app.runner.run(livefleet.ssh_command(members[name], "vitals repair --json" + (" --check" if d.get("check") else ""), lf.sock_dir()), timeout=180)
+        self.audit("web-repair", sess, server=name)
+        text = r.out or ""
+        if "{" not in text:
+            msg = (r.err or text or "no answer").strip().splitlines()[-1][:300]
+            if livefleet.outdated(msg) or "invalid choice: 'repair'" in msg:
+                msg = "Its LRS Vitals is older and has no repair yet: upgrade it first (Copy upgrade command on its card)."
+            return err("%s: %s" % (name, msg), 502)
+        res = json.loads(text[text.index("{"):])
+        res["server"] = name
+        return jr(res)
+
     def api_exclusions(self, req, sess):
         """Open findings with a one-click Exclude, and the exclusion rules with Un-exclude. Writes exclusions.conf like 'vitals exclude add'."""
         import re as _re

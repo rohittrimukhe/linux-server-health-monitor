@@ -486,7 +486,7 @@ def read_events(paths, limit=800):
     return out
 
 
-def deliver(app, subject, body, status, to=None):
+def deliver(app, subject, body, status, to=None, alerts=None, recovered=None):
     """Email + syslog + webhook. Each channel is optional and failures never stop the watcher."""
     results = {}
     log = logs.get()
@@ -508,7 +508,19 @@ def deliver(app, subject, body, status, to=None):
         ms = mailer.MailSettings(cfg)
         to = to or as_list(setting(cfg, "alert_to")) or None
         if (ms.host or ms.method == "sendmail") and (to or ms.to or ms.critical_to):
-            msg, rcpts, _, _ = mailer.build_message(ms, subject, body, None, [], status, to)
+            html = None
+            if alerts is not None or recovered is not None:          # the designed HTML version; the plain text stays for old mail clients
+                try:
+                    from lshme.reports import alertmail, mailbody
+                    from lshme import BRAND_LOGO
+                    host = subject.split("] ", 1)[-1].split(":", 1)[0]
+                    html = alertmail.build(host, alerts or [], recovered or [], status, mailbody.dashboard_url(cfg, host), BRAND_LOGO,
+                                           cfg.get("main", "general", "logo", ""))
+                except Exception:
+                    log.exception("HTML alert e-mail failed; sending plain text")
+            if ms.short:
+                subject = subject.replace("[LSHME ALERT]", "[%s ALERT]" % ms.short, 1)
+            msg, rcpts, _, _ = mailer.build_message(ms, subject, body, html, [], status, to)
             ms.retries = min(ms.retries, 2)
             results["email"] = mailer.send(ms, msg, rcpts, app.paths.log_dir)["ok"]
         else:
@@ -658,9 +670,15 @@ class Watcher(object):
                 p["alerted"], p["last_alert"] = None, 0
         for to, grp_alerts, grp_recovered in alertrules.route(cfg.section("main", "alert_routes"), as_list(setting(cfg, "alert_to")), alerts, recovered, code_of):
             subject, body, status = format_alert(host, grp_alerts, grp_recovered)
-            result = deliver(self.app, subject, body, status, to)
+            result = deliver(self.app, subject, body, status, to, grp_alerts, grp_recovered)
             if delivery is None:
                 delivery = result
+        try:                                                     # our own failed jobs: cleared once their failure has been alerted
+            from lshme.ops import selfrepair
+            for unit in selfrepair.auto(self.app, self.state.get("problems", {}), self.state, now):
+                logs.get().info("self-repair: cleared failed state of %s", unit)
+        except Exception:
+            logs.get().exception("self-repair failed")
         if as_bool(setting(cfg, "alert_digest"), True) and alertrules.digest_due(setting(cfg, "alert_digest_time"), now, self.state.get("digest_day")):
             self.state["digest_day"] = time.strftime("%Y-%m-%d", time.localtime(now))
             d = alertrules.digest(host, read_events(self.app.paths), now)

@@ -27,6 +27,11 @@ def outdated(message):
     return "invalid choice: 'pulse'" in m or "invalid choice: \'pulse\'" in m or ("unknown" in m and "pulse" in m)
 
 
+def ssh_command(sv, remote, sock_dir=None):
+    """The fixed SSH command line for one member server; 'remote' is one of our own fixed commands, never text from a request."""
+    return ssh_pulse_command(sv, sock_dir)[:-1] + [remote]
+
+
 def ssh_pulse_command(sv, sock_dir=None):
     """The fixed command line that asks one server for its pulse. No part of it comes from a web request; the host, port and user come from servers.conf."""
     target = "%s@%s" % (sv.user, sv.host) if sv.user else sv.host

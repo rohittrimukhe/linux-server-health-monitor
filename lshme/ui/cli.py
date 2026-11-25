@@ -224,12 +224,14 @@ def build_parser():
     e.add_argument("--output", help="file path (default stdout)")
     e.add_argument("--modules")
 
-    from lshme.ui import archivecmd, logocmd, rawcmd, sancmd, templatecmd, updatecmd
+    from lshme.ui import archivecmd, estatecmd, logocmd, rawcmd, repaircmd, sancmd, templatecmd, updatecmd
     archivecmd.add_parser(sub)
     rawcmd.add_parser(sub)
     logocmd.add_parser(sub)
     sancmd.add_parser(sub)
     updatecmd.add_parser(sub)
+    repaircmd.add_parser(sub)
+    estatecmd.add_parser(sub)
     templatecmd.add_parser(sub)
 
     rp = sub.add_parser("report", help="re-render reports from a saved JSON run")
@@ -852,6 +854,12 @@ def dispatch(app, cmd, args):
     elif cmd == "update":
         from lshme.ui import updatecmd
         return updatecmd.run(app, args)
+    elif cmd == "repair":
+        from lshme.ui import repaircmd
+        return repaircmd.run(app, args)
+    elif cmd == "estate":
+        from lshme.ui import estatecmd
+        return estatecmd.run(app, args)
     elif cmd == "raw":
         from lshme.ui import rawcmd
         return rawcmd.run(app, args)

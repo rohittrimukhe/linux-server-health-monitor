@@ -97,6 +97,16 @@
         clear(el);
     }
     var UPGRADE_CMD = "curl -fsSL https://raw.githubusercontent.com/rohittrimukhe/linux-server-health-monitor/main/tools/upgrade_from_github.sh -o /tmp/upgrade.sh && bash /tmp/upgrade.sh";
+    function runRepair(server, label) {
+        toast("Checking and repairing LRS Vitals on " + label + "...", "");
+        api("POST", "/api/repair", { server: server }).then(function (r) {
+            modal("Repair: " + label, h("div", { class: "stack" },
+                h("p", { class: r.ok ? "okline" : "err", text: r.ok ? "Everything is working." : "Some items still need attention:" }),
+                table(["Step", "Result", "Detail"], r.steps.map(function (st) {
+                    return [h("b", { text: st.step }), badge(st.fixed ? "FIXED" : st.ok ? "OK" : "CRITICAL"), st.detail];
+                }))));
+        }).catch(fail);
+    }
     function copyText(text, done) {
         function fallback() { var t = h("textarea", { "aria-hidden": "true" }); t.value = text; t.style.position = "fixed"; t.style.opacity = "0"; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); toast(done, "good"); } catch (e) { toast(text, ""); } document.body.removeChild(t); }
         if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(function () { toast(done, "good"); }, fallback); else fallback();
@@ -691,7 +701,9 @@
             wrap.appendChild(card(d.name, badge(st === "OUTDATED" ? "UPGRADE" : st),
                 h("div", { class: "row" }, C ? ring(C.score || 0, statusLvl(C.status), String(C.score === null ? "-" : C.score), true) : null,
                     h("div", { class: "facts" }, facts.map(function (f) { return h("div", null, h("span", { class: "muted small", text: f[0] }), h("b", { text: String(f[1]) })); }))),
-                L.error ? h("p", { class: st === "OUTDATED" ? "warnline" : "err", text: L.error }) : null));
+                L.error ? h("p", { class: st === "OUTDATED" ? "warnline" : "err", text: L.error }) : null,
+                S.me.role === "admin" && st !== "UNREACHABLE" ? h("div", { class: "row" }, h("button", { type: "button", text: "Repair LRS Vitals", title: "Checks the program, folders, failed jobs (with the reason), watcher, web service and timers, and fixes what it can",
+                    onclick: function () { runRepair(key, d.name); } })) : null));
             if (L.ok) {
                 var g = h("div", { class: "grid g4" });
                 [["CPU", L.cpu, 75, 90], ["Memory", L.mem, 80, 90], ["Swap", L.swap, 50, 80]].forEach(function (x) {
@@ -1380,6 +1392,8 @@
     function drawOperations(box) {
         var wrap = h("div", { class: "stack" });
         box.appendChild(updateCard());
+        if (S.me.role === "admin") box.appendChild(card("Self-repair", null, h("p", { class: "muted", text: "Checks LRS Vitals itself on this server - program, folders, failed jobs with their reason, watcher, web service and timers - and fixes what it can. Each server's own page has the same button; from this central server it repairs members over SSH." }),
+            h("div", { class: "row" }, h("button", { class: "primary", type: "button", text: "Repair this server", onclick: function () { runRepair("_local", "this server"); } }))));
         box.appendChild(wrap);
         function act(name, ok) { return function () { api("POST", "/api/action", { name: name }).then(ok || function (r) { toast("Done: " + JSON.stringify(r), "good"); load(); }).catch(fail); }; }
         function load() {

@@ -129,8 +129,18 @@ class App(object):
                 document = reports.build_document(run, self.cfg, self.paths, report_type)
             if sched and write_reports:
                 result["files"] += self.schedule_extras(sched, result["notes"])
-            if email or force_email:
-                main_files = [f for f in result["files"] if "_executive" not in os.path.basename(f)]
+            estate = getattr(sched, "estate", "no") if sched else "no"
+            if estate in ("yes", "only", "true", "on") and (email or force_email):        # one e-mail for every server and the SAN storage
+                try:
+                    from lshme.reports import consolidated
+                    edoc, edir, efiles, enotes = consolidated.generate(self, report_type if report_type in ("daily", "weekly", "monthly") else "weekly")
+                    result["files"] += efiles
+                    result["email_estate"] = consolidated.send(self, edoc, efiles, to or None, force_email)
+                except Exception as e:
+                    self.log.exception("estate report failed")
+                    result["notes"].append("Estate report failed: %s" % e)
+            if (email or force_email) and estate != "only":
+                main_files = [f for f in result["files"] if "_executive" not in os.path.basename(f) and "estate_" not in os.path.basename(f)]
                 result["email"] = self.email_report(run, document, main_files, force_email, to, cc, policy)
                 if sched:                                                    # other people, other reports
                     pick = (("summary", sched.to_summary, lambda n: "_executive" in n),
