@@ -819,35 +819,45 @@ class WebApp(object):
         if items and time.time() - self.hw_at >= 60 and not self.hw_busy:
             self.hw_busy = True
 
-            def refresh():
-                fresh = {}
+            def summary(a, d, t0):
+                temps = [x["celsius"] for x in d["temps"] if x.get("celsius") is not None]
+                bad = lambda xs: [x["name"] for x in xs if x.get("status") in ("critical", "warning")]
+                return {"name": a["name"], "make": d["make"], "model": d["model"], "serial": d["serial"], "server": a.get("server", ""),
+                        "address": a["address"], "status": d["status"], "power": d["power"], "watts": d["power_watts"], "temp_max": max(temps) if temps else None,
+                        "cpus": d["cpus"], "memory_gb": d["memory_gb"], "bmc_firmware": d["bmc_firmware"], "bios": d["bios"],
+                        "fans": len(d["fans"]), "fans_bad": bad(d["fans"]), "psus": len(d["psus"]), "psus_bad": bad(d["psus"]),
+                        "drives": len(d["drives"]), "drives_bad": bad(d["drives"]), "temps_bad": bad(d["temps"]),
+                        "memory_faults": len(d["memory_faults"]), "cpu_faults": len(d["cpu_faults"]),
+                        "events": [e for e in d["events"][:5]], "ok": True, "took": round(time.time() - t0, 1), "fetched": time.time()}
+
+            def one(a):
+                """Sensors first, so the tile fills within seconds; the inventory (CPUs, memory modules) after it, every 15 minutes."""
+                t0, name = time.time(), a["name"]
                 try:
-                    for a in items:
-                        t0 = time.time()
-                        try:
-                            inv = self.hw_inv.get(a["name"])
-                            want_inv = not inv or time.time() - inv[0] > 900
-                            d = bmc.collect(a, detail=want_inv)
-                            if want_inv:
-                                self.hw_inv[a["name"]] = (time.time(), {k: d.get(k) for k in ("processors", "dimms", "system")})
-                            else:
-                                d.update(inv[1])
-                            d["fetched"] = time.time()
-                            self.hw_full[a["name"]] = d
-                            temps = [x["celsius"] for x in d["temps"] if x.get("celsius") is not None]
-                            hot = max(temps) if temps else None
-                            bad = lambda xs: [x["name"] for x in xs if x.get("status") in ("critical", "warning")]
-                            fresh[a["name"]] = {"name": a["name"], "make": d["make"], "model": d["model"], "serial": d["serial"], "server": a.get("server", ""),
-                                                "address": a["address"], "status": d["status"], "power": d["power"], "watts": d["power_watts"], "temp_max": hot,
-                                                "cpus": d["cpus"], "memory_gb": d["memory_gb"], "bmc_firmware": d["bmc_firmware"], "bios": d["bios"],
-                                                "fans": len(d["fans"]), "fans_bad": bad(d["fans"]), "psus": len(d["psus"]), "psus_bad": bad(d["psus"]),
-                                                "drives": len(d["drives"]), "drives_bad": bad(d["drives"]), "temps_bad": bad(d["temps"]),
-                                                "memory_faults": len(d["memory_faults"]), "cpu_faults": len(d["cpu_faults"]),
-                                                "events": [e for e in d["events"][:5]], "ok": True, "took": round(time.time() - t0, 1), "fetched": time.time()}
-                        except Exception as e:
-                            fresh[a["name"]] = {"name": a["name"], "address": a["address"], "server": a.get("server", ""), "ok": False,
-                                                "status": "unreachable", "error": str(e)[:200], "fetched": time.time()}
-                    self.hw = fresh
+                    d = bmc.collect(a)
+                    inv = self.hw_inv.get(name)
+                    if inv:
+                        d.update(inv[1])
+                    d["fetched"] = time.time()
+                    self.hw_full[name] = d
+                    self.hw[name] = summary(a, d, t0)
+                    if not inv or time.time() - inv[0] > 900:
+                        full = bmc.collect(a, detail=True)
+                        self.hw_inv[name] = (time.time(), {k: full.get(k) for k in ("processors", "dimms", "system")})
+                        full["fetched"] = time.time()
+                        self.hw_full[name] = full
+                except Exception as e:
+                    if name not in self.hw_full or not self.hw.get(name, {}).get("ok"):
+                        self.hw[name] = {"name": name, "address": a["address"], "server": a.get("server", ""), "ok": False,
+                                         "status": "unreachable", "error": str(e)[:200], "fetched": time.time()}
+
+            def refresh():
+                try:
+                    workers = [threading.Thread(target=one, args=(a,), daemon=True) for a in items]
+                    for w in workers:
+                        w.start()
+                    for w in workers:
+                        w.join(240)
                 finally:
                     self.hw_at, self.hw_busy = time.time(), False
             threading.Thread(target=refresh, daemon=True).start()

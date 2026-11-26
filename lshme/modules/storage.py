@@ -10,8 +10,26 @@ NAME = "storage"
 TITLE = "Storage & Filesystems"
 WEIGHT = 20
 
-RO_EXPECTED_FS = {"iso9660", "squashfs", "udf"}
-RO_EXPECTED_MOUNT_PREFIXES = ("/sys", "/proc", "/snap/", "/run/credentials")
+RO_EXPECTED_FS = {"iso9660", "squashfs", "udf", "erofs", "cramfs", "romfs"}
+RO_EXPECTED_MOUNT_PREFIXES = ("/sys", "/proc", "/snap/", "/run/credentials", "/var/lib/snapd/", "/opt/sentinelone/")
+
+
+def readonly_by_design(mp, fstype, device, proc_mounts, cfg=None):
+    """True when a read-only mount is meant to be read-only, not remounted read-only after I/O or filesystem errors:
+    a read-only filesystem type, a known agent / system path or one listed in [storage] readonly_ok, or a read-only bind
+    mount of a disk that is mounted read-write elsewhere (an error remount turns every mount of that disk read-only)."""
+    if fstype in RO_EXPECTED_FS or fstype.startswith("fuse.") or mp.startswith(RO_EXPECTED_MOUNT_PREFIXES):
+        return True
+    extra = []
+    if cfg is not None:
+        extra = [x.strip().rstrip("/") for x in (cfg.get("main", "storage", "readonly_ok", "") or "").split(",") if x.strip()]
+    if any(mp == x or mp.startswith(x + "/") for x in extra):
+        return True
+    for line in (proc_mounts or "").splitlines():
+        f = line.split()
+        if len(f) >= 4 and f[0] == device and f[1].replace("\\040", " ") != mp and "rw" in f[3].split(","):
+            return True
+    return False
 
 
 def mount_table(ctx):
@@ -283,6 +301,7 @@ def overrides(ctx):
 
 
 def run(ctx, res):
+    proc_mounts = ctx.read("/proc/mounts")
     mounts = mount_table(ctx)
     fs_list, df_res = filesystems(ctx, mounts)
     if not fs_list:
@@ -321,7 +340,7 @@ def run(ctx, res):
         sev = severity_for(p, w, c)
         status = sev or "OK"
         ro = "ro" in fs["options"]
-        if ro and fs["fstype"] not in RO_EXPECTED_FS and not fs["mountpoint"].startswith(RO_EXPECTED_MOUNT_PREFIXES):
+        if ro and not readonly_by_design(fs["mountpoint"], fs["fstype"], fs["device"], proc_mounts, ctx.cfg):
             status = "READ-ONLY"
             res.add("CRITICAL", "FS_READ_ONLY", fs["mountpoint"],
                     "Filesystem %s is mounted read-only" % fs["mountpoint"],

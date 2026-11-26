@@ -118,3 +118,28 @@ class StorageTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReadOnlyByDesignTest(unittest.TestCase):
+    MOUNTS = "\n".join(["/dev/mapper/ol-root / xfs rw,relatime 0 0",
+                        "/dev/mapper/ol-root /opt/agent/rpm_mount xfs ro,relatime 0 0",
+                        "/dev/sdc1 /oracle xfs ro,relatime 0 0",
+                        "/dev/loop0 /mnt/iso iso9660 ro 0 0"])
+
+    def test_error_remount_still_counts(self):
+        self.assertFalse(storage.readonly_by_design("/oracle", "xfs", "/dev/sdc1", self.MOUNTS))
+
+    def test_bind_mount_of_a_read_write_disk_is_by_design(self):
+        self.assertTrue(storage.readonly_by_design("/opt/agent/rpm_mount", "xfs", "/dev/mapper/ol-root", self.MOUNTS))
+
+    def test_types_and_agent_paths(self):
+        self.assertTrue(storage.readonly_by_design("/mnt/iso", "iso9660", "/dev/loop0", self.MOUNTS))
+        self.assertTrue(storage.readonly_by_design("/opt/sentinelone/rpm_mount", "xfs", "/dev/sdz", ""))
+
+    def test_listed_in_settings(self):
+        class Cfg(object):
+            def get(self, *a):
+                return "/data/archive, /backup/ro"
+        self.assertTrue(storage.readonly_by_design("/data/archive", "xfs", "/dev/sdx", "", Cfg()))
+        self.assertTrue(storage.readonly_by_design("/data/archive/2025", "xfs", "/dev/sdx", "", Cfg()))
+        self.assertFalse(storage.readonly_by_design("/data/archived", "xfs", "/dev/sdx", "", Cfg()))

@@ -664,9 +664,10 @@
             api("GET", "/api/hardware").then(function (d) {
                 steady(box);
                 if (!d.items.length) return;
-                var bad = d.items.filter(function (x) { return x.status !== "ok"; }).length;
+                var bad = d.items.filter(function (x) { return x.status !== "ok" && x.status !== "waiting"; }).length;
+                var waiting = d.items.filter(function (x) { return x.status === "waiting"; }).length;
                 box.appendChild(card("Server hardware (iLO / iDRAC / XClarity / IPMI), live", h("span", { class: "muted", text: d.items.length + " controller" + (d.items.length === 1 ? "" : "s") + " - " +
-                    (bad ? bad + " need attention" : "all healthy") + " - read every minute" + (d.updated ? ", last " + new Date(d.updated * 1000).toLocaleTimeString() : "") }),
+                    (bad ? bad + " need attention" : waiting ? "reading now" : "all healthy") + " - read every minute" + (d.updated ? ", last " + new Date(d.updated * 1000).toLocaleTimeString() : "") }),
                     h("div", { class: "fleet hw-list" }, d.items.map(tile))));
                 var soon = d.items.some(function (x) { return x.status === "waiting"; });
                 S.hwTimer = setTimeout(function () { if (document.body.contains(box)) poll(); }, soon ? 8000 : 60000);

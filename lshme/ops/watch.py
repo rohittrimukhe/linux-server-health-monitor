@@ -192,7 +192,9 @@ def fast_probes(cfg, state, prober):
             except ValueError:
                 pass
     seen = set()
-    for line in _read("/proc/mounts").splitlines():
+    from lshme.modules.storage import readonly_by_design
+    proc_mounts = _read("/proc/mounts")
+    for line in proc_mounts.splitlines():
         f = line.split()
         if len(f) < 4:
             continue
@@ -221,7 +223,7 @@ def fast_probes(cfg, state, prober):
             ipct = 100.0 * (st.f_files - st.f_ffree) / st.f_files
             check("inode:" + mp, ipct, t("inode", "warning", 80), t("inode", "critical", 90), mp,
                   "Inode usage on " + mp.replace("%", "%%") + " is %.0f%%")
-        if "ro" in opts and fstype not in ("iso9660", "squashfs", "udf"):
+        if "ro" in opts and not readonly_by_design(mp, fstype, f[0], proc_mounts, cfg):
             out["ro:" + mp] = ("CRITICAL", mp, "Filesystem %s is mounted read-only" % mp,
                                "Check dmesg/journal for I/O or filesystem errors.")
     return out
