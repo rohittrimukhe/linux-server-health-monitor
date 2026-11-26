@@ -77,7 +77,7 @@ class Setup(object):
         self.watch = True
         self.web_on = False
         self.first_report = True
-        self.steps = [("Welcome", self.welcome), ("System scan", self.scan), ("Organisation", self.organisation), ("Email", self.email),
+        self.steps = [("Welcome", self.welcome), ("Server role", self.role), ("System scan", self.scan), ("Organisation", self.organisation), ("Email", self.email),
                       ("Alert levels", self.levels), ("Services to watch", self.services), ("Databases", self.databases),
                       ("Schedules", self.schedules), ("Real-time alerts", self.realtime), ("Web interface", self.web_step),
                       ("Review and finish", self.finish)]
@@ -131,6 +131,32 @@ class Setup(object):
                 "Only what is present on this server is checked and reported. Every page can be skipped, and everything can be changed later under Configuration."]
         ans = info_page(self.ctx, "Setup %d of %d - Welcome" % (n, total), text, buttons=("Leave", "Start"))
         return "next" if ans == "Start" else "quit"
+
+    def role(self, n, total):
+        from lshme.ops import role as roles
+        cur = roles.get(self.app.cfg)
+        if cur == "member" and not self.rerun:
+            return "skip"                                       # installed from the central server: always a member
+        text = ["How will this server be used?", "",
+                "Central server: the web dashboard, all servers (members), SAN storage, server hardware, the dependency map and "
+                "the estate report. Install it once, on the server that watches the others.", "",
+                "Standalone server: only this server, on its own: its own web dashboard, reports, alerts and history, and the "
+                "SAN storage and hardware it uses. No other servers are added or watched.", "",
+                "Member server: checks itself, writes its own reports, sends its own alerts; the central server collects its "
+                "results. Only the files a member needs are kept (no dashboard, no deploy tools).", "",
+                "Servers added from the central server's dashboard (Add > Linux server) are members automatically.",
+                "" if not cur else "Now: %s server." % cur]
+        pick = {"Member": "member", "Standalone": "standalone", "Central": "central"}
+        ans = info_page(self.ctx, "Setup %d of %d - Server role" % (n, total), text, buttons=("Back", "Member", "Standalone", "Central"),
+                        default={"member": 1, "standalone": 2}.get(cur, 3))
+        if ans == "Back":
+            return "back"
+        if ans in pick:
+            roles.apply(self.app, pick[ans])
+            if ans == "Member":
+                self.web_on = False
+            return "next"
+        return "quit"
 
     def scan(self, n, total):
         ctx, ui = self.ctx, self.ui
@@ -242,6 +268,9 @@ class Setup(object):
         return self.after_form(ctx.last_exit)
 
     def web_step(self, n, total):
+        from lshme.ops import role as roles
+        if roles.is_member(self.app.cfg):
+            return "skip"                                       # the dashboard runs on the central server
         from lshme.web import auth
         ctx, app = self.ctx, self.app
         users = auth.Users(app)

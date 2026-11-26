@@ -62,6 +62,9 @@ def run(app, args):
             for e in d["events"][:10]:
                 C.out("  event %s  %-8s %s" % (e["time"], e["severity"], e["text"]))
         return 0 if res["ok"] else 1
+    from lshme.ops import role as roles
+    if roles.is_member(app.cfg):
+        raise ValueError("this is a member server: server hardware is added on the central server (Servers > Add), so it is checked once for the whole estate")
     interactive = sys.stdin.isatty()
     name = args.name or (C.ask("Short name for this hardware (e.g. kvm1-xcc)") if interactive else "")
     t = args.type

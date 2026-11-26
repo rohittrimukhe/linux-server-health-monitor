@@ -550,6 +550,7 @@
                 h("span", { class: "strip-item live" }, h("i", { class: "live-dot" }), "LIVE MONITORING"), clock,
                 sanN ? h("span", { class: "pill tone-ok", text: "SAN checked " + (F2.san_updated ? ago(F2.san_updated) : "soon") }) : null,
                 h("span", { class: "strip-spacer" }),
+                S.me.role === "admin" ? h("button", { class: "small primary strip-add", type: "button", text: "+ Add", title: "Add a Linux server, SAN storage or server hardware", onclick: addWizard }) : null,
                 h("a", { class: "btn small strip-wall", href: "#/wall", title: "Full-screen live status for a TV or NOC screen", text: "Wall view" }),
                 h("span", { class: "strip-item muted", text: (S.me.branding && S.me.branding.customer ? S.me.branding.customer + "  -  " : "") + S.me.user + " (" + S.me.role + ")" })));
             bannerBox.appendChild(card(null, null, inner));
@@ -1206,6 +1207,75 @@
             } }), h("button", { type: "button", text: "Cancel", onclick: function () { close(); } }))));
     }
 
+    /* ---------------------------------------------------------------- Add: one place to add anything that can be monitored */
+    function addWizard() {
+        if (S.me.role !== "admin") return toast("Only administrators can add servers and storage", "bad");
+        var KINDS = [
+            ["linux", "server", "Linux server", "Oracle Linux, RHEL, Rocky, Alma, CentOS, SUSE, Ubuntu, Debian: connects over SSH, installs LRS Vitals there and starts monitoring it."],
+            ["san", "storage", "SAN storage", "Any make (Lenovo DE / NetApp, HPE, Dell, Pure, IBM, Huawei ...): controllers, drives, pools, volumes, I/O."],
+            ["bmc", "server", "Server hardware", "The management controller (iDRAC, iLO, XClarity, IMM, iRMC, CIMC, Supermicro, IPMI): power, fans, temperatures, drives, memory."]];
+        if (S.me.server_role && S.me.server_role !== "central") KINDS = KINDS.slice(1);   // other Linux servers are added on the central server only
+        var close = modal("Add", h("div", { class: "stack" },
+            h("p", { class: "muted", text: "What do you want to add?" }),
+            h("div", { class: "add-kinds" }, KINDS.map(function (k) {
+                return h("button", { type: "button", class: "add-kind", onclick: function () { close(); openKind(k[0]); } },
+                    h("span", { class: "sym-badge" }, sym(k[1])), h("b", { text: k[2] }), h("span", { class: "muted small", text: k[3] }));
+            })),
+            h("p", { class: "muted small", text: "Databases (Oracle, PostgreSQL, MySQL, SQL Server, MongoDB ...) and KVM are found automatically on each Linux server; VMs, SAN volumes and hardware are linked in the dependency map." })));
+        function openKind(k) {
+            if (k === "linux") return linuxForm();
+            var hook = k === "san" ? "addSan" : "addBmc";
+            if (S[hook] && location.hash.indexOf("#/fleet") === 0) return S[hook]();
+            location.hash = "#/fleet";
+            var tries = 0;
+            (function wait() { if (S[hook]) return S[hook](); if (++tries < 40) setTimeout(wait, 100); })();
+        }
+    }
+    function linuxForm() {
+        var name = h("input", { type: "text", placeholder: "name shown in LRS Vitals, e.g. oracledb-pri" });
+        var host = h("input", { type: "text", placeholder: "IP address or host name" });
+        var port = h("input", { type: "number", min: 1, max: 65535, value: 22 });
+        var user = h("input", { type: "text", value: "root", autocomplete: "off" });
+        var pass = h("input", { type: "password", autocomplete: "new-password", placeholder: "used once to add the key, never stored" });
+        var group = h("input", { type: "text", placeholder: "e.g. Oracle, KVM (optional)" });
+        var env = h("input", { type: "text", placeholder: "e.g. Production, DR, UAT (optional)" });
+        var inst = h("input", { type: "checkbox", checked: true });
+        var steps = h("ol", { class: "onboard-steps" });
+        var go = h("button", { class: "primary", type: "button", text: "Add and install" });
+        host.addEventListener("input", function () { if (!name.dataset.touched) name.value = host.value.trim(); });
+        name.addEventListener("input", function () { name.dataset.touched = "1"; });
+        var close = modal("Add a Linux server", h("div", { class: "stack" },
+            h("div", { class: "row" }, h("label", null, "IP address or host name ", host), h("label", null, "SSH port ", port)),
+            h("div", { class: "row" }, h("label", null, "Name ", name), h("label", null, "User ", user)),
+            h("label", null, "Password ", pass),
+            h("p", { class: "muted small", text: "The password is used for one login only, to add this central server's SSH key; it is not saved anywhere. Leave it empty if the key already works." }),
+            h("div", { class: "row" }, h("label", null, "Group ", group), h("label", null, "Environment ", env)),
+            h("label", { class: "check" }, inst, " Install LRS Vitals there (same version as this server) and start monitoring"),
+            steps,
+            h("div", { class: "row" }, go, h("button", { type: "button", text: "Close", onclick: function () { close(); } }))), true);
+        go.addEventListener("click", function () {
+            if (!host.value.trim()) return toast("Give the IP address or host name", "bad");
+            go.disabled = true; go.textContent = "Working...";
+            clear(steps);
+            api("POST", "/api/onboard", { name: name.value.trim(), host: host.value.trim(), port: +port.value, user: user.value.trim(), password: pass.value,
+                group: group.value.trim(), environment: env.value.trim(), install: inst.checked }).then(function (r) {
+                pass.value = "";
+                (function poll() {
+                    api("GET", "/api/onboard?id=" + r.id).then(function (j) {
+                        clear(steps);
+                        j.steps.forEach(function (s2) {
+                            steps.appendChild(h("li", { class: "os-" + s2.state }, h("i", { class: "dep-dot " + (s2.state === "ok" ? "ok" : s2.state === "failed" ? "crit" : "warn") }),
+                                h("b", { text: s2.step }), h("span", { class: "muted small", text: s2.state === "running" ? " ..." : " - " + s2.detail })));
+                        });
+                        if (!j.done) return setTimeout(poll, 1500);
+                        go.disabled = false; go.textContent = j.ok ? "Done" : "Try again";
+                        toast(j.ok ? r.name + " is added" + (inst.checked ? " and LRS Vitals is running there; its first health check is under way." : ".") : "Adding " + r.name + " stopped: see the failed step.", j.ok ? "good" : "bad");
+                    }).catch(function (e) { go.disabled = false; go.textContent = "Try again"; fail(e); });
+                })();
+            }).catch(function (e) { go.disabled = false; go.textContent = "Add and install"; fail(e); });
+        });
+    }
+
     /* Server hardware through its BMC: add any make (iDRAC, iLO, XClarity, IMM, iRMC, CIMC, Supermicro, Redfish, IPMI), test, remove */
     function bmcCard() {
         var box = card("Server hardware", h("span", { class: "muted", text: "iDRAC, iLO, XClarity, IPMI ... read-only" }), h("p", { class: "muted", text: "Loading..." }));
@@ -1228,6 +1298,7 @@
                         } }))];
             })) : h("p", { class: "muted", text: "No server hardware added. Add each server's management controller (iDRAC, iLO, XClarity, IMM ...) to check power supplies, fans, temperatures, drives, memory and its event log, and to see which VMs and databases a hardware fault would take down." }));
             box.appendChild(h("div", { class: "row" }, h("button", { class: "primary", type: "button", text: "Add server hardware", onclick: function () { form(d, null); } })));
+            S.addBmc = function () { form(d, null); };
         }
         function form(d, a) {
             var type = h("select", { "aria-label": "Make" }, d.types.map(function (t) { return h("option", { value: t.type, text: t.label, selected: a ? a.type === t.type : t.type === "redfish" }); }));
@@ -1289,6 +1360,7 @@
                         } }))];
             })) : h("p", { class: "muted", text: "No SAN storage added. Add one to check its controllers, drives, pools, volumes, hardware and I/O with every health check and alert on failures." }));
             box.appendChild(h("div", { class: "row" }, h("button", { class: "primary", type: "button", text: "Add SAN storage", onclick: function () { form(d, null); } })));
+            S.addSan = function () { form(d, null); };
         }
         function form(d, a) {
             var type = h("select", { "aria-label": "Make" }, d.types.map(function (t) { return h("option", { value: t.type, text: t.label, selected: a ? a.type === t.type : t.type === "santricity" }); }));
@@ -1367,7 +1439,8 @@
                 cardEl.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); location.hash = target; } });
                 grid.appendChild(cardEl);
             });
-            wrap.appendChild(card("All servers", btn, d.servers.length ? grid : h("p", { class: "muted", text: "No results yet." })));
+            var addBtn = S.me.role === "admin" ? h("button", { class: "primary", type: "button", text: "+ Add server, storage or hardware", onclick: addWizard }) : null;
+            wrap.appendChild(card("All servers", h("div", { class: "row" }, addBtn, btn), d.servers.length ? grid : h("p", { class: "muted", text: "No results yet." })));
             if (!d.configured.length) {
                 wrap.appendChild(card("Add more servers", null, h("div", { class: "stack" },
                     h("p", { text: "This server is listed automatically. To watch other servers from here:" }),

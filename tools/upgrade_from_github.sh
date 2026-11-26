@@ -65,6 +65,12 @@ for d in docs tools; do
 done
 for f in healthcheck CHANGELOG.md; do [ -f "$SRC/$f" ] && cp -a "$SRC/$f" "$APP/$f"; done
 chmod +x "$APP/healthcheck" 2>/dev/null || true
+ROLE="$(sed -n 's/^[[:space:]]*role[[:space:]]*=[[:space:]]*\([a-z]*\).*/\1/p' /etc/lshme/main.conf 2>/dev/null | head -1)"
+case "$ROLE" in                                   # keep only what this server's role uses
+  member) for d in lshme/web/static docs packaging tools/deploy_fleet.sh tools/demo_reports.py tools/release_check.sh; do rm -rf "$APP/$d"; done
+          echo "== member server: kept only what a member uses" ;;
+  standalone) rm -f "$APP/tools/deploy_fleet.sh"; echo "== standalone server: fleet tools not kept" ;;
+esac
 SHA="$(curl -fsSL -H 'User-Agent: lrs-vitals-updater' "https://api.github.com/repos/$REPO/commits/$REF" 2>/dev/null | grep -o '"sha": *"[0-9a-f]\{40\}"' | head -1 | grep -o '[0-9a-f]\{40\}')"   # compact or pretty JSON
 [ -n "$SHA" ] && echo "$SHA" > "$APP/.lrs_commit"          # the automatic update knows which version is installed
 command -v restorecon >/dev/null 2>&1 && restorecon -R "$APP" >/dev/null 2>&1 || true

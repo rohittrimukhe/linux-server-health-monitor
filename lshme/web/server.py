@@ -207,7 +207,7 @@ class WebApp(object):
         if req.method not in ("GET", "HEAD") and sess["role"] != "admin" and name != "password":
             self.audit("web-denied", sess, route=name)
             raise PermissionError("your account is read-only")
-        if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file", "branding", "branding/logo", "san", "bmc") and sess["role"] != "admin":
+        if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file", "branding", "branding/logo", "san", "bmc", "onboard") and sess["role"] != "admin":
             raise PermissionError("administrators only")
         return handler(req, sess)
 
@@ -244,7 +244,12 @@ class WebApp(object):
     def me_data(self, sess):
         import socket
         return {"user": sess["user"], "role": sess["role"], "csrf": sess["csrf"], "host": socket.gethostname(), "version": VERSION, "app": APP_NAME,
-                "tls": self.secure, "group": sess.get("group", ""), "branding": self.branding(sess.get("group", ""), public=True)}
+                "tls": self.secure, "group": sess.get("group", ""), "branding": self.branding(sess.get("group", ""), public=True),
+                "server_role": self.server_role()}
+
+    def server_role(self):
+        from lshme.ops import role as roles
+        return roles.get(self.app.cfg) or "central"
 
     def branding(self, group, public=False):
         """Customer name, colour and logo for a group ([branding:group] in servers.conf); without a group, the customer of this installation."""
@@ -666,6 +671,32 @@ class WebApp(object):
         if sess.get("group"):
             raise PermissionError("this account only sees its own servers and reports")
         return jr(topology.snapshot(self.app))
+
+    def api_onboard(self, req, sess):
+        """Add a Linux server and install LRS Vitals on it over SSH (password used once, never stored); GET ?id= follows the steps."""
+        import re as _re
+        from lshme.ops import onboard
+        if req.method != "POST":
+            st = onboard.status((req.query.get("id") or [""])[0])
+            return jr(st) if st else err("not found", 404)
+        from lshme.ops import role as roles
+        if not roles.has_fleet(self.app.cfg):
+            raise ValueError("this is a %s server: Linux servers are added on the central server (to make this one central: vitals role central)" % roles.get(self.app.cfg))
+        d = req.json()
+        name = _re.sub(r"[^\w.-]+", "-", str(d.get("name") or d.get("host") or "").strip())[:60].strip("-")
+        host = str(d.get("host", "")).strip()
+        if not name or not host or not _re.match(r"^[A-Za-z0-9.:\[\]-]+$", host):
+            raise ValueError("give the server's IP address or host name")
+        if ("server:" + name) in self.app.cfg.parsers["servers"].sections():
+            raise ValueError("%s is already in the fleet" % name)
+        user = str(d.get("user") or "root").strip()
+        if not _re.match(r"^[a-z_][a-z0-9_.-]*$", user):
+            raise ValueError("not a user name: %s" % user)
+        port = int(d.get("port") or 22)
+        job = onboard.start_job(self.app, name, host, port, user, str(d.get("password") or ""), str(d.get("group", ""))[:60],
+                                str(d.get("environment", ""))[:60], bool(d.get("install", True)))
+        self.audit("web-onboard", sess, server=name, host=host, user=user, install=bool(d.get("install", True)))
+        return jr({"id": job, "name": name})
 
     def api_bmc(self, req, sess):
         """Server hardware (BMC): list (never the password), add or change, test, remove. Administrators only."""

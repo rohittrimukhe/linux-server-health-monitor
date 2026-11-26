@@ -219,6 +219,13 @@ class Updater(object):
             os.chmod(os.path.join(self.app_dir, "healthcheck"), 0o755)
         except OSError:
             pass
+        try:                                                         # member / standalone keep only what they use
+            from lshme.ops import role as roles
+            r = roles.get(self.app.cfg)
+            if r:
+                roles.prune(self.app_dir, r)
+        except Exception:
+            pass
         if shutil.which("restorecon"):                              # SELinux labels like the RPM sets them
             self.run(["restorecon", "-R", self.app_dir], timeout=120)
 

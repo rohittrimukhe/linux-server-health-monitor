@@ -251,11 +251,11 @@ class ScanScreenTests(HomeCase):
         self.assertTrue(os.path.exists(discover.profile_path(self.app.paths)))
 
     def test_force_a_missing_module_on_and_off(self):
-        ctx = self.ctx(["DOWN"] * 8 + ["ENTER", "y", "ESC"])  # row 9 is KVM (after the SAN storage row)
+        ctx = self.ctx(["DOWN"] * 9 + ["ENTER", "y", "ESC"])  # row 10 is KVM (after the SAN storage and server hardware rows)
         home.scan_screen(ctx)
         self.app.reload()
         self.assertEqual(self.app.cfg.get("main", "modules", "force_enabled"), "kvm")
-        ctx = self.ctx(["DOWN"] * 8 + ["ENTER", "ESC"])
+        ctx = self.ctx(["DOWN"] * 9 + ["ENTER", "ESC"])
         home.scan_screen(ctx)
         self.assertTrue(self.be.saw("checked (forced on)"))
         self.app.reload()
@@ -367,6 +367,7 @@ class SetupWizardTests(HomeCase):
 
     def test_the_whole_setup_end_to_end(self):
         keys = ["ENTER"]                                    # 1 welcome: Start
+        keys += ["ENTER"]                                   # 1b server role: Central (the default)
         keys += ["ENTER"]                                   # 2 scan: Use this result
         keys += ["ENTER"] + list("Acme Bank") + ["ENTER", "F10"]  # 3 organisation: company, Next
         keys += ["F10"]                                     # 4 email: Next (nothing entered)
@@ -385,15 +386,15 @@ class SetupWizardTests(HomeCase):
         self.assertEqual(sorted(os.listdir(self.units)), ["lshme-daily.service", "lshme-daily.timer", "lshme-monthly.service", "lshme-monthly.timer",
                                                           "lshme-scan.service", "lshme-scan.timer", "lshme-update.service", "lshme-update.timer",
                                                           "lshme-watch.service", "lshme-weekly.service", "lshme-weekly.timer"])
-        for text in ("Welcome to LRS Vitals", "Not found, so left out of every scan and report", "Setup 3 of 11 - Organisation",
-                     "Setup 6 of 11 - Services to watch", "Ready to finish", "Installed:"):
+        for text in ("Welcome to LRS Vitals", "Not found, so left out of every scan and report", "Setup 4 of 12 - Organisation",
+                     "Setup 7 of 12 - Services to watch", "Ready to finish", "Installed:"):
             self.assertTrue(self.be.saw(text), text)
 
     def test_the_web_interface_can_be_switched_on_in_the_wizard(self):
         from lshme.web import auth
         auth.ITERATIONS = 2000
         pw = list("Str0ngPassw0rd")
-        keys = ["ENTER", "ENTER", "F10", "F10", "F10", "F10", "F10", "F10"]   # welcome .. real-time alerts
+        keys = ["ENTER", "ENTER", "ENTER", "F10", "F10", "F10", "F10", "F10", "F10"]   # welcome, role .. real-time alerts
         keys += [" ", "DOWN", "ENTER"] + pw + ["ENTER", "DOWN", "ENTER"] + pw + ["ENTER", "F10"]  # web: local, password twice, Next
         keys += ["ENTER", "ENTER", "n"]                                          # finish
         self.assertTrue(firstrun.run(self.ctx(keys)))
@@ -407,7 +408,7 @@ class SetupWizardTests(HomeCase):
         self.assertTrue(self.be.saw("start the web interface"))
 
     def test_a_weak_web_password_is_refused(self):
-        keys = ["ENTER", "ENTER", "F10", "F10", "F10", "F10", "F10", "F10"]
+        keys = ["ENTER", "ENTER", "ENTER", "F10", "F10", "F10", "F10", "F10", "F10"]
         keys += [" ", "DOWN", "ENTER"] + list("weak") + ["ENTER", "F10", "ENTER"]  # the refusal popup, closed
         keys += ["ESC"] * 8 + ["y"]                          # walk back to the scan page, Esc, leave
         self.assertFalse(firstrun.run(self.ctx(keys)))
@@ -416,7 +417,7 @@ class SetupWizardTests(HomeCase):
         self.assertEqual(self.app.cfg.get("web", "web", "enabled"), "no")
 
     def test_back_goes_to_the_previous_page_and_values_are_kept(self):
-        keys = ["ENTER", "ENTER"]                           # welcome, scan
+        keys = ["ENTER", "ENTER", "ENTER"]                  # welcome, role, scan
         keys += ["ENTER"] + list("Keep Me") + ["ENTER", "F10"]  # organisation, Next
         keys += ["ESC"]                                     # email: Back
         keys += ["ESC"]                                     # organisation: Back, to the scan page
@@ -425,7 +426,7 @@ class SetupWizardTests(HomeCase):
         self.assertFalse(firstrun.run(ctx))
         self.app.reload()
         self.assertEqual(self.app.cfg.get("main", "general", "company"), "Keep Me")  # saved before going back
-        self.assertEqual(sum(1 for f in self.be.frames if "Setup 3 of 11 - Organisation" in f) > 1, True)  # shown twice
+        self.assertEqual(sum(1 for f in self.be.frames if "Setup 4 of 12 - Organisation" in f) > 1, True)  # shown twice
 
     def test_leaving_at_the_welcome_page_is_remembered(self):
         ctx = self.ctx(["LEFT", "ENTER", "y"])              # choose Leave, confirm
@@ -439,7 +440,7 @@ class SetupWizardTests(HomeCase):
 
     def test_a_database_page_appears_when_one_was_found(self):
         self.PROFILE["inventory"]["databases"] = ["mysql"]
-        keys = ["ENTER", "ENTER", "F10", "F10", "F10", "F10"]   # welcome, scan, organisation, email, levels, services
+        keys = ["ENTER", "ENTER", "ENTER", "F10", "F10", "F10", "F10"]   # welcome, role, scan, organisation, email, levels, services
         keys += ["ESC"]                                          # databases page: leave setup
         ctx = self.ctx(keys + ["n"])
         with self.assertRaises(AssertionError):

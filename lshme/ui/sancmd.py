@@ -64,6 +64,9 @@ def run(app, args):
                 C.out("I/O now: %.0f read + %.0f write IOPS, %.1f + %.1f MB/s%s" % (p.get("read_iops") or 0, p.get("write_iops") or 0, p.get("read_mbps") or 0,
                                                                                p.get("write_mbps") or 0, (", %.1f ms" % p["latency_ms"]) if p.get("latency_ms") else ""))
         return 0 if res["ok"] else 1
+    from lshme.ops import role as roles
+    if roles.is_member(app.cfg):
+        raise ValueError("this is a member server: SAN storage is added on the central server (Servers > Add), so it is checked once for the whole estate")
     # add (or change): ask for what was not given on the command line
     interactive = sys.stdin.isatty()
     name = args.name or (C.ask("Short name for this storage (e.g. hhk-de)") if interactive else "")

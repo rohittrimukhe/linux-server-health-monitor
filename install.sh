@@ -6,6 +6,9 @@
 #   sudo ./install.sh --with-optional     also install PDF/XLSX/PPTX libraries from OS repos (or pip)
 #   sudo ./install.sh --prefix /opt/x --config /etc/x --bin /usr/local/bin/healthcheck
 #   sudo ./install.sh --setup             run the configuration wizard after installing
+#   sudo ./install.sh --role central      central: web dashboard + all servers (members), SAN, hardware
+#   sudo ./install.sh --role standalone   standalone: only this server, with its own dashboard
+#   sudo ./install.sh --role member       member: checks itself and reports to the central server
 #   sudo ./install.sh --no-cockpit        do not install/update the Cockpit page
 #   ./install.sh --check                  dependency check only
 #
@@ -19,6 +22,7 @@ BIN=/usr/local/bin/healthcheck
 WITH_OPTIONAL=0
 CHECK_ONLY=0
 SETUP=0
+ROLE=""
 COCKPIT=1
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -30,12 +34,14 @@ while [ $# -gt 0 ]; do
     --with-optional) WITH_OPTIONAL=1; shift ;;
     --check) CHECK_ONLY=1; shift ;;
     --setup) SETUP=1; shift ;;
+    --role) ROLE="$2"; shift 2 ;;
     --no-cockpit) COCKPIT=0; shift ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
 done
 
+case "$ROLE" in ""|central|standalone|member) ;; *) echo "--role must be central, standalone or member" >&2; exit 1 ;; esac
 say() { printf '%s\n' "$*"; }
 ok() { printf '  [ OK ] %s\n' "$*"; }
 warn() { printf '  [WARN] %s\n' "$*"; }
@@ -115,6 +121,7 @@ for f in healthcheck install.sh uninstall.sh README.md; do
 done
 rm -rf "$PREFIX/docs" "$PREFIX/config-templates"
 [ -d "$SRC/docs" ] && cp -a "$SRC/docs" "$PREFIX/docs"
+[ -d "$SRC/tools" ] && { rm -rf "$PREFIX/tools"; cp -a "$SRC/tools" "$PREFIX/tools"; }   # the role step below removes what it does not use
 cp -a "$SRC/config" "$PREFIX/config-templates"
 find "$PREFIX/lshme" -name '__pycache__' -prune -exec rm -rf {} +
 chmod 755 "$PREFIX" "$PREFIX/healthcheck" "$PREFIX/install.sh" "$PREFIX/uninstall.sh"
@@ -172,6 +179,12 @@ if [ "$COCKPIT" -eq 1 ] && [ -n "$COCKPIT_OWNER" ] && [ "$COCKPIT_OWNER" != "--c
   warn "Cockpit page belongs to another installation ($COCKPIT_OWNER); left unchanged"
 elif [ "$COCKPIT" -eq 1 ] && [ -d /usr/share/cockpit ]; then
   if "$BIN" --config-dir "$CONFIG" cockpit-page install >/dev/null 2>&1; then ok "Cockpit page installed (menu: LSHME Health)"; else warn "Cockpit page not installed"; fi
+fi
+
+# role: the one given, else the one stored by an earlier install; it keeps only the files that role uses
+[ -z "$ROLE" ] && ROLE="$(sed -n 's/^[[:space:]]*role[[:space:]]*=[[:space:]]*\([a-z]*\).*/\1/p' "$CONFIG/main.conf" 2>/dev/null | head -1)"
+if [ -n "$ROLE" ]; then
+  if "$BIN" --config-dir "$CONFIG" role "$ROLE" >/dev/null 2>&1; then ok "role: $ROLE server (only the files it uses are kept)"; else warn "role $ROLE not set: run 'healthcheck role $ROLE'"; fi
 fi
 
 "$BIN" --config-dir "$CONFIG" doctor >/dev/null 2>&1 && ok "self-diagnostics passed" || warn "self-diagnostics reported problems: run 'healthcheck doctor'"

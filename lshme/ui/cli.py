@@ -230,6 +230,8 @@ def build_parser():
     logocmd.add_parser(sub)
     sancmd.add_parser(sub)
     bmccmd.add_parser(sub)
+    ro = sub.add_parser("role", help="show or set how this server is used: central (dashboard + all servers), standalone (only itself, with its own dashboard) or member (reports to a central server)")
+    ro.add_argument("value", nargs="?", choices=("central", "standalone", "member"))
     updatecmd.add_parser(sub)
     repaircmd.add_parser(sub)
     estatecmd.add_parser(sub)
@@ -340,6 +342,9 @@ def web_command(app, args):
         elif act == "users":
             C.table(["User", "Role"], [[u["user"], u["role"]] for u in users.listing()])
         elif act == "install":
+            from lshme.ops import role as roles
+            if roles.is_member(app.cfg):
+                raise ValueError("this is a member server: its dashboard is on the central server (to make this one central: vitals role central)")
             if not users.names():
                 raise ValueError("set a password first: vitals web passwd admin")
             app.cfg.set("web", "web", "enabled", "yes")
@@ -852,6 +857,18 @@ def dispatch(app, cmd, args):
     elif cmd == "san":
         from lshme.ui import sancmd
         return sancmd.run(app, args)
+    elif cmd == "role":
+        from lshme.ops import role as roles
+        if args.value:
+            removed = roles.apply(app, args.value)
+            C.out(C.c("This server is now a %s server.%s" % (args.value, (" Removed what it does not use: " + ", ".join(removed)) if removed else ""), "green"))
+        else:
+            C.out("Role: %s" % (roles.get(app.cfg) or "not set (central behaviour)"))
+            C.out("  central     web dashboard, all servers (members), SAN storage, hardware, dependency map, estate report")
+            C.out("  standalone  only this server, with its own web dashboard, reports, alerts, SAN storage and hardware")
+            C.out("  member      checks itself and reports to the central server (no dashboard of its own)")
+            C.out("Change with: vitals role central | standalone | member")
+        return 0
     elif cmd == "bmc":
         from lshme.ui import bmccmd
         return bmccmd.run(app, args)
