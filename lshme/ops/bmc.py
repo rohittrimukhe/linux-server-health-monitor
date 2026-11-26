@@ -99,10 +99,11 @@ def _num(v):
 def empty(a):
     return {"name": a["name"], "type": a["type"], "make": TYPES.get(a["type"], (a["type"],))[0], "model": "", "serial": "", "bios": "", "bmc_firmware": "",
             "power": "unknown", "status": "unknown", "cpus": None, "memory_gb": None, "temps": [], "fans": [], "psus": [], "power_watts": None,
-            "drives": [], "memory_faults": [], "cpu_faults": [], "events": [], "reached": a.get("address", ""), "server": a.get("server", "")}
+            "drives": [], "memory_faults": [], "cpu_faults": [], "events": [], "reached": a.get("address", ""), "server": a.get("server", ""),
+            "processors": [], "dimms": [], "system": {}}
 
 
-def redfish(a, http=None):
+def redfish(a, http=None, detail=False):
     http = http or Http(TIMEOUT)
     base = "https://%s:%d" % (a["address"], a["port"])
     hdr = basic(a["username"], a["password"])
@@ -110,9 +111,9 @@ def redfish(a, http=None):
     def get(path):
         return http.get(base + path if path.startswith("/") else path, hdr, a["verify_tls"]) or {}
 
-    def members(path):
+    def members(path, limit=16):
         try:
-            return [get(m.get("@odata.id", "")) for m in (get(path).get("Members") or [])[:16] if m.get("@odata.id")]
+            return [get(m.get("@odata.id", "")) for m in (get(path).get("Members") or [])[:limit] if m.get("@odata.id")]
         except SanError as e:
             if "refused" in str(e):
                 raise
@@ -140,6 +141,23 @@ def redfish(a, http=None):
             h = _health(m.get("Status"))
             if h in ("warning", "critical"):
                 out["memory_faults"].append({"name": m.get("DeviceLocator") or m.get("Name") or m.get("Id"), "status": h})
+    if detail:                                                   # inventory for the hardware page: every processor and memory module
+        out["system"] = {"host_name": s.get("HostName") or "", "uuid": s.get("UUID") or "", "sku": s.get("SKU") or "", "asset_tag": s.get("AssetTag") or "",
+                         "indicator_led": s.get("IndicatorLED") or "", "boot": ((s.get("Boot") or {}).get("BootSourceOverrideTarget") or "")}
+        if s.get("Processors"):
+            for c in members(s["Processors"]["@odata.id"], 8):
+                if _health(c.get("Status")) == "absent" or (c.get("ProcessorType") or "CPU") not in ("CPU", ""):
+                    continue
+                out["processors"].append({"socket": c.get("Socket") or c.get("Id") or "", "model": (c.get("Model") or "").strip(), "cores": c.get("TotalCores"),
+                                          "threads": c.get("TotalThreads"), "mhz": c.get("MaxSpeedMHz") or c.get("OperatingSpeedMHz"), "status": _health(c.get("Status"))})
+        if s.get("Memory"):
+            for m in members(s["Memory"]["@odata.id"], 64):
+                h = _health(m.get("Status"))
+                if h == "absent" or not (m.get("CapacityMiB") or 0):
+                    continue
+                out["dimms"].append({"slot": m.get("DeviceLocator") or m.get("Name") or m.get("Id"), "gb": round((m.get("CapacityMiB") or 0) / 1024.0, 1),
+                                     "type": m.get("MemoryDeviceType") or "", "mhz": m.get("OperatingSpeedMhz") or (m.get("AllowedSpeedsMHz") or [None])[0],
+                                     "maker": (m.get("Manufacturer") or "").strip(), "part": (m.get("PartNumber") or "").strip(), "status": h})
     if s.get("Storage"):
         for st in members(s["Storage"]["@odata.id"]):
             for d in (st.get("Drives") or [])[:32]:
@@ -193,9 +211,9 @@ def redfish(a, http=None):
                     continue
                 for e in ents[:50]:
                     sev = str(e.get("Severity") or "").lower()
-                    if sev in ("critical", "warning"):
-                        out["events"].append({"time": e.get("Created") or "", "severity": sev, "text": (e.get("Message") or e.get("Name") or "")[:200]})
-    out["events"] = sorted(out["events"], key=lambda e: e["time"], reverse=True)[:20]
+                    sev = sev if sev in ("critical", "warning") else "info"
+                    out["events"].append({"time": e.get("Created") or "", "severity": sev, "text": (e.get("Message") or e.get("Name") or "")[:200]})
+    out["events"] = sorted(out["events"], key=lambda e: e["time"], reverse=True)[:40]
     return out
 
 
@@ -261,11 +279,11 @@ def ipmi(a, run=None):
     return out
 
 
-def collect(a, http=None, run=None):
+def collect(a, http=None, run=None, detail=False):
     if not a["address"]:
         raise BmcError("no BMC address configured")
     t = kind(a["type"])
-    out = ipmi(a, run) if t == "ipmi" else redfish(a, http)
+    out = ipmi(a, run) if t == "ipmi" else redfish(a, http, detail)
     bad = [x for x in out["psus"] + out["fans"] + out["drives"] + out["memory_faults"] + out["cpu_faults"] if x["status"] == "critical"]
     hot = [x for x in out["temps"] if x.get("crit") and x["celsius"] is not None and x["celsius"] >= x["crit"]]
     if bad or hot:

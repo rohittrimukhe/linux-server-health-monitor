@@ -762,3 +762,6 @@ main, footer { transition: none !important; }
 @media (max-width: 560px) { .hw-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .kind-tag { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #e7f1fa; color: #004080; }
 .kind-tag.k-storage { background: #f3e8ff; color: #5b21b6; } .kind-tag.k-hardware { background: #fdf0e1; color: #8a4b00; } .kind-tag.k-database { background: #e6f4ea; color: #1e5631; }
+.glance.six { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1200px) { .glance.six { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .glance.six { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

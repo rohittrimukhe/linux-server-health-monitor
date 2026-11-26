@@ -92,6 +92,7 @@ class WebApp(object):
         self.sampler = sysstats.Sampler()
         self.sample, self.sample_at, self.sample_lock = None, 0.0, threading.Lock()
         self.hw, self.hw_at, self.hw_busy = {}, 0.0, False        # server hardware (BMC) readings, refreshed at most once a minute
+        self.hw_full, self.hw_inv = {}, {}                          # full readings per BMC; inventory (CPUs, memory modules) every 15 minutes
         self.job = {"running": False, "progress": 0, "total": 0, "title": "", "started": 0, "finished": 0, "result": None, "error": ""}
         self.fleet_job = {"running": False, "title": "", "started": 0, "finished": 0, "result": None, "error": ""}
         self.cert_job = {"running": False, "started": 0, "finished": 0, "result": None}
@@ -824,7 +825,15 @@ class WebApp(object):
                     for a in items:
                         t0 = time.time()
                         try:
-                            d = bmc.collect(a)
+                            inv = self.hw_inv.get(a["name"])
+                            want_inv = not inv or time.time() - inv[0] > 900
+                            d = bmc.collect(a, detail=want_inv)
+                            if want_inv:
+                                self.hw_inv[a["name"]] = (time.time(), {k: d.get(k) for k in ("processors", "dimms", "system")})
+                            else:
+                                d.update(inv[1])
+                            d["fetched"] = time.time()
+                            self.hw_full[a["name"]] = d
                             temps = [x["celsius"] for x in d["temps"] if x.get("celsius") is not None]
                             hot = max(temps) if temps else None
                             bad = lambda xs: [x["name"] for x in xs if x.get("status") in ("critical", "warning")]
@@ -843,9 +852,38 @@ class WebApp(object):
                     self.hw_at, self.hw_busy = time.time(), False
             threading.Thread(target=refresh, daemon=True).start()
         names = set(a["name"] for a in items)
+        want = (req.query.get("name") or [""])[0][:60]
+        if want:                                                    # one controller in full, for its own page
+            if want not in names:
+                return err("not found", 404)
+            a = [x for x in items if x["name"] == want][0]
+            d = dict(self.hw_full.get(want) or {})
+            d.pop("password", None)
+            return jr({"name": want, "address": a["address"], "type": a["type"], "server": a.get("server", ""), "summary": self.hw.get(want) or {"status": "waiting"},
+                       "detail": d, "history": self.hw_history(want, int((req.query.get("days") or ["1"])[0] or 1)), "interval": 60})
         out = [v for k, v in sorted(self.hw.items()) if k in names]
         waiting = [{"name": a["name"], "address": a["address"], "server": a.get("server", ""), "ok": False, "status": "waiting"} for a in items if a["name"] not in self.hw]
         return jr({"items": out + waiting, "updated": self.hw_at, "interval": 60})
+
+    def hw_history(self, name, days):
+        """Power draw and hottest temperature of one BMC from the health checks (and the watcher's rotation)."""
+        import socket as _socket
+        from lshme.engine.history import History
+        days = max(1, min(30, days))
+        since, out = time.time() - days * 86400, {"watts": [], "temp": [], "days": days}
+        try:
+            h = History(self.app.paths.history_db)
+        except Exception:
+            return out
+        try:
+            host = _socket.gethostname()
+            out["watts"] = [[int(t), round(v, 1)] for t, v in h.series(host, "bmc.power_watts:" + name, since)][-600:]
+            out["temp"] = [[int(t), round(v, 1)] for t, v in h.series(host, "bmc.temp_max:" + name, since)][-600:]
+        except Exception:
+            pass
+        finally:
+            h.close()
+        return out
 
     def api_repair(self, req, sess):
         """Check and repair LRS Vitals itself on this server or, from the central server, on a member over SSH. Administrators only."""

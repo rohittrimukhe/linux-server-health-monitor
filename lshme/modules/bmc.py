@@ -3,10 +3,31 @@
 """Server hardware through its management controller (main.conf [bmc:NAME]): overall health, power state, power supplies,
 fans, temperatures, drives, memory and processor faults, recent critical events in the system event log, power draw.
 Read-only, over Redfish (iDRAC, iLO, XClarity, IMM, iRMC, CIMC, Supermicro, OpenBMC) or IPMI over LAN (lshme.ops.bmc)."""
+import calendar
+import re
+import time
 
 NAME = "bmc"
 TITLE = "Server Hardware (BMC)"
 WEIGHT = 10
+
+
+def event_time(text):
+    """Epoch seconds of a BMC event time: Redfish '2026-06-17T08:20:55+00:00' (or Z) or IPMI '06/17/2026 08:20:55'. None if unknown."""
+    text = (text or "").strip()
+    m = re.match(r"(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d):(\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)?", text)
+    if m:
+        y, mo, d, hh, mi, ss = (int(x) for x in m.groups()[:6])
+        tz = m.group(7)
+        if tz:
+            off = 0 if tz == "Z" else (1 if tz[0] == "+" else -1) * (int(tz[1:3]) * 3600 + int(tz[-2:]) * 60)
+            return calendar.timegm((y, mo, d, hh, mi, ss, 0, 0, 0)) - off
+        return time.mktime((y, mo, d, hh, mi, ss, 0, 0, -1))
+    m = re.match(r"(\d\d)/(\d\d)/(\d{4})\s+(\d\d):(\d\d):(\d\d)", text)
+    if m:
+        mo, d, y, hh, mi, ss = (int(x) for x in m.groups())
+        return time.mktime((y, mo, d, hh, mi, ss, 0, 0, -1))
+    return None
 
 
 def run(ctx, res):
@@ -64,9 +85,19 @@ def run(ctx, res):
                         recommendation="Check cooling: room temperature, blocked air flow, failed fans.")
             elif warn and v >= warn:
                 res.add("WARNING", "BMC_TEMPERATURE", "%s/%s" % (n, t["name"]), "Hardware %s: %s is %.0f C (warning %.0f C)" % (n, t["name"], v, warn))
-        for e in [e for e in d["events"] if e["severity"] == "critical"][:5]:
+        parts = d["psus"] + d["fans"] + d["drives"] + d["memory_faults"] + d["cpu_faults"] + d["temps"]
+        healthy_now = d["status"] in ("ok", "unknown") and not any(x.get("status") in ("critical", "warning") for x in parts)
+        recent = ctx.t("bmc", "event_hours", 24) * 3600          # older event-log lines are history: the live sensor readings above show the parts now
+        for e in [e for e in d["events"] if e["severity"] == "critical"][:10]:
+            ts = event_time(e.get("time"))
+            if ts is None or time.time() - ts > recent:
+                continue
+            if healthy_now:                                      # the hardware reads healthy again: the problem is closed, not counted
+                res.add("INFO", "BMC_EVENT_CLOSED", n, "Hardware %s event log: %s (%s) - closed, the hardware reads healthy now" % (n, e["text"], e["time"]))
+                continue
             res.add("WARNING", "BMC_EVENT", n, "Hardware %s event log: %s (%s)" % (n, e["text"], e["time"]),
-                    recommendation="Confirm the event was dealt with; clear the event log on the BMC once it is.")
+                    recommendation="Open the hardware page or the BMC to see which part still reports it. "
+                                   "It closes by itself when the hardware reads healthy again.")
         if d["power_watts"] is not None:
             res.metric("bmc.power_watts:" + n, d["power_watts"])
         temps = [t["celsius"] for t in d["temps"] if t["celsius"] is not None]

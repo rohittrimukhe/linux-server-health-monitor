@@ -67,7 +67,7 @@ DEFAULTS = {
                     "packet_loss_critical": "50", "latency_warning_ms": "100"},
         "services": {"restart_warning": "3"},
         "san": {"pool_warning": "80", "pool_critical": "90", "latency_warning_ms": "20", "ssd_wear_warning": "90"},
-        "bmc": {"temperature_warning": "0", "temperature_critical": "0"},
+        "bmc": {"temperature_warning": "0", "temperature_critical": "0", "event_hours": "24"},
         "kvm": {"pool_warning": "80", "pool_critical": "90", "vcpu_overcommit_warning": "4.0",
                 "memory_overcommit_warning": "1.0", "snapshot_age_warning_days": "7",
                 "vm_cpu_warning": "90"},

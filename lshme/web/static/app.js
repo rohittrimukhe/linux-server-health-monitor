@@ -347,6 +347,7 @@
         { id: "help", title: "Help", draw: drawHelp },
         { id: "server", title: "Server", draw: drawServer, hidden: true, menu: "fleet" },
         { id: "san", title: "SAN storage", draw: drawSan, hidden: true, menu: "dashboard" },
+        { id: "hw", title: "Server hardware", draw: drawHw, hidden: true, menu: "dashboard" },
         { id: "wall", title: "Wall view", draw: drawWall, hidden: true, menu: "dashboard" }
     ];
     var main;
@@ -545,6 +546,91 @@
         return btn;
     }
 
+    /* ---------------------------------------------------------------- one server's hardware (BMC): like opening the iLO / XClarity page */
+    function drawHw(box, args) {
+        var name = decodeURIComponent(args[0] || ""), wrap = h("div", { class: "stack" }), stopped = false, timer = null, days = 1;
+        box.appendChild(crumbs([["#/dashboard", "Dashboard", true]]));
+        box.appendChild(wrap);
+        function word(st) { st = String(st || "unknown").toLowerCase(); return st === "ok" ? "OK" : st === "warning" ? "WARNING" : st === "critical" ? "CRITICAL" : st === "waiting" ? "WAITING" : st === "unreachable" ? "UNREACHABLE" : st.toUpperCase(); }
+        function tone(st) { return st === "ok" ? "ok" : st === "warning" ? "warn" : st === "critical" || st === "unreachable" ? "crit" : "info"; }
+        function worst(xs) { return xs.some(function (x) { return x.status === "critical"; }) ? "critical" : xs.some(function (x) { return x.status === "warning"; }) ? "warning" : "ok"; }
+        function tileH(label, value, meta, st, icon) {
+            return h("div", { class: "gl v2 tone-" + tone(st) }, h("div", { class: "row space gl-top" }, h("div", { class: "gl-label", text: label }), h("span", { class: "sym-badge" }, sym(icon || "server"))),
+                h("div", { class: "gl-value", text: value }), h("span", { class: "pill tone-" + tone(st), text: meta }));
+        }
+        function n(v, unit) { return v === null || v === undefined || v === "" ? "-" : Math.round(v) + (unit || ""); }
+        function gb(b) { return b ? (b / 1e9 >= 1000 ? (b / 1e12).toFixed(1) + " TB" : Math.round(b / 1e9) + " GB") : "-"; }
+        var DEG = "\u00b0C";
+        function paint(r) {
+            steady(wrap);
+            var d = r.detail || {}, sm = r.summary || {}, st = sm.status || d.status || "waiting";
+            document.title = name + " - LRS Vitals";
+            var temps = d.temps || [], fans = d.fans || [], psus = d.psus || [], drives = d.drives || [], cpus = d.processors || [], dimms = d.dimms || [];
+            var hot = temps.filter(function (t) { return t.celsius !== null && t.celsius !== undefined; }).sort(function (a, b) { return b.celsius - a.celsius; })[0];
+            var facts = [["Make / model", [d.make, d.model].filter(Boolean).join(" ") || "-"], ["Serial number", d.serial || "-"], ["Power", (d.power || "-").toUpperCase()],
+                ["BIOS", d.bios || "-"], ["BMC firmware", d.bmc_firmware || "-"], ["BMC address", r.address], ["Runs", r.server ? (r.server === "_local" ? "this server (central)" : r.server) : "-"],
+                ["Host name", (d.system || {}).host_name || "-"], ["Read", d.fetched ? ago(d.fetched) : "waiting"]];
+            wrap.appendChild(card(name, h("span", { class: "row badge-set" }, h("span", { class: "muted small", text: "Live, every minute" }), badge(word(st) === "OK" ? "HEALTHY" : word(st))),
+                h("div", { class: "facts" }, facts.map(function (f) { return h("div", null, h("span", { class: "muted small", text: f[0] }), h("b", { text: String(f[1]) })); })),
+                sm.error ? h("p", { class: "err", text: sm.error }) : null,
+                r.server ? h("div", { class: "row" }, h("a", { class: "btn small", href: "#/server/" + encodeURIComponent(r.server), text: "Open the server" })) : null));
+            if (!d.fetched) { wrap.appendChild(card(null, null, h("p", { class: "muted", text: "Reading the hardware... the first answer comes within a minute." }))); return; }
+            var memBad = (d.memory_faults || []).length, cpuBad = (d.cpu_faults || []).length, predicted = drives.some(function (x) { return x.predicted_failure; });
+            wrap.appendChild(h("div", { class: "glance six" },
+                tileH("Overall health", word(st) === "OK" ? "Healthy" : word(st).charAt(0) + word(st).slice(1).toLowerCase(), "power " + (d.power || "-"), st, "pulse"),
+                tileH("Power draw", n(d.power_watts, " W"), psus.length + " power suppl" + (psus.length === 1 ? "y" : "ies"), worst(psus), "pulse"),
+                tileH("Hottest", hot ? n(hot.celsius, " " + DEG) : "-", hot ? hot.name : "no reading", worst(temps), "cpu"),
+                tileH("Fans", fans.filter(function (f) { return f.status === "ok"; }).length + " / " + fans.length, worst(fans) === "ok" ? "all running" : "check the fans", worst(fans), "server"),
+                tileH("Drives", drives.filter(function (x) { return x.status === "ok"; }).length + " / " + drives.length, predicted ? "failure predicted" : worst(drives) === "ok" ? "all healthy" : "check the drives", predicted ? "warning" : worst(drives), "disk"),
+                tileH("CPU / memory", (d.cpus || cpus.length || "-") + " CPU / " + n(d.memory_gb, " GB"), memBad || cpuBad ? (memBad + cpuBad) + " fault(s)" : "no faults", memBad || cpuBad ? "critical" : "ok", "cpu")));
+            var hs = r.history || {}, rng = days === 1 ? "last 24 hours" : "last " + days + " days";
+            var seg = h("div", { class: "seg-row" }, [1, 7, 30].map(function (k) { return h("button", { type: "button", class: "seg" + (k === days ? " on" : ""), text: k === 1 ? "24 hours" : k + " days", onclick: function () { days = k; load(); } }); }));
+            var row = h("div", { class: "tm-row full" });
+            if ((hs.watts || []).length > 1) row.appendChild(tmGraph("Power draw", [{ name: "Watts", pts: hs.watts }], { expand: true, color: TM.net, unit: " W", window: days * 86400, scale: rng }));
+            if ((hs.temp || []).length > 1) row.appendChild(tmGraph("Hottest temperature", [{ name: "Hottest", pts: hs.temp }], { expand: true, color: TM.lat, unit: " " + DEG, window: days * 86400, scale: rng }));
+            wrap.appendChild(card("History", seg, row.childNodes.length ? row : h("p", { class: "muted", text: "Power and temperature history builds up with every health check." })));
+            var g = h("div", { class: "grid g2" });
+            g.appendChild(card("Temperatures (" + temps.length + ")", null, temps.length ? table(["Sensor", "Reading", "Warning at", "Critical at", "Status"], temps.map(function (t) {
+                return [t.name, n(t.celsius, " " + DEG), n(t.warn, " " + DEG), n(t.crit, " " + DEG), badge(word(t.status))]; }), [1, 2, 3]) : h("p", { class: "muted", text: "No readings." })));
+            g.appendChild(card("Fans (" + fans.length + ")", null, fans.length ? table(["Fan", "Speed", "Status"], fans.map(function (f) { return [f.name, f.rpm === null || f.rpm === undefined ? "-" : Math.round(f.rpm) + (f.rpm > 100 ? " rpm" : " %"), badge(word(f.status))]; }), [1]) : h("p", { class: "muted", text: "No readings." })));
+            g.appendChild(card("Power supplies (" + psus.length + ")", null, psus.length ? table(["Power supply", "Output", "Status"], psus.map(function (p) { return [p.name, n(p.watts, " W"), badge(word(p.status))]; }), [1]) : h("p", { class: "muted", text: "No readings." })));
+            g.appendChild(card("Drives (" + drives.length + ")", null, drives.length ? table(["Drive", "Model", "Type", "Size", "Status"], drives.map(function (x) {
+                return [x.name, x.model || "-", x.media || "-", gb(x.capacity), x.predicted_failure ? badge("WARNING") : badge(word(x.status))]; }), [3]) : h("p", { class: "muted", text: "No drives reported." })));
+            wrap.appendChild(g);
+            if (cpus.length || dimms.length) {
+                var g2 = h("div", { class: "grid g2" });
+                g2.appendChild(card("Processors (" + cpus.length + ")", null, cpus.length ? table(["Socket", "Model", "Cores / threads", "Speed", "Status"], cpus.map(function (c) {
+                    return [c.socket, c.model || "-", (c.cores || "-") + " / " + (c.threads || "-"), c.mhz ? c.mhz + " MHz" : "-", badge(word(c.status))]; })) : h("p", { class: "muted", text: "Not reported." })));
+                var totalGb = dimms.reduce(function (t, m) { return t + (m.gb || 0); }, 0);
+                g2.appendChild(card("Memory modules (" + dimms.length + ")", h("span", { class: "muted", text: Math.round(totalGb) + " GB installed" }), dimms.length ? table(["Slot", "Size", "Type", "Speed", "Maker / part", "Status"], dimms.map(function (m) {
+                    return [m.slot, m.gb + " GB", m.type || "-", m.mhz ? m.mhz + " MHz" : "-", [m.maker, m.part].filter(Boolean).join(" ") || "-", badge(word(m.status))]; }), [1]) : h("p", { class: "muted", text: "Not reported." })));
+                wrap.appendChild(g2);
+            }
+            var ev = d.events || [], healthy = st === "ok";
+            wrap.appendChild(card("Event log (" + ev.length + " newest)", h("span", { class: "muted", text: healthy ? "the hardware reads healthy now, so earlier problems are closed and do not count" : "a problem counts only while the hardware still shows it" }),
+                ev.length ? table(["Time", "Severity", "Event", "State"], ev.map(function (e) {
+                    var bad = e.severity === "critical" || e.severity === "warning";
+                    return [String(e.time || "").replace("T", " ").slice(0, 19), h("span", { class: "pri " + (e.severity === "critical" ? "p1" : e.severity === "warning" ? "p2" : "p3"), text: e.severity === "critical" ? "Critical" : e.severity === "warning" ? "Warning" : "Info" }),
+                        e.text, bad ? (healthy ? h("span", { class: "st st-resolved", text: "Closed" }) : h("span", { class: "st st-open", text: "Check" })) : ""];
+                })) : h("p", { class: "muted", text: "The event log is empty." })));
+        }
+        function load() {
+            if (wrap.querySelector(".tm.hovering")) return;
+            api("GET", "/api/hardware?name=" + encodeURIComponent(name) + "&days=" + days).then(function (r) {
+                if (stopped) return;
+                var keep = S.tmOpen;
+                paint(r);
+                if (keep) [].forEach.call(wrap.querySelectorAll(".tm"), function (g) { var t = g.querySelector(".tm-title"), b = g.querySelector(".tm-expand"); if (t && b && t.textContent === keep) b.click(); });
+                if (!(r.detail || {}).fetched) setTimeout(function () { if (!stopped) load(); }, 8000);
+            }).catch(function (e) {
+                if (!stopped && e.message !== "Signed out") { clear(wrap); wrap.appendChild(card("Server hardware", null, h("p", { class: "err", text: e.message === "not found" ? "This hardware is not configured." : e.message }))); }
+            });
+        }
+        load();
+        timer = setInterval(load, 60000);
+        S.cleanup = function () { stopped = true; if (timer) clearInterval(timer); S.tmOpen = null; document.body.classList.remove("tm-open"); };
+    }
+
     /* ---------------------------------------------------------------- server hardware (BMC), live every minute */
     function hardwareCard() {
         var box = h("div");
@@ -554,7 +640,9 @@
             return h("span", { class: "pill tone-" + (bad && bad.length ? "crit" : "ok"), title: bad && bad.length ? bad.join(", ") : "", text: label + " " + (bad && bad.length ? bad.length + " of " + n + " bad" : n + " OK") });
         }
         function tile(x) {
-            var el = h("div", { class: "srv hw st-" + word(x.status) });
+            var el = h("div", { class: "srv hw clickable st-" + word(x.status), role: "link", tabindex: "0", title: "Open " + x.name + ": inventory, sensors, event log" });
+            var go = function () { location.hash = "#/hw/" + encodeURIComponent(x.name); };
+            el.addEventListener("click", go); el.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
             el.appendChild(h("div", { class: "who-line" }, h("span", { class: "sym-badge" }, sym("server")),
                 h("div", { class: "who-txt" }, h("div", { class: "row" }, h("b", { class: "nm", text: x.name }), badge(word(x.status))),
                     h("div", { class: "muted small", text: [x.make, x.model, x.serial ? "S/N " + x.serial : "", x.server ? "runs " + (x.server === "_local" ? "this server" : x.server) : ""].filter(Boolean).join("  -  ") }))));

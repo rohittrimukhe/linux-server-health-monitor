@@ -87,6 +87,49 @@ class BmcTests(unittest.TestCase):
         finally:
             home.cleanup()
 
+    def test_old_event_log_lines_are_history(self):
+        from lshme.modules import bmc as mod
+        now = time.time()
+        iso = lambda ts: time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(ts))
+        self.assertAlmostEqual(mod.event_time(iso(now - 3600)), now - 3600, delta=2)
+        self.assertAlmostEqual(mod.event_time(time.strftime("%m/%d/%Y %H:%M:%S", time.localtime(now - 7200))), now - 7200, delta=2)
+        self.assertIsNone(mod.event_time("Pre-Init"))
+        data = {"name": "kvm2-xcc", "type": "xcc", "make": "Lenovo", "model": "SR650", "serial": "X", "bios": "", "bmc_firmware": "", "power": "on", "status": "ok",
+                "cpus": 2, "memory_gb": 128, "temps": [], "fans": [], "psus": [{"name": "PSU 1", "watts": 140, "status": "ok"}], "power_watts": 146, "drives": [],
+                "memory_faults": [], "cpu_faults": [], "reached": "10.0.0.51", "server": "",
+                "events": [{"time": iso(now - 160 * 86400), "severity": "critical", "text": "PSU 1 input failure has transitioned to critical"},
+                           {"time": iso(now - 1800), "severity": "critical", "text": "Fan 3 failed"}]}
+        home = TempHome({"main": "[bmc:kvm2-xcc]" + chr(10) + "type = xcc" + chr(10) + "address = 10.0.0.51" + chr(10) + "username = monitor" + chr(10)})
+        try:
+            app = App(ROOT, home=home.dir)
+            orig = bmc.collect
+            bmc.collect = lambda a, http=None, run=None: dict(data)
+            try:
+                res = ModuleResult(mod.NAME, mod.TITLE, mod.WEIGHT)
+
+                class Ctx(object):
+                    cfg = app.cfg
+
+                    def t(self, s, k, d=0):
+                        return d
+                mod.run(Ctx(), res)
+            finally:
+                bmc.collect = orig
+            self.assertNotIn("BMC_EVENT", [f.code for f in res.findings])     # every part reads healthy now: closed, not counted
+            closed = [f for f in res.findings if f.code == "BMC_EVENT_CLOSED"]
+            self.assertEqual([f.severity for f in closed], ["INFO"])          # only the recent one is listed; the 160-day-old one is history
+            self.assertIn("Fan 3 failed", closed[0].message)
+            data["fans"] = [{"name": "Fan 3", "rpm": 0, "status": "critical"}]           # still broken: it counts
+            res = ModuleResult(mod.NAME, mod.TITLE, mod.WEIGHT)
+            bmc.collect = lambda a, http=None, run=None: dict(data)
+            try:
+                mod.run(Ctx(), res)
+            finally:
+                bmc.collect = orig
+            self.assertEqual([f.severity for f in res.findings if f.code == "BMC_EVENT"], ["WARNING"])
+        finally:
+            home.cleanup()
+
     def test_save_never_shows_the_password(self):
         home = TempHome()
         try:
