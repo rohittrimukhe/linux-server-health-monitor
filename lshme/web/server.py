@@ -209,7 +209,7 @@ class WebApp(object):
         if req.method not in ("GET", "HEAD") and sess["role"] != "admin" and name not in ("password", "reports/custom"):
             self.audit("web-denied", sess, route=name)
             raise PermissionError("your account is read-only")
-        if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file", "branding", "branding/logo", "san", "bmc", "onboard") and sess["role"] != "admin":
+        if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file", "branding", "branding/logo", "san", "bmc", "onboard", "support") and sess["role"] != "admin":
             raise PermissionError("administrators only")
         return handler(req, sess)
 
@@ -1381,6 +1381,27 @@ class WebApp(object):
                 out = {"archive": os.path.basename(backup_config(app.paths.config_dir, app.paths.config_backup_dir, "manual"))}
         self.audit("web-action", sess, name=name)
         return jr(out)
+
+    def api_support(self, req, sess):
+        """Download the support export (settings without any secret, results, history, alerts, logs, live snapshot). Administrators only."""
+        import shutil
+        import socket
+        import tempfile
+        from lshme.ops import support
+        try:
+            days = max(1, min(90, int((req.query.get("days") or ["30"])[0])))
+        except ValueError:
+            days = 30
+        tmp = tempfile.mkdtemp(prefix="lrs-support-")
+        try:
+            path, notes = support.export(self.app, os.path.join(tmp, "export.tar.gz"), days, 5)
+            with open(path, "rb") as f:
+                body = f.read()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        name = "lrs-vitals-export-%s-%s.tar.gz" % (re.sub(r"[^A-Za-z0-9_.-]", "_", socket.gethostname()), time.strftime("%Y%m%d_%H%M"))
+        self.audit("web-support-export", sess, days=days, size=len(body))
+        return Resp(200, body, "application/gzip", {"Content-Disposition": 'attachment; filename="%s"' % name, "Content-Security-Policy": "default-src 'none'; sandbox"})
 
     def api_backups(self, req, sess):
         d = self.app.paths.config_backup_dir

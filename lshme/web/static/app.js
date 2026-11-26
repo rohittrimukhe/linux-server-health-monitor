@@ -2104,6 +2104,18 @@
         box.appendChild(updateCard());
         if (S.me.role === "admin") box.appendChild(card("Self-repair", null, h("p", { class: "muted", text: "Checks LRS Vitals itself on this server - program, folders, failed jobs with their reason, watcher, web service and timers - and fixes what it can. Each server's own page has the same button; from this central server it repairs members over SSH." }),
             h("div", { class: "row" }, h("button", { class: "primary", type: "button", text: "Repair this server", onclick: function () { runRepair("_local", "this server"); } }))));
+        if (S.me.role === "admin") {
+            var sdays = h("select", { "aria-label": "Days of history" }, [7, 30, 90].map(function (n) { return h("option", { value: String(n), selected: n === 30, text: "last " + n + " days of history" }); }));
+            var sbtn = h("button", { class: "primary", type: "button", text: "Download support export", onclick: function () {
+                sbtn.disabled = true; sbtn.textContent = "Collecting... (up to a minute)";
+                var a = h("a", { href: "/api/support?days=" + sdays.value, download: "" });
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(function () { sbtn.disabled = false; sbtn.textContent = "Download support export"; }, 15000);
+            } });
+            box.appendChild(card("Support export", null,
+                h("p", { class: "muted", text: "One file for LRS support: settings (every password, token and key removed), the latest health check of every server, alerts, history, the newest reports, the end of the program logs and a live snapshot of all servers, SAN storage and hardware. Server names and IP addresses are included. Nothing on the server is changed." }),
+                h("div", { class: "row" }, sdays, sbtn)));
+        }
         box.appendChild(wrap);
         function act(name, ok) { return function () { api("POST", "/api/action", { name: name }).then(ok || function (r) { toast("Done: " + JSON.stringify(r), "good"); load(); }).catch(fail); }; }
         function load() {
