@@ -237,6 +237,13 @@ def build_parser():
     estatecmd.add_parser(sub)
     templatecmd.add_parser(sub)
 
+    sp = sub.add_parser("support", help="support export: one file with settings (no passwords), results, history, alerts, logs and a live snapshot; import it on a test server")
+    sp.add_argument("action", choices=("export", "import"))
+    sp.add_argument("file", nargs="?", default="", help="import: the export file")
+    sp.add_argument("--output", default="", help="export: where to write it (default /tmp/lrs-vitals-export-HOST-TIME.tar.gz)")
+    sp.add_argument("--days", type=int, default=30, help="export: days of history to include (default 30)")
+    sp.add_argument("--reports", type=int, default=5, help="export: newest reports to include (default 5)")
+    sp.add_argument("--into", default="", help="import: an empty folder of its own, e.g. /root/lrs-import")
     rr = sub.add_parser("report-range", help="a report for the dates you choose: --from YYYY-MM-DD --to YYYY-MM-DD (only data in that range)")
     rr.add_argument("--from", dest="start", required=True, help="first day, YYYY-MM-DD")
     rr.add_argument("--to", dest="end", default="", help="last day, YYYY-MM-DD (default: the same day)")
@@ -893,6 +900,23 @@ def dispatch(app, cmd, args):
     elif cmd == "archive":
         from lshme.ui import archivecmd
         return archivecmd.run(app, args)
+    elif cmd == "support":
+        from lshme.ops import support
+        if args.action == "export":
+            C.out("Collecting (a live snapshot of every server, SAN storage and hardware is included; this can take a minute)...")
+            path, notes = support.export(app, args.output or None, max(1, args.days), max(0, args.reports))
+            C.out(C.c("Written: %s (%.1f MB)" % (path, os.path.getsize(path) / 1048576.0), "green"))
+            C.out("Passwords, tokens, keys and web passwords are not in it. Copy it off this server, e.g.:  scp root@%s:%s ." % (os.uname()[1], path))
+            for n in notes:
+                C.out(C.c("  note: " + n, "yellow"))
+            return 0
+        if not args.file or not args.into:
+            raise ValueError("vitals support import FILE --into /root/lrs-import")
+        info = support.import_to(args.file, args.into)
+        C.out(C.c("Imported %s (version %s, exported %s) into %s" % (info.get("host"), info.get("version"),
+                                                                   time.strftime("%d %b %Y %H:%M", time.localtime(info.get("exported", 0))), args.into), "green"))
+        C.out("Look at it with:  vitals --home %s dashboard   (live polling is off in the copy)" % args.into)
+        return 0
     elif cmd == "report-range":
         from lshme import reports
         from lshme.reports import custom
