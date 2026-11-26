@@ -219,9 +219,12 @@
             var xy = x.pts.map(function (p) { return [W - (t1 - p[0]) / span * W, H - Math.min(p[1], top) / top * (H - 2) - 1]; });
             var line = xy.map(function (q) { return q[0].toFixed(1) + "," + q[1].toFixed(1); }).join(" ");
             if (i === 0) s.appendChild(svg("polygon", { "class": "tm-area", points: xy[0][0].toFixed(1) + "," + H + " " + line + " " + xy[xy.length - 1][0].toFixed(1) + "," + H }));
-            s.appendChild(svg("polyline", { "class": "tm-line" + (i ? " second" : ""), points: line, "vector-effect": "non-scaling-stroke" }));
+            var pl = svg("polyline", { "class": "tm-line" + (i && !opts.colors ? " second" : ""), points: line, "vector-effect": "non-scaling-stroke" });
+            if (opts.colors) pl.style.setProperty("stroke", opts.colors[i % opts.colors.length]);
+            s.appendChild(pl);
         });
-        var cur = clean.map(function (x) { var l = x.pts[x.pts.length - 1]; return (clean.length > 1 ? x.name + " " : "") + (l ? fmt(l[1]) : "-"); }).join("  /  ");
+        var cur = clean.length > 3 ? "busiest now " + fmt(Math.max.apply(null, clean.map(function (x) { var l = x.pts[x.pts.length - 1]; return l ? l[1] : 0; })))
+            : clean.map(function (x) { var l = x.pts[x.pts.length - 1]; return (clean.length > 1 ? x.name + " " : "") + (l ? fmt(l[1]) : "-"); }).join("  /  ");
         var box = h("div", { class: "tm" }, h("div", { class: "tm-head" }, h("span", { class: "tm-title", text: title }), h("span", { class: "tm-val", text: cur })), s);
         box.style.setProperty("--tm", col);
         if (opts.max) box.appendChild(h("div", { class: "tm-scale" }, h("span", { text: opts.scale || "" }), h("span", { text: fmt(opts.max) })));
@@ -488,11 +491,107 @@
         wrap.stop = function () { clearTimeout(timer); };
         return wrap;
     }
+    /* ---------------------------------------------------------------- screenshot of a page part, to the clipboard */
+    function snapshotPng(node) {
+        var W = Math.ceil(node.scrollWidth), H = Math.ceil(node.scrollHeight);
+        var clone = node.cloneNode(true), skip = { transition: 1, animation: 1 };
+        (function copy(a, b) {                                              // the computed style of every element, written inline
+            if (a.nodeType !== 1) return;
+            var cs = getComputedStyle(a), out = [];
+            for (var i = 0; i < cs.length; i++) { var n = cs[i]; if (!skip[n.split("-")[0]]) out.push(n + ":" + cs.getPropertyValue(n)); }
+            b.setAttribute("style", out.join(";"));
+            if (a.tagName === "IMG" && a.complete && a.naturalWidth) {
+                try { var c = document.createElement("canvas"); c.width = a.naturalWidth; c.height = a.naturalHeight; c.getContext("2d").drawImage(a, 0, 0); b.setAttribute("src", c.toDataURL("image/png")); } catch (e) { /* keep */ }
+            }
+            if (a.tagName === "INPUT") b.setAttribute("value", a.value);
+            for (var k = 0; k < a.childNodes.length; k++) copy(a.childNodes[k], b.childNodes[k]);
+        })(node, clone);
+        clone.querySelectorAll(".no-snap").forEach(function (e) { e.remove(); });
+        ["margin", "margin-left", "margin-right", "transform", "position", "left", "top"].forEach(function (k) { clone.style.removeProperty(k); });
+        clone.style.setProperty("width", W + "px"); clone.style.setProperty("max-width", "none"); clone.style.setProperty("box-sizing", "border-box");
+        var bg = getComputedStyle(document.body).backgroundColor;
+        var xml = new XMLSerializer().serializeToString(clone);
+        var svgText = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '"><foreignObject x="0" y="0" width="100%" height="100%">' +
+            '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + W + 'px;background:' + bg + '">' + xml + '</div></foreignObject></svg>';
+        return new Promise(function (ok, bad) {
+            var img = new Image();
+            img.onload = function () {
+                var scale = Math.min(window.devicePixelRatio || 1, 2, 16000 / Math.max(W, H));
+                var c = document.createElement("canvas"); c.width = Math.round(W * scale); c.height = Math.round(H * scale);
+                var g = c.getContext("2d"); g.fillStyle = bg; g.fillRect(0, 0, c.width, c.height); g.scale(scale, scale); g.drawImage(img, 0, 0);
+                try { c.toBlob(function (b) { b ? ok(b) : bad(new Error("the picture could not be made")); }, "image/png"); } catch (e) { bad(e); }
+            };
+            img.onerror = function () { bad(new Error("the picture could not be made")); };
+            img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgText);
+        });
+    }
+    function snapButton(target, name) {
+        var btn = h("button", { type: "button", class: "small no-snap", text: "Screenshot", title: "Copy a picture of the whole dashboard to the clipboard (paste it in mail, Teams or WhatsApp)" });
+        btn.addEventListener("click", function () {
+            var node = typeof target === "function" ? target() : target;
+            btn.disabled = true; btn.textContent = "Copying...";
+            var made = snapshotPng(node);
+            function save(b) {
+                var a = h("a", { href: URL.createObjectURL(b), download: (name || "lrs-vitals") + "-" + new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-") + ".png" });
+                document.body.appendChild(a); a.click(); a.remove();
+                toast("Clipboard not available here, so the screenshot was downloaded as a PNG file", "good");
+            }
+            var copy = window.ClipboardItem && navigator.clipboard && navigator.clipboard.write
+                ? navigator.clipboard.write([new ClipboardItem({ "image/png": made })]).then(function () { toast("Screenshot copied to the clipboard - paste it anywhere (Ctrl+V)", "good"); })
+                : Promise.reject(new Error("no clipboard"));
+            copy.catch(function () { return made.then(save); }).catch(function (e) { toast("Screenshot failed: " + e.message, "bad"); })
+                .then(function () { btn.disabled = false; btn.textContent = "Screenshot"; });
+        });
+        return btn;
+    }
+
+    /* ---------------------------------------------------------------- server hardware (BMC), live every minute */
+    function hardwareCard() {
+        var box = h("div");
+        function tone(st) { return st === "ok" ? "ok" : st === "warning" ? "warn" : st === "waiting" ? "info" : "crit"; }
+        function word(st) { return st === "ok" ? "HEALTHY" : st === "warning" ? "WARNING" : st === "waiting" ? "WAITING" : st === "unreachable" ? "UNREACHABLE" : "CRITICAL"; }
+        function part(label, n, bad) {
+            return h("span", { class: "pill tone-" + (bad && bad.length ? "crit" : "ok"), title: bad && bad.length ? bad.join(", ") : "", text: label + " " + (bad && bad.length ? bad.length + " of " + n + " bad" : n + " OK") });
+        }
+        function tile(x) {
+            var el = h("div", { class: "srv hw st-" + word(x.status) });
+            el.appendChild(h("div", { class: "who-line" }, h("span", { class: "sym-badge" }, sym("server")),
+                h("div", { class: "who-txt" }, h("div", { class: "row" }, h("b", { class: "nm", text: x.name }), badge(word(x.status))),
+                    h("div", { class: "muted small", text: [x.make, x.model, x.serial ? "S/N " + x.serial : "", x.server ? "runs " + (x.server === "_local" ? "this server" : x.server) : ""].filter(Boolean).join("  -  ") }))));
+            if (!x.ok) { el.appendChild(h("p", { class: "muted small", text: x.status === "waiting" ? "Reading the hardware (first answer within a minute)..." : (x.error || "Cannot be reached") })); return el; }
+            el.appendChild(h("div", { class: "hw-nums" },
+                h("div", null, h("span", { class: "muted small", text: "Power" }), h("b", { text: (x.power || "-").toUpperCase() })),
+                h("div", null, h("span", { class: "muted small", text: "Draw" }), h("b", { text: x.watts === null || x.watts === undefined ? "-" : Math.round(x.watts) + " W" })),
+                h("div", null, h("span", { class: "muted small", text: "Hottest" }), h("b", { class: x.temps_bad && x.temps_bad.length ? "t-crit" : "", text: x.temp_max === null || x.temp_max === undefined ? "-" : Math.round(x.temp_max) + " °C" })),
+                h("div", null, h("span", { class: "muted small", text: "CPU / RAM" }), h("b", { text: (x.cpus || "-") + " / " + (x.memory_gb ? Math.round(x.memory_gb) + " GB" : "-") }))));
+            var pills = h("div", { class: "row hw-pills" }, part("Fans", x.fans, x.fans_bad), part("PSU", x.psus, x.psus_bad));
+            if (x.drives) pills.appendChild(part("Drives", x.drives, x.drives_bad));
+            if (x.memory_faults || x.cpu_faults) pills.appendChild(h("span", { class: "pill tone-crit", text: (x.memory_faults ? x.memory_faults + " memory fault(s) " : "") + (x.cpu_faults ? x.cpu_faults + " CPU fault(s)" : "") }));
+            el.appendChild(pills);
+            if ((x.events || []).length) el.appendChild(h("div", { class: "muted small hw-ev", text: "Latest event: " + [x.events[0].time, x.events[0].severity, x.events[0].text].filter(Boolean).join("  ") }));
+            return el;
+        }
+        (function poll() {
+            if (S.hwTimer) clearTimeout(S.hwTimer);
+            api("GET", "/api/hardware").then(function (d) {
+                steady(box);
+                if (!d.items.length) return;
+                var bad = d.items.filter(function (x) { return x.status !== "ok"; }).length;
+                box.appendChild(card("Server hardware (iLO / iDRAC / XClarity / IPMI), live", h("span", { class: "muted", text: d.items.length + " controller" + (d.items.length === 1 ? "" : "s") + " - " +
+                    (bad ? bad + " need attention" : "all healthy") + " - read every minute" + (d.updated ? ", last " + new Date(d.updated * 1000).toLocaleTimeString() : "") }),
+                    h("div", { class: "fleet hw-list" }, d.items.map(tile))));
+                var soon = d.items.some(function (x) { return x.status === "waiting"; });
+                S.hwTimer = setTimeout(function () { if (document.body.contains(box)) poll(); }, soon ? 8000 : 60000);
+            }).catch(function () { S.hwTimer = setTimeout(function () { if (document.body.contains(box)) poll(); }, 60000); });
+        })();
+        return box;
+    }
+
     function drawDashboard(box) {
         var bannerBox = h("div"), live = h("div", { class: "stack" });
-        var alerts = alertsCard(), fleetLive = liveFleetCard(), findings = exclusionsCard();
+        var alerts = alertsCard(), fleetLive = liveFleetCard(), findings = exclusionsCard(), hw = hardwareCard();
         var impactBox = h("div");                                       // what a current failure takes down (from the dependency map)
-        box.appendChild(h("div", { class: "stack" }, bannerBox, impactBox, fleetLive.el, alerts.el, findings.el, live));
+        box.appendChild(h("div", { class: "stack" }, bannerBox, impactBox, fleetLive.el, hw, alerts.el, findings.el, live));
         (function impactLoop() {
             if (!document.body.contains(impactBox)) return;
             api("GET", "/api/topology").then(function (d) {
@@ -545,13 +644,14 @@
             inner.appendChild(run);
             var F2 = S.fleet, sanN = F2 && F2.san ? F2.san.length : 0;
             var clock = h("span", { class: "strip-item mono" });
-            (function tickClock() { if (!document.body.contains(bannerBox)) return; var d = new Date(); clock.textContent = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); setTimeout(tickClock, 1000); })();
+            (function tickClock() { if (!document.body.contains(bannerBox)) return; var d = new Date(); clock.textContent = d.toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric" }) + "  " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); setTimeout(tickClock, 1000); })();
             bannerBox.appendChild(h("div", { class: "status-strip", role: "status" },
                 h("span", { class: "strip-item live" }, h("i", { class: "live-dot" }), "LIVE MONITORING"), clock,
                 sanN ? h("span", { class: "pill tone-ok", text: "SAN checked " + (F2.san_updated ? ago(F2.san_updated) : "soon") }) : null,
                 h("span", { class: "strip-spacer" }),
                 S.me.role === "admin" ? h("button", { class: "small primary strip-add", type: "button", text: "+ Add", title: "Add a Linux server, SAN storage or server hardware", onclick: addWizard }) : null,
                 h("a", { class: "btn small strip-wall", href: "#/wall", title: "Full-screen live status for a TV or NOC screen", text: "Wall view" }),
+                snapButton(function () { return document.querySelector("main") || box; }, "lrs-vitals-dashboard"),
                 h("span", { class: "strip-item muted", text: (S.me.branding && S.me.branding.customer ? S.me.branding.customer + "  -  " : "") + S.me.user + " (" + S.me.role + ")" })));
             bannerBox.appendChild(card(null, null, inner));
         }
@@ -559,6 +659,9 @@
             var s = d.sample, L = d.limits, cpu = s.cpu, mem = s.mem, H = s.history;
             paintBanner(d.health);
             steady(live);
+            var many = S.fleet && S.fleet.enabled && S.fleet.servers && S.fleet.servers.length > 1;
+            if (many) live.appendChild(h("div", { class: "row space local-head" }, h("h2", { class: "sec-title", text: "This server in detail: " + S.me.host + " (central)" }),
+                h("span", { class: "muted small", text: "every server's detail: click it under All servers, live" })));
             var g = h("div", { class: "grid g4" });
             g.appendChild(card("CPU", h("span", { class: "muted", text: cpu.cores + " cores" }),
                 h("div", { class: "row" }, ring(cpu.total, lvl(cpu.total, L.cpu), pc(cpu.total, 0)),
@@ -761,7 +864,7 @@
             if (sans.length) tiles.push(gtile("storage", "SAN storage optimal", sOk + " / " + sans.length, failed ? failed + " failed drive" + (failed > 1 ? "s" : "") : "no failed drives", sOk === sans.length ? "ok" : "crit", sans.length === 1 ? "#/san/" + encodeURIComponent(sans[0].name) : "#/fleet"));
             var probs = sv.reduce(function (t, s) { return t + (s.ok ? (s.critical || 0) + (s.warning || 0) : 0); }, 0) + sans.reduce(function (t, a) { return t + (a.failed_drives || 0) + (a.hardware_bad || []).length; }, 0);
             tiles.push(gtile("pulse", "Open problems", String(probs), probs ? "open the list" : "nothing open right now", probs ? (sv.some(function (s) { return s.critical; }) || failed ? "crit" : "warn") : "ok", "scroll:problems"));
-            tiles.push(gtile("cpu", "Average CPU", avg === null ? "-" : Math.round(avg) + "%", busiest ? "busiest: " + busiest.name + " " + Math.round(busiest.cpu) + "%" : "waiting for live data", avg === null ? "info" : avg >= 85 ? "crit" : avg >= 70 ? "warn" : "ok", busiest ? "#/server/" + encodeURIComponent(busiest.key || "_local") : null));
+            tiles.push(gtile("cpu", "Average CPU", avg === null ? "-" : Math.round(avg) + "%", busiest ? (live.length > 1 ? live.length + " servers - busiest " : "busiest: ") + busiest.name + " " + Math.round(busiest.cpu) + "%" : "waiting for live data", avg === null ? "info" : avg >= 85 ? "crit" : avg >= 70 ? "warn" : "ok", busiest ? "#/server/" + encodeURIComponent(busiest.key || "_local") : null));
             tiles.push(gtile("disk", "Fullest disk or pool", full ? Math.round(full.pct) + "%" : "-", full ? full.where : "waiting for live data", !full ? "info" : full.pct >= 90 ? "crit" : full.pct >= 80 ? "warn" : "ok", full ? full.href : null));
             return h("div", { class: "glance", role: "group", "aria-label": "At a glance" }, tiles);
         }
@@ -832,6 +935,15 @@
             if ((HS.cpu || []).length > 1) hg.appendChild(tmGraph("CPU", [{ name: "Average", pts: HS.cpu }].concat((HS.cpu_max || []).length ? [{ name: "Peak", pts: HS.cpu_max }] : []), { expand: true, color: TM.cpu, max: 100, unit: "%", window: win, scale: rng }));
             if ((HS.mem || []).length > 1) hg.appendChild(tmGraph("Memory", [{ name: "Average", pts: HS.mem }].concat((HS.mem_max || []).length ? [{ name: "Peak", pts: HS.mem_max }] : []), { expand: true, color: TM.mem, max: 100, unit: "%", window: win, scale: rng }));
             if ((HS.load || []).length > 1) hg.appendChild(tmGraph("Load per core", [{ name: "Load per core", pts: HS.load }], { expand: true, color: TM.net, window: win, scale: rng, fmt: function (v) { return (+v).toFixed(2); } }));
+            Object.keys(HS.net || {}).forEach(function (ifc) {
+                var n = HS.net[ifc]; if ((n.rx || []).length < 2) return;
+                hg.appendChild(tmGraph("Network " + ifc, [{ name: "Receive", pts: n.rx }, { name: "Send", pts: n.tx }],
+                    { expand: true, color: TM.net, window: win, scale: rng, unit: " Mbit/s", fmt: function (v) { return (+v) >= 100 ? Math.round(v) : (+v).toFixed(2); } }));
+            });
+            var cks = Object.keys(HS.cores || {});
+            if (cks.length && (HS.cores[cks[0]] || []).length > 1)
+                hg.appendChild(tmGraph("CPU per core" + (HS.core_count > cks.length ? " (busiest " + cks.length + " of " + HS.core_count + ")" : ""),
+                    cks.map(function (c) { return { name: "core " + c, pts: HS.cores[c] }; }), { expand: true, color: TM.cpu, colors: ["#117dbb", "#8b12ae", "#a74f01", "#4da60c", "#c2410c", "#0e7490", "#be185d", "#6b7280"], max: 100, unit: "%", window: win, scale: rng }));
             var fsn = Object.keys(HS.fs || {});
             if (fsn.length) hg.appendChild(tmGraph("Filesystems used", fsn.slice(0, 6).map(function (m) { return { name: m, pts: HS.fs[m] }; }), { expand: true, color: TM.disk, max: 100, unit: "%", window: win, scale: rng }));
             if ((HS.score || []).length > 1) hg.appendChild(tmGraph("Health score", [{ name: "Score", pts: HS.score }], { expand: true, color: "#0066cc", max: 100, window: win, scale: rng, fmt: function (v) { return Math.round(v) + ""; } }));
@@ -1034,7 +1146,7 @@
             var now = new Date();
             head.appendChild(h("div", { class: "wall-title" }, h("b", { text: ((S.me.branding && S.me.branding.customer) || "Estate") + " - live status" }),
                 h("span", { class: "wall-sum " + (crit ? "crit" : bad ? "warn" : "ok"), text: crit ? crit + " critical" + (bad > crit ? ", " + (bad - crit) + " warning" : "") : bad ? bad + " need attention" : "All " + all.length + " healthy" })));
-            head.appendChild(h("div", { class: "row wall-tools" }, h("span", { class: "wall-clock", text: p2(now.getHours()) + ":" + p2(now.getMinutes()) }),
+            head.appendChild(h("div", { class: "row wall-tools" }, h("span", { class: "wall-clock", text: now.toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric" }) + "  " + p2(now.getHours()) + ":" + p2(now.getMinutes()) }),
                 h("button", { type: "button", class: "small", text: document.fullscreenElement ? "Exit full screen" : "Full screen", onclick: function () {
                     if (document.fullscreenElement) document.exitFullscreen(); else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
                     setTimeout(load, 300);
@@ -1125,7 +1237,25 @@
                     h("div", null, h("b", { text: a.component }), h("div", { class: "muted", text: a.message })), ago(a.since), a.count, a.alerted ? "sent" : "waiting",
                     alertActions(a)];
             }), [3]) : h("p", { class: "okline" }, h("span", { class: "dot ok" }), "No active problems. CPU, memory, disks, services and ports are within their limits.");
-            var pc = card("Active problems", info, active); pc.id = "problems"; box.appendChild(pc);
+            var E = d.estate || [], localKeys = {};
+            d.active.forEach(function (a) { localKeys[a.key] = a; });
+            if (E.length && E.some(function (x) { return !x.key; })) {                 // more than this server: everything in one list
+                var KINDS = ["All", "Server", "Storage", "Hardware", "Database"], kind = st.kind || "All";
+                var counts = {}; E.forEach(function (x) { counts[x.kind] = (counts[x.kind] || 0) + 1; });
+                var tabs = h("div", { class: "seg-row" }, KINDS.filter(function (k) { return k === "All" || counts[k]; }).map(function (k) {
+                    return h("button", { type: "button", class: "seg" + (k === kind ? " on" : ""), text: (k === "All" ? "All" : k === "Storage" ? "SAN storage" : k + "s") + " (" + (k === "All" ? E.length : counts[k]) + ")",
+                        onclick: function () { st.kind = k; paint(d); } });
+                }));
+                var rows = E.filter(function (x) { return kind === "All" || x.kind === kind; });
+                active = h("div", { class: "stack" }, tabs, table(["Priority", "Type", "Where", "Problem", "Since", ""], rows.map(function (x) {
+                    return [h("span", { class: "pri " + (x.severity === "CRITICAL" ? "p1" : "p2"), text: x.severity === "CRITICAL" ? "P1" : "P2", title: x.severity }),
+                        h("span", { class: "kind-tag k-" + x.kind.toLowerCase(), text: x.kind === "Storage" ? "SAN" : x.kind }),
+                        h("a", { href: x.href, text: x.where }),
+                        h("div", null, h("b", { text: x.component || "" }), h("div", { class: "muted", text: x.message })), x.since ? ago(x.since) : "-",
+                        x.key && localKeys[x.key] ? alertActions(localKeys[x.key]) : ""];
+                }), [4]));
+            }
+            var pc = card(E.length && E.some(function (x) { return !x.key; }) ? "All open alerts - servers, storage, hardware, databases" : "Active problems", info, active); pc.id = "problems"; box.appendChild(pc);
             var tab = st.tab || (sm.open ? "open" : "resolved");
             var shown = inc.filter(function (i) { return tab === "all" || (tab === "open" ? i.status !== "Resolved" : i.status === "Resolved"); });
             var nOpen = inc.filter(function (i) { return i.status !== "Resolved"; }).length;
@@ -1618,6 +1748,7 @@
             }).catch(fail);
         }
         q.addEventListener("keydown", function (e) { if (e.key === "Enter") search(); });
+        if (!S.me.group) box.appendChild(customRange(function () { load(); }));
         box.appendChild(card("Search stored reports", h("span", { class: "muted", text: "older reports are kept compressed and are searched and opened as they are" }),
             h("div", { class: "row" }, q, h("button", { class: "primary", text: "Search", onclick: search })), found));
         var wrap = h("div", { class: "stack" });
@@ -1655,6 +1786,40 @@
             }).catch(fail);
         }
         load();
+    }
+
+    function customRange(done) {
+        function ymd(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+        var today = new Date(), wk = new Date(today.getTime() - 6 * 86400000);
+        var from = h("input", { type: "date", value: ymd(wk), max: ymd(today), "aria-label": "From date" });
+        var to = h("input", { type: "date", value: ymd(today), max: ymd(today), "aria-label": "To date" });
+        var FMT = [["pdf", "PDF", true], ["html", "HTML", true], ["xlsx", "Excel", false], ["csv", "CSV", false]];
+        var boxes = FMT.map(function (f) { return h("label", { class: "chk" }, h("input", { type: "checkbox", checked: f[2], value: f[0] }), " " + f[1]); });
+        var out = h("div");
+        function quick(days, label) {
+            return h("button", { type: "button", class: "small", text: label, onclick: function () {
+                var t = new Date(); to.value = ymd(t); from.value = ymd(new Date(t.getTime() - (days - 1) * 86400000));
+            } });
+        }
+        var go = h("button", { type: "button", class: "primary", text: "Create report", onclick: function () {
+            if (!from.value || !to.value) return toast("Choose the From and To dates", "bad");
+            if (from.value > to.value) return toast("The To date is before the From date", "bad");
+            var fm = boxes.map(function (b) { return b.firstChild; }).filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+            if (!fm.length) return toast("Choose at least one format", "bad");
+            go.disabled = true; go.textContent = "Creating...";
+            clear(out);
+            api("POST", "/api/reports/custom", { from: from.value, to: to.value, formats: fm }).then(function (r) {
+                out.appendChild(h("div", { class: "row" }, h("b", { text: r.title }),
+                    r.files.map(function (f) { return h("a", { class: "btn small" + (/\.html$/i.test(f) ? " primary" : ""), href: "/reports/" + r.id + "/" + f, target: "_blank", rel: "noopener", text: f.split(".").pop().toUpperCase() + (/comprehensive/i.test(f) ? " (comprehensive)" : "") }); })));
+                if (r.notes && r.notes.length) out.appendChild(h("p", { class: "muted small", text: r.notes.join(" ") }));
+                toast("Report created", "good");
+                if (done) done();
+            }).catch(fail).then(function () { go.disabled = false; go.textContent = "Create report"; });
+        } });
+        return card("Custom date range", h("span", { class: "muted", text: "a report with only the data between these dates" }),
+            h("div", { class: "row range-row" }, h("label", { class: "fld" }, h("span", { text: "From" }), from), h("label", { class: "fld" }, h("span", { text: "To" }), to),
+                h("div", { class: "row" }, quick(1, "Today"), quick(7, "Last 7 days"), quick(30, "Last 30 days"))),
+            h("div", { class: "row range-row" }, h("span", { class: "muted", text: "Formats:" }), boxes, go), out);
     }
 
     /* ---------------------------------------------------------------- server scan */

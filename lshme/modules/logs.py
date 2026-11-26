@@ -145,7 +145,7 @@ def run(ctx, res):
     ctx.shared["log_counts"] = dict(counts)
 
     ssh_warn, ssh_crit = ctx.t("logs", "ssh_fail_warning", 20), ctx.t("logs", "ssh_fail_critical", 200)
-    quiet = ctx.t("logs", "quiet_hours", 2)          # a critical log error with nothing new for this many hours counts as a warning
+    quiet = ctx.t("logs", "quiet_hours", 2)          # a log error with nothing new for this many hours is history (INFO), not an open problem
     rows = []
     for cat, sev, rx, desc, rec, mn in COMPILED + custom:
         n = counts.get(cat, 0)
@@ -171,10 +171,15 @@ def run(ctx, res):
             if seen:
                 msg += ", last at %s" % time.strftime("%d %b %H:%M", time.localtime(seen))
                 res.metric("logs.last_seen:" + cat, seen)
-            if sev == "CRITICAL" and seen and now - seen > quiet * 3600:      # it stopped: still worth knowing, no longer an emergency
-                sev = "WARNING"
-                msg += " - none in the last %s, it looks resolved" % fmt_duration(now - seen)
-                rec = (rec + " " if rec else "") + "If the cause was fixed, this clears by itself once the old entries are older than %d day(s)." % days
+            if seen and now - seen > quiet * 3600:          # old entries only: it stopped, so it is history, not an open problem
+                sev = "INFO"
+                msg += " - none in the last %s: old entries, not counted in the score" % fmt_duration(now - seen)
+                rec = "Nothing new since %s. If the cause was fixed, this line goes away once the old entries are older than %d day(s)." % (
+                    time.strftime("%d %b %H:%M", time.localtime(seen)), days)
+            elif cat == "selinux":                            # SELinux denials do not stop the server: a recommendation
+                from lshme.modules.security import advisory
+                sev, tail = advisory(ctx.cfg, sev)
+                msg += tail
             res.add(sev, "LOG_" + cat.upper(), cat, msg, evidence=evidence, recommendation=rec)
     boots = reboots(ctx, days)
     if boots:

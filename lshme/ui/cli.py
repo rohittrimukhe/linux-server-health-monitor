@@ -237,6 +237,12 @@ def build_parser():
     estatecmd.add_parser(sub)
     templatecmd.add_parser(sub)
 
+    rr = sub.add_parser("report-range", help="a report for the dates you choose: --from YYYY-MM-DD --to YYYY-MM-DD (only data in that range)")
+    rr.add_argument("--from", dest="start", required=True, help="first day, YYYY-MM-DD")
+    rr.add_argument("--to", dest="end", default="", help="last day, YYYY-MM-DD (default: the same day)")
+    rr.add_argument("--formats", default="pdf,html", help="pdf, html, xlsx, csv, json, txt or all")
+    rr.add_argument("--comprehensive", action="store_true", help="also the comprehensive report (always for ranges over a week)")
+    rr.add_argument("--email", default="", help="send the files to these addresses (comma separated)")
     rp = sub.add_parser("report", help="re-render reports from a saved JSON run")
     rp.add_argument("json_file")
     rp.add_argument("--formats", default="html,pdf")
@@ -887,6 +893,22 @@ def dispatch(app, cmd, args):
     elif cmd == "archive":
         from lshme.ui import archivecmd
         return archivecmd.run(app, args)
+    elif cmd == "report-range":
+        from lshme import reports
+        from lshme.reports import custom
+        run = custom.latest_run(app)
+        doc, outdir, files, notes = custom.generate(run, app.cfg, app.paths, args.start, args.end, reports.parse_formats(args.formats), args.comprehensive)
+        C.out(C.c(doc.title, "green"))
+        for f in files:
+            C.out("  " + f)
+        for n in notes:
+            C.out(C.c("  note: " + n, "yellow"))
+        if args.email:
+            from lshme.ops import archive
+            res = archive.email_report(app, outdir, [x.strip() for x in args.email.split(",") if x.strip()], [os.path.basename(f) for f in files])
+            C.out(C.c("Sent to " + args.email, "green") if res.get("ok") else C.c("Not sent: " + str(res.get("error")), "red"))
+            return 0 if res.get("ok") else 1
+        return 0
     elif cmd == "report":
         from lshme import reports
         from lshme.core.model import RunResult

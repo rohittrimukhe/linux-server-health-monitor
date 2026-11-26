@@ -137,8 +137,9 @@ class LogsTest(unittest.TestCase):
         r = FakeRunner({"journalctl": (0, "\n".join(lines)), "last": (0, "")}, dirs=["/run/systemd/system"])
         res = run_module(logs, r)
         c = codes(res)
-        self.assertEqual(c["LOG_IO_ERROR"], "WARNING")                    # old entries, nothing new for hours: it stopped
-        self.assertIn("it looks resolved", [f for f in res.findings if f.code == "LOG_IO_ERROR"][0].message)
+        self.assertEqual(c["LOG_IO_ERROR"], "INFO")                       # old entries, nothing new for hours: history, not in the score
+        self.assertIn("old entries, not counted in the score", [f for f in res.findings if f.code == "LOG_IO_ERROR"][0].message)
+        self.assertEqual(c["LOG_OOM"], "INFO")
         recent = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 600))
         lines = [recent + l[19:] if l.startswith("2026-11-12T01") else l for l in lines]
         res = run_module(logs, FakeRunner({"journalctl": (0, chr(10).join(lines)), "last": (0, "")}, dirs=["/run/systemd/system"]))
@@ -147,7 +148,7 @@ class LogsTest(unittest.TestCase):
         self.assertEqual(c["LOG_IO_ERROR"], "CRITICAL")
         self.assertEqual(c["LOG_FS_ERROR"], "CRITICAL")
         self.assertEqual(c["LOG_SERVICE_FAIL"], "WARNING")
-        self.assertEqual(c["LOG_SELINUX"], "WARNING")
+        self.assertEqual(c["LOG_SELINUX"], "INFO")                        # SELinux denials do not stop the server: advice
         self.assertEqual(c["LOG_SUDO"], "INFO")
         ssh = [f for f in res.findings if f.code == "LOG_SSH_FAILURES"][0]
         self.assertEqual(ssh.severity, "WARNING")
@@ -171,17 +172,22 @@ class SecurityTest(unittest.TestCase):
                        files={"/etc/passwd": "root:x:0:0::/root:/bin/bash\ntoor:x:0:0::/root:/bin/bash\nbob:x:1000:1000::/home/bob:/bin/bash\n",
                               "/etc/shadow": "root:$6$x:1::::::\nbob::1::::::\n"})
         c = codes(run_module(security, r, {"main": "[security]\nrequire_auditd = yes\npassword_authentication_allowed = no\n"}))
-        self.assertEqual(c["SELINUX_MODE"], "WARNING")
-        self.assertEqual(c["FIREWALL_INACTIVE"], "WARNING")
+        self.assertEqual(c["SELINUX_MODE"], "INFO")                                     # hardening: advice by default, not in the score
+        self.assertEqual(c["FIREWALL_INACTIVE"], "INFO")
         self.assertEqual(c["SSH_ROOT_LOGIN"], "INFO")                                   # advice by default: shown, not in the score
-        self.assertEqual(c["SSH_PASSWORD_AUTH"], "WARNING")
+        self.assertEqual(c["SSH_PASSWORD_AUTH"], "INFO")
         c2 = codes(run_module(security, r, {"main": "[security]" + chr(10) + "root_login_check = warning" + chr(10)}))
         self.assertEqual(c2["SSH_ROOT_LOGIN"], "WARNING")
         self.assertNotIn("SSH_ROOT_LOGIN", codes(run_module(security, r, {"main": "[security]" + chr(10) + "root_login_check = off" + chr(10)})))
         self.assertEqual(c["EXTRA_UID0"], "CRITICAL")
         self.assertEqual(c["EMPTY_PASSWORD"], "CRITICAL")
-        self.assertEqual(c["AUDITD_INACTIVE"], "WARNING")
-        self.assertEqual(c["SECURITY_UPDATES"], "WARNING")
+        self.assertEqual(c["AUDITD_INACTIVE"], "INFO")
+        self.assertEqual(c["SECURITY_UPDATES"], "INFO")
+        strict = "[security]" + chr(10) + "require_auditd = yes" + chr(10) + "password_authentication_allowed = no" + chr(10) + "posture_findings = warning" + chr(10)
+        c3 = codes(run_module(security, r, {"main": strict}))
+        for code in ("SELINUX_MODE", "FIREWALL_INACTIVE", "SSH_PASSWORD_AUTH", "AUDITD_INACTIVE", "SECURITY_UPDATES"):
+            self.assertEqual(c3[code], "WARNING", code)
+        self.assertEqual(c3["EXTRA_UID0"], "CRITICAL")
 
 
 class BackupTest(unittest.TestCase):
@@ -276,7 +282,7 @@ class SystemCpuTest(unittest.TestCase):
                        files={"/etc/os-release": 'PRETTY_NAME="Oracle Linux Server 7.9"\nID="ol"\nVERSION_ID="7.9"\n', "/proc/uptime": "3600.0 1"})
         c = codes(run_module(system, r))
         self.assertEqual(c["TIME_NOT_SYNCED"], "WARNING")
-        self.assertEqual(c["REBOOT_REQUIRED"], "WARNING")
+        self.assertEqual(c["REBOOT_REQUIRED"], "INFO")                    # a pending reboot does not stop the server: advice
         self.assertEqual(c["RECENT_REBOOT"], "INFO")
 
     def test_memory_and_load(self):

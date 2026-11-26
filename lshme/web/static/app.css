@@ -748,3 +748,17 @@ main, footer { transition: none !important; }
 .onboard-steps li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .onboard-steps li.os-failed b { color: var(--crit-ink); }
 @media (max-width: 700px) { .strip-add { display: none; } }
+
+/* custom date range report */
+.range-row { align-items: flex-end; flex-wrap: wrap; gap: 10px 14px; margin-bottom: 8px; }
+.range-row .fld { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.range-row input[type=date] { min-width: 150px; }
+.range-row .chk { display: inline-flex; align-items: center; gap: 4px; }
+.local-head { margin: 10px 2px -2px; align-items: baseline; } .local-head .sec-title { font-size: 17px; font-weight: 600; margin: 0; }
+/* server hardware (BMC) tiles */
+.hw-nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0 8px; }
+.hw-nums > div { display: grid; gap: 2px; } .hw-nums b { font-size: 17px; font-variant-numeric: tabular-nums; } .hw-nums b.t-crit { color: var(--crit, #c9190b); }
+.hw-pills { flex-wrap: wrap; gap: 6px; } .hw-ev { margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) { .hw-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kind-tag { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #e7f1fa; color: #004080; }
+.kind-tag.k-storage { background: #f3e8ff; color: #5b21b6; } .kind-tag.k-hardware { background: #fdf0e1; color: #8a4b00; } .kind-tag.k-database { background: #e6f4ea; color: #1e5631; }

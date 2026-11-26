@@ -91,6 +91,7 @@ class WebApp(object):
         self.lock = threading.RLock()  # serialises configuration changes
         self.sampler = sysstats.Sampler()
         self.sample, self.sample_at, self.sample_lock = None, 0.0, threading.Lock()
+        self.hw, self.hw_at, self.hw_busy = {}, 0.0, False        # server hardware (BMC) readings, refreshed at most once a minute
         self.job = {"running": False, "progress": 0, "total": 0, "title": "", "started": 0, "finished": 0, "result": None, "error": ""}
         self.fleet_job = {"running": False, "title": "", "started": 0, "finished": 0, "result": None, "error": ""}
         self.cert_job = {"running": False, "started": 0, "finished": 0, "result": None}
@@ -204,7 +205,7 @@ class WebApp(object):
         handler = getattr(self, "api_" + name.replace("/", "_"), None)
         if handler is None:
             return err("not found", 404)
-        if req.method not in ("GET", "HEAD") and sess["role"] != "admin" and name != "password":
+        if req.method not in ("GET", "HEAD") and sess["role"] != "admin" and name not in ("password", "reports/custom"):
             self.audit("web-denied", sess, route=name)
             raise PermissionError("your account is read-only")
         if name in ("config", "users", "backups", "logs", "audit", "raw", "raw/file", "branding", "branding/logo", "san", "bmc", "onboard") and sess["role"] != "admin":
@@ -355,7 +356,71 @@ class WebApp(object):
             days = 30
         from lshme.ops import sla
         incidents, summary = sla.incident_log(sla.load_events(os.path.join(d, "watch_events.jsonl")), time.time(), days, 200, acks)
-        return jr({"active": active, "events": list(reversed(events))[:40], "channels": channels, "incidents": incidents, "incident_summary": summary})
+        return jr({"active": active, "events": list(reversed(events))[:40], "channels": channels, "incidents": incidents, "incident_summary": summary,
+                   "estate": [] if sess.get("group") else self.estate_alerts(active)})
+
+    def estate_alerts(self, active):
+        """Everything open right now, in one list: this server, every member server, SAN storage, server hardware (BMC) and databases.
+        [{kind, where, severity, message, since, href}], critical first."""
+        import socket as _socket
+        me = _socket.gethostname()
+        out = [{"kind": "Server", "where": me, "severity": a["severity"], "message": a["message"], "component": a["component"], "since": a["since"],
+                "href": "#/server/_local", "key": a["key"]} for a in active]
+        try:
+            from lshme.ops import livefleet
+            if livefleet.enabled(self.app.cfg):
+                lf = self.livefleet()
+                for sv in lf.snapshot():
+                    if sv.get("local") or sv.get("host") == me or sv.get("name") == me:
+                        continue
+                    href = "#/server/" + str(sv.get("key") or sv.get("name"))
+                    if sv.get("status") == "UNREACHABLE":
+                        out.append({"kind": "Server", "where": sv.get("name"), "severity": "CRITICAL", "message": "cannot be reached: " + str(sv.get("error") or "")[:160],
+                                    "component": "reachability", "since": sv.get("fetched"), "href": href})
+                    for p in sv.get("problems") or []:
+                        out.append({"kind": "Server", "where": sv.get("name"), "severity": p.get("severity"), "message": p.get("message"), "component": p.get("component"),
+                                    "since": p.get("since"), "href": href})
+                for a in lf.san_snapshot():
+                    href = "#/san/" + str(a.get("name"))
+                    if a.get("status") == "UNREACHABLE":
+                        out.append({"kind": "Storage", "where": a["name"], "severity": "CRITICAL", "message": "cannot be reached: " + str(a.get("error") or "")[:160],
+                                    "component": "storage", "since": a.get("fetched"), "href": href})
+                        continue
+                    for c in a.get("controllers") or []:
+                        if c.get("status") not in ("optimal", "ok"):
+                            out.append({"kind": "Storage", "where": a["name"], "severity": "CRITICAL", "message": "%s is %s" % (c.get("name"), c.get("status")),
+                                        "component": "controller", "since": a.get("fetched"), "href": href})
+                    if a.get("failed_drives"):
+                        out.append({"kind": "Storage", "where": a["name"], "severity": "CRITICAL", "message": "%d failed drive(s): %s" % (a["failed_drives"], ", ".join(map(str, a.get("failed_slots") or []))),
+                                    "component": "drives", "since": a.get("fetched"), "href": href})
+                    for x in a.get("hardware_bad") or []:
+                        out.append({"kind": "Storage", "where": a["name"], "severity": "WARNING", "message": str(x)[:160], "component": "hardware", "since": a.get("fetched"), "href": href})
+                    for pl in a.get("pools") or []:
+                        if (pl.get("pct") or 0) >= 90:
+                            out.append({"kind": "Storage", "where": a["name"], "severity": "WARNING", "message": "pool %s is %d%% used" % (pl.get("name"), pl["pct"]),
+                                        "component": "pool", "since": a.get("fetched"), "href": href})
+        except Exception:
+            self.app.log.exception("estate alerts: live servers")
+        for x in self.hw.values():
+            if x.get("status") not in ("ok", "waiting"):
+                bad = [n for k in ("fans_bad", "psus_bad", "drives_bad", "temps_bad") for n in (x.get(k) or [])]
+                msg = x.get("error") or ("faults: " + ", ".join(bad[:6]) if bad else "health " + str(x.get("status")))
+                out.append({"kind": "Hardware", "where": x["name"], "severity": "WARNING" if x.get("status") == "warning" else "CRITICAL", "message": msg,
+                            "component": "BMC", "since": x.get("fetched"), "href": "#/dashboard"})
+        try:
+            from lshme.ops import dashboard
+            runs, _ = dashboard.load_results(self.app.paths)
+            for r in runs:
+                for f in r.findings("WARNING"):
+                    if f.module == "database":
+                        out.append({"kind": "Database", "where": r.meta.get("fleet_name") or r.host, "severity": f.severity, "message": f.message,
+                                    "component": f.component, "since": r.collected_at,
+                                    "href": "#/server/" + ("_local" if r.host == me else str(r.meta.get("fleet_name") or r.host))})
+        except Exception:
+            self.app.log.exception("estate alerts: databases")
+        rank = {"CRITICAL": 0, "WARNING": 1}
+        out.sort(key=lambda x: (rank.get(x["severity"], 2), -(x.get("since") or 0)))
+        return out[:200]
 
     def fleet_view(self, group=""):
         import socket as _socket
@@ -594,6 +659,19 @@ class WebApp(object):
             else:
                 for k, key in (("cpu", "cpu.usage_percent"), ("mem", "memory.used_percent"), ("swap", "swap.used_percent"), ("load", "cpu.load5_per_core")):
                     out[k] = thin(h.series(host, key, since))
+            try:                                                       # network per interface (Mbit/s) and the busiest CPU cores, per hour
+                net = h.hourly_net(host, since)
+                busy = sorted(((sum(r[1] + r[3] for r in rows) / max(1, len(rows)), i) for i, rows in net.items() if i != "lo"), reverse=True)
+                for _, iface in busy[:4]:
+                    rows = net[iface]
+                    out.setdefault("net", {})[iface] = {"rx": thin([(r[0], r[1] * 8 / 1e6) for r in rows]), "tx": thin([(r[0], r[3] * 8 / 1e6) for r in rows]),
+                                                        "rx_max": thin([(r[0], (r[2] or 0) * 8 / 1e6) for r in rows]), "tx_max": thin([(r[0], (r[4] or 0) * 8 / 1e6) for r in rows])}
+                cores = h.hourly_cores(host, since)
+                top = sorted(((sum(r[1] for r in rows) / max(1, len(rows)), c) for c, rows in cores.items()), reverse=True)
+                out["cores"] = {str(c): thin([(r[0], r[1]) for r in cores[c]]) for _, c in top[:8]}
+                out["core_count"] = len(cores)
+            except Exception:
+                pass
             out["score"] = thin([(r["ts"], r["score"]) for r in reversed(h.runs(host, days=days, limit=2000)) if r.get("score") is not None])
             for key in h.keys_like(host, "fs.used_percent:", since)[:12]:
                 out["fs"][key.split(":", 1)[1]] = thin(h.series(host, key, since))
@@ -729,6 +807,45 @@ class WebApp(object):
         saved = bmc.save(self.app, a["name"], t, a["address"], a["username"], d.get("password") or None, a["port"], a["verify_tls"], True, a["server"])
         self.audit("web-bmc-save", sess, name=saved, type=t, address=a["address"], server=a["server"])
         return jr({"ok": True, "name": saved})
+
+    def api_hardware(self, req, sess):
+        """Live server hardware (iLO, iDRAC, XClarity, IPMI ...): power, health, watts, hottest temperature, fans, power supplies,
+        drives and faults per BMC. Read once a minute in the background and cached, so the page never waits on a BMC. Never the password."""
+        from lshme.ops import bmc
+        if sess.get("group"):
+            return jr({"items": [], "updated": 0, "interval": 60})
+        items = [a for a in bmc.bmcs(self.app.cfg) if a.get("enabled", True)]
+        if items and time.time() - self.hw_at >= 60 and not self.hw_busy:
+            self.hw_busy = True
+
+            def refresh():
+                fresh = {}
+                try:
+                    for a in items:
+                        t0 = time.time()
+                        try:
+                            d = bmc.collect(a)
+                            temps = [x["celsius"] for x in d["temps"] if x.get("celsius") is not None]
+                            hot = max(temps) if temps else None
+                            bad = lambda xs: [x["name"] for x in xs if x.get("status") in ("critical", "warning")]
+                            fresh[a["name"]] = {"name": a["name"], "make": d["make"], "model": d["model"], "serial": d["serial"], "server": a.get("server", ""),
+                                                "address": a["address"], "status": d["status"], "power": d["power"], "watts": d["power_watts"], "temp_max": hot,
+                                                "cpus": d["cpus"], "memory_gb": d["memory_gb"], "bmc_firmware": d["bmc_firmware"], "bios": d["bios"],
+                                                "fans": len(d["fans"]), "fans_bad": bad(d["fans"]), "psus": len(d["psus"]), "psus_bad": bad(d["psus"]),
+                                                "drives": len(d["drives"]), "drives_bad": bad(d["drives"]), "temps_bad": bad(d["temps"]),
+                                                "memory_faults": len(d["memory_faults"]), "cpu_faults": len(d["cpu_faults"]),
+                                                "events": [e for e in d["events"][:5]], "ok": True, "took": round(time.time() - t0, 1), "fetched": time.time()}
+                        except Exception as e:
+                            fresh[a["name"]] = {"name": a["name"], "address": a["address"], "server": a.get("server", ""), "ok": False,
+                                                "status": "unreachable", "error": str(e)[:200], "fetched": time.time()}
+                    self.hw = fresh
+                finally:
+                    self.hw_at, self.hw_busy = time.time(), False
+            threading.Thread(target=refresh, daemon=True).start()
+        names = set(a["name"] for a in items)
+        out = [v for k, v in sorted(self.hw.items()) if k in names]
+        waiting = [{"name": a["name"], "address": a["address"], "server": a.get("server", ""), "ok": False, "status": "waiting"} for a in items if a["name"] not in self.hw]
+        return jr({"items": out + waiting, "updated": self.hw_at, "interval": 60})
 
     def api_repair(self, req, sess):
         """Check and repair LRS Vitals itself on this server or, from the central server, on a member over SSH. Administrators only."""
@@ -1001,6 +1118,20 @@ class WebApp(object):
         res = archive.email_report(self.app, d, to or None, names)
         self.audit("report-email", sess, report=rid, to=",".join(to))
         return jr(res)
+
+    def api_reports_custom(self, req, sess):
+        """Make a report for the From .. To dates (only data in that range) and return where it is."""
+        from lshme import reports
+        from lshme.reports import custom
+        if sess.get("group"):
+            raise PermissionError("custom reports are made by LRS staff")
+        d = req.json()
+        fm = [x for x in (d.get("formats") or ["pdf", "html"]) if x in ("pdf", "html", "xlsx", "csv", "json", "txt")] or ["pdf", "html"]
+        run = custom.latest_run(self.app)
+        doc, outdir, files, notes = custom.generate(run, self.app.cfg, self.app.paths, str(d.get("from", "")), str(d.get("to", "")),
+                                                    reports.parse_formats(",".join(fm)), bool(d.get("comprehensive")))
+        self.audit("report-custom", sess, start=str(d.get("from", "")), end=str(d.get("to", "")))
+        return jr({"id": self.rel({"dir": outdir}), "title": doc.title, "files": [os.path.basename(f) for f in files], "notes": notes})
 
     def report_dir(self, rid):
         root = os.path.realpath(self.app.paths.report_dir)

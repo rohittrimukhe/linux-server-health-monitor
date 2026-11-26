@@ -105,7 +105,9 @@ def run(ctx, res):
     elif synced is None:
         res.add("UNKNOWN", "TIME_SYNC_UNKNOWN", "time", "Time synchronisation state could not be determined")
     if reboot:
-        res.add("WARNING", "REBOOT_REQUIRED", "kernel", "A reboot is pending to activate updates",
+        from lshme.modules.security import advisory
+        sev, tail = advisory(ctx.cfg, "WARNING")
+        res.add(sev, "REBOOT_REQUIRED", "kernel", "A reboot is pending to activate updates" + tail,
                 evidence=reboot_detail,
                 recommendation="Plan a maintenance window to reboot and activate the updated kernel/libraries.")
     if uptime < 86400:

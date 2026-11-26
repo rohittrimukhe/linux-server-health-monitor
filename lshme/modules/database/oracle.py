@@ -486,7 +486,9 @@ def check(ctx, res, inst):
         res.table("Oracle %s — latest patches" % inst["name"], ["Patch", "Action", "Status", "Applied", "Description"], patches)
         info["patch"] = {"id": patches[0][0], "applied": patches[0][3], "description": patches[0][4]}
         if patches[0][2] not in ("SUCCESS", "WITH ERRORS (RAR)"):
-            res.add("WARNING", "ORACLE_PATCH_STATUS", label, "Latest SQL patch %s finished with status %s" % (patches[0][0], patches[0][2]),
+            from lshme.modules.security import advisory
+            sev, tail = advisory(ctx.cfg, "WARNING")
+            res.add(sev, "ORACLE_PATCH_STATUS", label, "Latest SQL patch %s finished with status %s%s" % (patches[0][0], patches[0][2], tail),
                     recommendation="Re-run datapatch and check its log.")
     info["asm"] = dg_rows
 

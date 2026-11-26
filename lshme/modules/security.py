@@ -9,6 +9,17 @@ TITLE = "Security & Patching"
 WEIGHT = 8
 
 
+NOT_SCORED = " - recommendation, not counted in the score"
+
+
+def advisory(cfg, sev):
+    """Hardening and patch findings that do not stop the server or cause downtime (SELinux, firewall, pending updates,
+    reboot pending, SSH password login, auditd, Oracle patch status) are recommendations by default: INFO, not counted
+    in the score. [security] posture_findings = warning counts them again. Returns (severity, text to add)."""
+    mode = (cfg.get("main", "security", "posture_findings", "advice") or "advice").strip().lower()
+    return (sev, "") if mode == "warning" else ("INFO", NOT_SCORED)
+
+
 def selinux(ctx):
     if ctx.has("getenforce"):
         r = ctx.run(["getenforce"])
@@ -133,10 +144,12 @@ def run(ctx, res):
 
     if expected_se in ("enforcing", "permissive") and se not in (expected_se, "apparmor"):
         sev = "WARNING" if se == "permissive" else "CRITICAL" if expected_se == "enforcing" and se == "disabled" else "WARNING"
-        res.add(sev, "SELINUX_MODE", "selinux", "SELinux is %s (policy expects %s)" % (se, expected_se),
+        sev, tail = advisory(ctx.cfg, sev)
+        res.add(sev, "SELINUX_MODE", "selinux", "SELinux is %s (policy expects %s)%s" % (se, expected_se, tail),
                 recommendation="Set SELINUX=%s in /etc/selinux/config; relabel if it was disabled." % expected_se)
     if ctx.cfg.getbool("main", "security", "require_firewall", True) and not fw["active"]:
-        res.add("WARNING", "FIREWALL_INACTIVE", "firewall", "No active host firewall (%s)" % fw["tool"],
+        sev, tail = advisory(ctx.cfg, "WARNING")
+        res.add(sev, "FIREWALL_INACTIVE", "firewall", "No active host firewall (%s)%s" % (fw["tool"], tail),
                 recommendation="Enable firewalld/nftables with a minimal rule set.")
     prl = sshd.get("permitrootlogin", "").lower()
     mode = (ctx.cfg.get("main", "security", "root_login_check", "advice") or "advice").strip().lower()    # advice | warning | off
@@ -146,7 +159,8 @@ def run(ctx, res):
                 recommendation="Set PermitRootLogin prohibit-password or no and use named accounts with sudo. "
                                "(Counted in the score only with [security] root_login_check = warning.)")
     if sshd.get("passwordauthentication", "").lower() == "yes" and not ctx.cfg.getbool("main", "security", "password_authentication_allowed", True):
-        res.add("WARNING", "SSH_PASSWORD_AUTH", "sshd", "SSH password authentication is enabled",
+        sev, tail = advisory(ctx.cfg, "WARNING")
+        res.add(sev, "SSH_PASSWORD_AUTH", "sshd", "SSH password authentication is enabled" + tail,
                 recommendation="Prefer key-based authentication.")
     if sshd.get("permitemptypasswords", "").lower() == "yes":
         res.add("CRITICAL", "SSH_EMPTY_PASSWORDS", "sshd", "SSH permits empty passwords")
@@ -160,18 +174,20 @@ def run(ctx, res):
         res.add("CRITICAL", "EMPTY_PASSWORD", u, "Account %s has an empty password" % u,
                 recommendation="Lock the account (passwd -l) or set a password.")
     if ctx.cfg.getbool("main", "security", "require_auditd", False) and auditd != "active":
-        res.add("WARNING", "AUDITD_INACTIVE", "auditd", "auditd is %s" % (auditd or "not installed"))
+        sev, tail = advisory(ctx.cfg, "WARNING")
+        res.add(sev, "AUDITD_INACTIVE", "auditd", "auditd is %s%s" % (auditd or "not installed", tail))
     for line in nopasswd[:5]:
         res.add("INFO", "SUDO_NOPASSWD", "sudoers", "Passwordless sudo rule: %s" % line)
     if upd:
         if upd["total"] is None:
-            res.add("UNKNOWN", "UPDATES_UNKNOWN", upd["tool"] or "packages", "Pending updates could not be determined",
+            res.add(advisory(ctx.cfg, "UNKNOWN")[0], "UPDATES_UNKNOWN", upd["tool"] or "packages", "Pending updates could not be determined",
                     evidence=upd["error"])
         else:
             res.metric("security.pending_updates", upd["total"])
             if upd["security"]:
                 res.metric("security.pending_security_updates", upd["security"])
-                res.add("WARNING", "SECURITY_UPDATES", upd["tool"], "%d security update(s) pending (%d total)" % (upd["security"], upd["total"]),
+                sev, tail = advisory(ctx.cfg, "WARNING")
+                res.add(sev, "SECURITY_UPDATES", upd["tool"], "%d security update(s) pending (%d total)%s" % (upd["security"], upd["total"], tail),
                         evidence=", ".join(upd["packages"][:40]),
                         recommendation="Apply security errata in the next patch window.")
             elif upd["total"] > 50:
